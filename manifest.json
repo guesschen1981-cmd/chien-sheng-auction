@@ -1,0 +1,23 @@
+{
+  "name": "建生工坊線上拍賣系統",
+  "short_name": "建生拍賣",
+  "description": "建生工坊線上拍賣系統 - 多商品即時競標、防壓標機制、多國貨幣切換與即時樹狀問答",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#09091e",
+  "theme_color": "#09091e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

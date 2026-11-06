@@ -1,3489 +1,4433 @@
 /* ============================================================
-   AUCTION TIMER  ·  app.js
-   Full Frontend Logic — Two Timer Modes + Anti-Snipe Buffer
+   建生工坊線上拍賣系統  ·  app.js (核心腳本)
+   架構：多商品同時競標 + 多國貨幣切換 + 嚴格出價與電話防偽 + 手機優先設計
+   規範：一律使用「腳本」二字進行開發與維護
    ============================================================ */
 'use strict';
 
-// ─────────────────────────────────────────────────────────
-//  CONSTANTS
-// ─────────────────────────────────────────────────────────
-const RING_RADIUS      = 96;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS; // ≈ 603.19
-
-// ─────────────────────────────────────────────────────────
-//  STATE
-// ─────────────────────────────────────────────────────────
-const S = {
-  // ── Config (admin) ──────────────────────────────────────
-  studioName  : '建生工坊',
-  logoUrl     : '',
-  itemName    : '',
-  itemSubtitle: '',
-  itemDesc    : '',
-  itemQty     : 1,
-  imgUrl      : '',           // URL fallback (single)
-  images      : [],           // [{ src, name, isCover }] — managed by dropzone
-  logoSrc     : '',           // base64 or URL — managed by logo dropzone
-  startPrice  : 100,
-  increment   : 50,
-  pickups     : ['自取'],
-  videoUrl    : '',
-  customTerms : '',
-
-  // Timer config
-  timerMode   : 'fixed',   // 'fixed' | 'rolling'
-  // fixed mode
-  fixedDays   : 0,
-  fixedHours  : 1,
-  fixedMins   : 0,
-  fixedSecs   : 0,
-  // anti-snipe
-  antiSnipe   : true,
-  bufferMins  : 3,   // last N minutes → trigger anti-snipe
-  extendMins  : 3,   // extend by N minutes on bid
-
-  // ── Runtime ─────────────────────────────────────────────
-  auctionLive : false,
-  auctionDone : false,
-  endTime     : null,       // Date
-  totalSecs   : 0,          // total initial seconds (for ring calc)
-  antiSnipeActive: false,
-
-  currentBid  : 0,
-  topBidder   : '',
-  topBidTime  : null,
-  bidHistory  : [],
-
-  loggedUser  : null,
-  pendingAmt  : 0,
-  shareUrl    : '',
-
-  // ── Firebase / Cloud ──────────────────────────────────────
-  auctionId   : '',         // Unique Auction ID (cloud key)
-  fbReady     : false,      // Firebase initialized & connected
-  fbMode      : false,      // true when Firebase config exists
+/* ─────────────────────────────────────────────────────────────
+   1. 常數與匯率資料表 (Currency Rates & Formats)
+   ───────────────────────────────────────────────────────────── */
+const CURRENCY_RATES = {
+  TWD: { rate: 1,      symbol: 'NT$ ', name: '新台幣',  digits: 0 },
+  USD: { rate: 0.031,  symbol: '$ ',   name: '美金',    digits: 2 },
+  JPY: { rate: 4.75,   symbol: '¥ ',   name: '日圓',    digits: 0 },
+  VND: { rate: 800,    symbol: '₫ ',   name: '越南盾',  digits: 0 },
+  IDR: { rate: 510,    symbol: 'Rp ',  name: '印尼盾',  digits: 0 },
+  THB: { rate: 1.12,   symbol: '฿ ',   name: '泰銖',    digits: 0 }
 };
 
-// ─────────────────────────────────────────────────────────
-//  DOM SHORTCUTS
-// ─────────────────────────────────────────────────────────
-const el  = id  => document.getElementById(id);
-const qsa = sel => document.querySelectorAll(sel);
+/* 預設多商品初始資料 (真實拍賣商品：Acer Aspire 7 電競筆電) */
+const DEFAULT_ITEMS = [
+  {
+    id: 'item-1',
+    name: '高雄 小港區 桂林 - 2手 Acer 宏碁 Aspire 7 A715-71G 電競筆記型電腦 15.6吋 i5-7300HQ GTX 1050 獨立顯示卡 8成新 出售 - 自取自搬 - 透天1～3樓',
+    subtitle: '15.6吋 Full HD・i5-7300HQ・GTX 1050 獨顯・8成新',
+    desc: `💻 規格與重點配置
+‧ 品牌型號：Acer (宏碁) Aspire 7 A715-71G-54UE
+‧ 處理器：Intel (英特爾) Core i5-7300HQ（4核4緒，最高 3.5GHz）
+‧ 獨立顯示卡：NVIDIA (輝達) GeForce GTX 1050 2GB GDDR5（Samsung 三星顯存）
+‧ 記憶體：DDR4 記憶體
+‧ 儲存空間：
+  - M.2 NVMe SSD 固態硬碟
+  - TOSHIBA (東芝) 1TB HDD 機械硬碟
+‧ 螢幕尺寸：15.6 吋 Full HD (1920x1080)
+‧ 音效支援：Dolby (杜比) Audio Premium / Acer TrueHarmony
 
-/* Admin */
-const cfgStudioName    = el('cfg-studio-name');
-const cfgLogoUrl       = el('cfg-logo-url');
-const cfgItemName      = el('cfg-item-name');
-const cfgItemSubtitle  = el('cfg-item-subtitle');
-const cfgItemDesc      = el('cfg-item-desc');
-const cfgItemQty       = el('cfg-item-qty');
-const cfgImgUrl        = el('cfg-img-url');
-const cfgStartPrice    = el('cfg-start-price');
-const cfgIncrement     = el('cfg-increment');
-const cfgPickupCustCb  = el('pickup-custom-cb');
-const cfgPickupCustWrp = el('pickup-custom-wrap');
-const cfgPickupCustTxt = el('pickup-custom-text');
-const cfgVideoUrl      = el('cfg-video-url');
-const cfgVideoPreview  = el('cfg-video-preview');
-const cfgTDays         = el('cfg-t-days');
-const cfgTHours        = el('cfg-t-hours');
-const cfgTMins         = el('cfg-t-mins');
-const cfgTSecs         = el('cfg-t-secs');
-const cfgAntiSnipe     = el('cfg-anti-snipe');
-const cfgBufferMins    = el('cfg-buffer-mins');
-const cfgBufferCustom  = el('cfg-buffer-custom');
-const cfgExtendMins    = el('cfg-extend-mins');
-const cfgExtendCustom  = el('cfg-extend-custom');
-const cfgCustomTerms   = el('cfg-custom-terms');
-const antiSnipeOpts    = el('anti-snipe-opts');
+商品概述
+這台機器已經清潔與整備完畢，目前運行非常流暢穩定。大螢幕不論是拿來當成桌機替代機、日常看影片、辦公寫程式都超級過癮
 
-/* Buttons */
-const btnPreview  = el('btn-preview');
-const btnPublish  = el('btn-publish');
-const btnBack     = el('btn-back');
-const btnShareNav = el('btn-share-nav');
+📊 效能實測狀況
+‧ 鍵盤測試：全機鍵盤按鍵（含數字小鍵盤）測試運作皆正常。
+‧ CPU-Z 跑分：單核 272.5 / 多核 1026.5
+‧ Cinebench R15 跑分：CPU 372 cb / OpenGL 69.49 fps
+‧ CrystalDiskMark 讀寫：SSD 實測連續讀取 2484.33 MB/s、寫入 1759.85 MB/s
+‧ 系統主板：系統與主機板、獨立顯示卡運作均正常良好。
 
-/* Auction page */
-const aLogo       = el('a-logo');
-const aStudio     = el('a-studio');
-const aImg        = el('a-img');
-const aImgPh      = el('a-img-ph');
-const aItemName   = el('a-item-name');
-const aItemSub    = el('a-item-subtitle');
-const aQtyBadge   = el('a-qty-badge');
-const aPickupChips= el('a-pickup-chips');
-const aDesc       = el('a-desc');
-const aVideoCard  = el('a-video-card');
-const aVideoEmbed = el('a-video-embed');
-const aVideoMobile= el('a-video-mobile');
-const aShareUrl   = el('a-share-url');
+⚠️ 測試與機況補充（請務必詳閱）
+1. 功能測試說明：全機已完成鍵盤、CPU-Z 跑分、Cinebench R15 及獨立顯示卡測試，系統與主板運作皆正常。
+2. 聲音系統狀況：內建喇叭已損壞無聲，需買零件自行更換，或接外接喇叭/耳機使用。
+3. 電池與電源狀況：電池已老化不蓄電。原廠充電頭因接頭接觸不良燈不亮，需搭配「較長接頭/轉接頭」才能通電開機。
+4. 配件說明：本商品為單機零件機出清，【不含充電器、不含轉接頭】，請買家自備變壓器與長頭轉接線。
+5. 適合對象：適合具備電腦 DIY 拆裝能力、會自行安裝 SSD/重灌系統/更換喇叭的買家，或作為固定地點外接喇叭使用的代步機/零件機。
+【零件機出清】Acer (宏碁) Aspire 7 A715-71G 15.6吋筆電（i5-7300HQ / GTX 1050 獨立顯示卡 / FHD 1080P）`,
+    images: [],
+    videoUrl: 'https://youtu.be/YJJEP2dyl4M',
+    sellerName: '建生工坊',
+    sellerLogo: 'icon-192.png',
+    startPrice: 10000,
+    increment: 10,
+    currentPrice: 10000,
+    currentBid: 10000,
+    topBidder: '',
+    topBidderContact: null,
+    topBidTime: null,
+    bids: {},
+    bidHistory: [],
+    endTime: Date.now() + 24 * 3600 * 1000,
+    status: 'live',
+    timeMode: 'reset24',
+    autoRelistIfNoBids: true,
+    antiSnipeEnable: true,
+    antiSnipeEnabled: true,
+    antiSnipeMins: 3,
+    antiSnipeExt: 3,
+    antiSnipeExtMins: 3,
+    pickupDeadlineHours: 72,
+    pickupDeadline: null,
+    pickupOptions: { self: true, delivery: false, cvs: false },
+    pickupCustom: '自取自搬・透天1～3樓',
+    extraNotes: '其他備註：\n\n (取貨時請自備保護措施及包裝袋。)\n\n（親膚商品皆會用酒精清潔或WD-40噴油保養）。\n\n\n（因為PO網拍賣，多少有歲月使用痕跡，高標準吹毛求疵者請勿競標，售後不接受以不喜歡或非商品故障因素要求退貨，買賣雙方請互相體諒與尊重，謝謝合作）。',
+    warrantyDays: 3,
+    warrantyText: '原件現況出售',
+    qa: {},
+    winnerMsgs: []
+  }
+];
 
-/* Gallery */
-const galleryMain    = el('gallery-main');
-const galleryStrip   = el('gallery-strip');
-const galleryCounter = el('gallery-counter');
-const galleryPrev    = el('gallery-prev');
-const galleryNext    = el('gallery-next');
+/* ─────────────────────────────────────────────────────────────
+   2. 全局應用狀態 (App State)
+   ───────────────────────────────────────────────────────────── */
+const AppState = {
+  studioName: '建生工坊',
+  baseCurrency: 'TWD',
+  activeCurrency: 'TWD',
+  activeItemId: 'item-1',
+  items: JSON.parse(JSON.stringify(DEFAULT_ITEMS)),
+  broadcasts: [],
+  auctionId: null,
+  isAdmin: false,
+  isTabsManuallyExpanded: false, // 標記使用者是否已點擊展開全部商品
+  userProfile: {
+    name: '',
+    phone: '',
+    line: '',
+    ig: '',
+    fb: ''
+  },
+  prevTopBidders: {}, // 記錄每個品項的前任最高出價者，用於出價超越警示
+  galleryIndex: 0,
+  currentEditImages: [] // 編輯中的圖片陣列 (支援拖曳上傳預覽)
+};
 
-/* Timer */
-const ringFill    = el('ring-fill');
-const ringDigits  = el('ring-digits');
-const ringDays    = el('ring-days');
-const ringStatus  = el('ring-status');
-const ringLabel   = el('ring-label');
-const aModeBadge  = el('a-mode-badge');
-const antiSnipePill = el('anti-snipe-pill');
+// 伺服器回報之區域網路 IP (局域網網址，保證手機掃描 QR Code 正常連線)
+let serverLanUrl = 'http://192.168.1.110:8080';
 
-/* Bid display */
-const aCurBid     = el('a-cur-bid');
-const aTopBidder  = el('a-top-bidder');
-const aBidTime    = el('a-bid-time');
-const aNextBid    = el('a-next-bid');
-const aIncrTag    = el('a-increment-tag');
-const histBadge   = el('history-badge');
-const histList    = el('history-list');
-const histArrow   = el('history-arrow');
-const btnHistTog  = el('btn-history-toggle');
+/* ─────────────────────────────────────────────────────────────
+   3. 輔助函式 (Helper Utilities)
+   ───────────────────────────────────────────────────────────── */
+function el(id) { return document.getElementById(id); }
 
-/* Login */
-const loggedUserBar  = el('logged-user-bar');
-const loggedUserLbl  = el('logged-user-label');
-const btnLogout      = el('btn-logout');
-const loginForm      = el('login-form');
-const inpAccount     = el('inp-account');
-const inpPassword    = el('inp-password');
-const btnLogin       = el('btn-login');
+/**
+ * 安全 LocalStorage 存取封裝 (防無痕模式崩潰與序列化異常)
+ */
+const SafeStorage = {
+  get(key, fallback = null) {
+    try {
+      const val = localStorage.getItem(key);
+      if (val === null) return fallback;
+      try {
+        return JSON.parse(val);
+      } catch (_) {
+        return val;
+      }
+    } catch (e) {
+      console.warn('localStorage get blocked:', e);
+      return fallback;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      console.warn('localStorage set blocked:', e);
+      return false;
+    }
+  },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {}
+  }
+};
 
-/* Bid input */
-const inpBid      = el('inp-bid');
-const btnMinus    = el('btn-minus');
-const btnPlus     = el('btn-plus');
-const btnBid      = el('btn-bid');
-const bidBtnText  = el('bid-btn-text');
-
-/* Admin stepper buttons */
-const btnSpMinus  = el('btn-sp-minus');
-const btnSpPlus   = el('btn-sp-plus');
-const btnIncMinus = el('btn-inc-minus');
-const btnIncPlus  = el('btn-inc-plus');
-
-/* Mobile bar */
-const mbarStatus  = el('mbar-status');
-const mbarBid     = el('mbar-bid');
-
-/* Share/QR */
-const btnCopyUrl  = el('btn-copy-url');
-const qrContainer = el('qr-container');
-const btnDlQr     = el('btn-dl-qr');
-const btnShareQr  = el('btn-share-qr');
-
-/* Modal */
-const bidModal    = el('bid-modal');
-const t1 = el('t1'); const t2 = el('t2'); const t3 = el('t3'); const t5 = el('t5');
-const t4Wrap = el('t4-wrap'); const t4Text = el('t4-text');
-const modalWarrantyBox  = el('modal-warranty-box');
-const modalWarrantyIcon = el('modal-warranty-icon');
-const modalWarrantyText = el('modal-warranty-text');
-const mBidder = el('m-bidder'); const mAmount = el('m-amount');
-const btnMCancel  = el('btn-m-cancel');
-const btnMConfirm = el('btn-m-confirm');
-
-/* Toast */
-const toastEl = el('toast');
-
-let _timerInterval = null;
-let _qrInstance    = null;
-let _galleryIdx    = 0;   // current gallery image index
-
-// ─────────────────────────────────────────────────────────
-//  UTILITIES
-// ─────────────────────────────────────────────────────────
-
-const fmt  = n => 'NT$ ' + Number(n).toLocaleString('zh-TW');
-const pad  = n => String(n).padStart(2, '0');
-
-function relTime(d) {
-  if (!d) return '';
-  const s = Math.floor((Date.now() - d) / 1000);
-  if (s < 60)   return `${s} 秒前`;
-  if (s < 3600) return `${Math.floor(s/60)} 分鐘前`;
-  if (s < 86400)return `${Math.floor(s/3600)} 小時前`;
-  return `${Math.floor(s/86400)} 天前`;
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-function maskName(n) {
-  if (!n || n.length <= 2) return n || '匿名';
-  return n[0] + '***' + n[n.length - 1];
+/** 貨幣金額格式化換算 (核心功能 2) */
+function formatMoney(amountInTWD, targetCurrency) {
+  const curKey = targetCurrency || AppState.activeCurrency || 'TWD';
+  const meta = CURRENCY_RATES[curKey] || CURRENCY_RATES.TWD;
+  const converted = Math.round(Number(amountInTWD || 0) * meta.rate);
+  const formattedNum = converted.toLocaleString('zh-TW', {
+    minimumFractionDigits: meta.digits,
+    maximumFractionDigits: meta.digits
+  });
+  return meta.symbol + formattedNum;
 }
 
-let _toastTimer;
-function showToast(msg, type = 'info', ms = 3200) {
-  toastEl.textContent = msg;
-  toastEl.style.borderColor = type === 'success' ? 'rgba(34,197,94,.38)'
-    : type === 'error'   ? 'rgba(239,68,68,.38)'
-    : type === 'warning' ? 'rgba(245,158,11,.38)'
-    : 'rgba(130,100,230,.38)';
-  toastEl.classList.add('show');
+/** 相對時間計算 */
+function formatRelTime(timestamp) {
+  if (!timestamp) return '';
+  const now = (typeof getServerNow === 'function') ? getServerNow() : Date.now();
+  const diffSec = Math.floor((now - timestamp) / 1000);
+  if (diffSec < 60) return `${diffSec} 秒前`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分鐘前`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小時前`;
+  return `${Math.floor(diffSec / 86400)} 天前`;
+}
+
+/** 買家暱稱遮罩保護 (非管理員檢視) */
+function maskBuyerName(name) {
+  if (name && typeof name === 'object') name = name.name;
+  if (!name) return '匿名買家';
+  if (AppState.isAdmin) return String(name);
+  const s = String(name);
+  if (s.length <= 2) return s[0] + '*';
+  return s[0] + '***' + s[s.length - 1];
+}
+
+function getBidderName(val) {
+  if (!val) return '';
+  if (typeof val === 'object') return val.name || '';
+  return String(val);
+}
+
+/** 顯示 Toast 浮動提示條 */
+let _toastTimer = null;
+function showToast(msg, ms = 3200) {
+  const t = el('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
-function parseVideoUrl(raw) {
-  if (!raw) return null;
-  raw = raw.trim();
-  let m;
-  // standard watch
-  m = raw.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-  if (m) return `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1`;
-  // shorts
-  m = raw.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/);
-  if (m) return `https://www.youtube.com/embed/${m[1]}?rel=0`;
-  // already embed
-  if (raw.includes('youtube.com/embed/')) return raw;
-  return null;
+/**
+ * 圖片資料安全提取與相容解析 (相容多圖陣列、舊版單圖、imageList、imageUrls、imgUrl 等)
+ */
+function extractImagesFromRaw(obj) {
+  const list = [];
+  if (!obj) return list;
+
+  function addImg(val) {
+    if (!val) return;
+    if (typeof val === 'string') {
+      const clean = val.trim();
+      if (clean && !list.includes(clean)) list.push(clean);
+    } else if (typeof val === 'object') {
+      const s = val.src || val.url || val.imageUrl || val.link;
+      if (typeof s === 'string' && s.trim() && !list.includes(s.trim())) {
+        list.push(s.trim());
+      }
+    }
+  }
+
+  if (Array.isArray(obj.images)) obj.images.forEach(addImg);
+  if (Array.isArray(obj.imageList)) obj.imageList.forEach(addImg);
+  if (Array.isArray(obj.imageUrls)) obj.imageUrls.forEach(addImg);
+  else if (typeof obj.imageUrls === 'string') {
+    obj.imageUrls.split(/[\n,]/).forEach(addImg);
+  }
+  if (obj.imgUrl) addImg(obj.imgUrl);
+  if (obj.img) addImg(obj.img);
+  if (obj.pic) addImg(obj.pic);
+  if (obj.logoSrc && typeof obj.logoSrc === 'string' && !obj.logoSrc.startsWith('data:')) {
+    addImg(obj.logoSrc);
+  }
+
+  return list;
 }
 
-function dhms(totalSecs) {
-  const t = Math.max(0, Math.floor(totalSecs));
-  return {
-    d: Math.floor(t / 86400),
-    h: Math.floor((t % 86400) / 3600),
-    m: Math.floor((t % 3600) / 60),
-    s: t % 60,
-    total: t,
-  };
-}
-
-function buildShareUrl() {
-  const base = location.href.split('?')[0].split('#')[0];
-  const p = new URLSearchParams({ auction:'1', title: S.itemName, studio: S.studioName });
-  return `${base}?${p}`;
-}
-
-// ─────────────────────────────────────────────────────────
-//  CONFETTI
-// ─────────────────────────────────────────────────────────
-function confetti(ms = 2500) {
-  const cv = el('fx-canvas');
-  const cx = cv.getContext('2d');
-  cv.width = innerWidth; cv.height = innerHeight;
-  const cols = ['#f59e0b','#fbbf24','#a855f7','#ef4444','#22c55e','#60a5fa','#fff'];
-  const ps = Array.from({length: 100}, () => ({
-    x: Math.random() * cv.width,
-    y: Math.random() * -cv.height,
-    w: Math.random() * 11 + 5,
-    h: Math.random() * 6 + 3,
-    c: cols[Math.floor(Math.random() * cols.length)],
-    r: Math.random() * Math.PI * 2,
-    rs: (Math.random() - .5) * .15,
-    vy: Math.random() * 3 + 2,
-    vx: (Math.random() - .5) * 1.8,
-  }));
-  let t0;
-  const draw = ts => {
-    if (!t0) t0 = ts;
-    cx.clearRect(0, 0, cv.width, cv.height);
-    ps.forEach(p => {
-      p.y += p.vy; p.x += p.vx; p.r += p.rs;
-      if (p.y > cv.height) { p.y = -15; p.x = Math.random() * cv.width; }
-      cx.save();
-      cx.translate(p.x + p.w/2, p.y + p.h/2);
-      cx.rotate(p.r);
-      cx.fillStyle = p.c;
-      cx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
-      cx.restore();
-    });
-    if (ts - t0 < ms) requestAnimationFrame(draw);
-    else cx.clearRect(0, 0, cv.width, cv.height);
-  };
-  requestAnimationFrame(draw);
-}
-
-// ─────────────────────────────────────────────────────────
-//  FIREBASE MODULE — 雲端即時資料庫整合
-//  Uses Firebase Realtime Database (REST + SDK compat v9)
-// ─────────────────────────────────────────────────────────
-const FirebaseModule = (function () {
-
-  /* ══ 預設 Firebase 設定（建生工坊）══════════════════════
-     此設定在頁面啟動時自動套用，無需使用者手動輸入。
-     如需使用其他 Firebase 專案，可在「☁️ 雲端」設定中覆蓋。
-  ════════════════════════════════════════════════════════ */
-  const DEFAULT_FB_CONFIG = {
-    apiKey      : 'AIzaSyBbO973mxIfyP3P2rWQVsI9KsgQHE6_amg',
-    authDomain  : 'chien-sheng-auction.firebaseapp.com',
-    databaseURL : 'https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app',
-    projectId   : 'chien-sheng-auction',
-    appId       : '1:296167438991:web:e4a01094fcfeec0f438efa',
-  };
-
-  const LS_FB_KEY = 'agy_fb_config';   // localStorage key for user-override config
-  let _db         = null;               // firebase.database() reference
-  let _auctionRef = null;               // ref to current auction node
-  let _presenceRef= null;               // ref for online presence
-  let _listeners  = [];                 // active listeners to detach on cleanup
-
-  /* ── Persist / load config ───────────────────────────── */
-  function saveConfig(cfg) {
-    localStorage.setItem(LS_FB_KEY, JSON.stringify(cfg));
-  }
-  function loadConfig() {
-    try { return JSON.parse(localStorage.getItem(LS_FB_KEY) || 'null'); }
-    catch { return null; }
-  }
-  function clearConfig() {
-    localStorage.removeItem(LS_FB_KEY);
-  }
-
-  /* ── Initialize Firebase app ─────────────────────────── */
-  function init(cfg) {
-    if (!cfg || !cfg.apiKey || !cfg.databaseURL) {
-      _setStatus('offline', '未設定雲端（本機模式）');
-      return false;
-    }
-    try {
-      // Delete existing app if re-initializing
-      const existing = firebase.apps.find(a => a.name === '[DEFAULT]');
-      if (existing) existing.delete().catch(() => {});
-    } catch (_) {}
-
-    try {
-      firebase.initializeApp({
-        apiKey        : cfg.apiKey,
-        authDomain    : cfg.authDomain,
-        databaseURL   : cfg.databaseURL,
-        projectId     : cfg.projectId,
-        appId         : cfg.appId,
-        storageBucket : cfg.storageBucket || '',
-        messagingSenderId: cfg.messagingSenderId || '',
-      });
-      _db = firebase.database();
-      S.fbReady = true;
-      S.fbMode  = true;
-      _setStatus('syncing', '雲端連線成功 ✓');
-      setTimeout(() => _setStatus('online', '雲端即時同步中'), 1200);
-      return true;
-    } catch (e) {
-      console.error('[Firebase] init error:', e);
-      _setStatus('offline', '連線失敗：' + e.message);
-      S.fbReady = false;
-      S.fbMode  = false;
-      return false;
-    }
-  }
-
-  /* ── Status bar update ───────────────────────────────── */
-  function _setStatus(state, text) {
-    const bar  = el('fb-status-bar');
-    const dot  = el('fb-dot');
-    const txt  = el('fb-status-text');
-    if (!bar) return;
-    bar.style.display = 'flex';
-    if (dot)  { dot.className = `fb-status-dot ${state === 'online' ? '' : state}`; }
-    if (txt)  { txt.textContent = text; }
-  }
-
-  /* ── Generate unique Auction ID ──────────────────────── */
-  function _genAuctionId() {
-    const ts = Date.now().toString(36).toUpperCase();
-    const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
-    return `AUC-${ts}-${rnd}`;
-  }
-
-  /* ── Build share URL with Auction ID ─────────────────── */
-  function buildCloudUrl(auctionId) {
-    const base = location.href.split('?')[0].split('#')[0];
-    return `${base}?id=${auctionId}`;
-  }
-
-  /* ── Publish auction to Firebase ─────────────────────── */
-  async function publishAuction(totalSecs) {
-    if (!S.fbReady || !_db) {
-      // Fallback: local-only mode
-      return null;
-    }
-
-    // Build snapshot — exclude large base64 images for performance
-    // Images are stored by URL only if they are remote URLs; base64 kept local
-    const imageList = S.images
-      .filter(i => !i.src.startsWith('data:'))   // only remote URLs
-      .map(i => ({ src: i.src, name: i.name, isCover: i.isCover }));
-    const logoUrl = (S.logoSrc && !S.logoSrc.startsWith('data:')) ? S.logoSrc : '';
-
-    const endTimestamp = Date.now() + totalSecs * 1000;
-
-    const snapshot = {
-      // Meta (auctionId will be set after push)
-      createdAt  : Date.now(),
-      endAt      : endTimestamp,
-      totalSecs,
-      // Seller
-      studioName : S.studioName,
-      logoUrl,
-      // Product
-      itemName    : S.itemName,
-      itemSubtitle: S.itemSubtitle,
-      itemDesc    : S.itemDesc,
-      itemQty     : S.itemQty,
-      videoUrl    : S.videoUrl,
-      imageList,
-      // Bid config
-      startPrice  : S.startPrice,
-      increment   : S.increment,
-      pickups     : S.pickups,
-      // Timer
-      timerMode   : S.timerMode,
-      fixedDays   : S.fixedDays,
-      fixedHours  : S.fixedHours,
-      fixedMins   : S.fixedMins,
-      fixedSecs   : S.fixedSecs,
-      // Anti-snipe
-      antiSnipe   : S.antiSnipe,
-      bufferMins  : S.bufferMins,
-      extendMins  : S.extendMins,
-      // Terms & warranty
-      customTerms  : S.customTerms,
-      warrantyMode : S.warrantyMode  || 'limited',
-      warrantyDays : S.warrantyDays  || 3,
-      warrantyTime : S.warrantyTime  || '12:00',
-      // Live state (initial)
-      currentBid  : S.startPrice,
-      topBidder   : '',
-      topBidTime  : 0,
-      bidHistory  : [],
-      auctionLive : true,
-      auctionDone : false,
-    };
-
-    try {
-      // Use push() to get a Firebase-generated unique key as the Auction ID
-      const auctionsRef = _db.ref('auctions');
-      const newRef = auctionsRef.push();
-      const auctionId = newRef.key;   // Firebase auto-generated key
-
-      // Write back the auctionId field into the snapshot
-      snapshot.auctionId = auctionId;
-      S.auctionId = auctionId;
-
-      await newRef.set(snapshot);
-      _auctionRef = newRef;
-      _setStatus('online', `已發布至雲端 ✓ ID: ${auctionId}`);
-
-      // Build and update share URL immediately
-      const cloudUrl = buildCloudUrl(auctionId);
-      S.shareUrl = cloudUrl;
-
-      // Update share URL input field
-      const shareInput = document.getElementById('a-share-url');
-      if (shareInput) shareInput.value = cloudUrl;
-
-      // Regenerate QR Code with the cloud URL
-      if (typeof generateQR === 'function') generateQR(cloudUrl);
-
-      // Start realtime listener for this auction
-      _listenAuction(auctionId);
-      _trackPresence(auctionId);
-      _updateShareUI(auctionId);
-
-      return auctionId;
-    } catch (e) {
-      console.error('[Firebase] publish error:', e);
-      _setStatus('offline', '上傳失敗：' + e.message);
-      showToast('⚠️ 雲端發布失敗，改用本機模式', 'warning', 4000);
-      return null;
-    }
-  }
-
-  /* ── Listen to auction data in real-time (seller + buyer) */
-  function _listenAuction(auctionId) {
-    if (!_db) return;
-    _detachAll();
-
-    const ref = _db.ref(`auctions/${auctionId}`);
-    _auctionRef = ref;
-
-    const handler = ref.on('value', snap => {
-      if (!snap.exists()) return;
-      const data = snap.val();
-
-      // Update bid state from cloud
-      const prevBid = S.currentBid;
-      S.currentBid  = data.currentBid  ?? S.currentBid;
-      S.topBidder   = data.topBidder   ?? S.topBidder;
-      S.topBidTime  = data.topBidTime  ?? S.topBidTime;
-      S.bidHistory  = Array.isArray(data.bidHistory) ? data.bidHistory : S.bidHistory;
-      S.auctionDone = data.auctionDone ?? S.auctionDone;
-
-      // Sync end time
-      if (data.endAt) {
-        S.endTime   = new Date(data.endAt);
-        S.totalSecs = Math.max(1, data.totalSecs ?? S.totalSecs);
-      }
-
-      // Update bid count in status bar
-      const bidCountEl = el('fb-bid-count');
-      if (bidCountEl) bidCountEl.textContent = `${S.bidHistory.length} 筆出標`;
-
-      // Trigger UI refresh if bid changed
-      if (data.currentBid > prevBid) {
-        renderBid();
-        // Flash animation on bid display
-        const bidEl = el('a-cur-bid');
-        if (bidEl) { bidEl.classList.remove('flash-new'); void bidEl.offsetWidth; bidEl.classList.add('flash-new'); }
-        if (!data._localBid) showToast(`🔨 有人出標：${fmt(data.currentBid)}`, 'success', 3500);
-      } else {
-        renderBid();
-      }
-
-      if (data.auctionDone && !S.auctionLive) {
-        endAuction();
-      }
-    });
-
-    _listeners.push(() => ref.off('value', handler));
-  }
-
-  /* ── Track online presence ───────────────────────────── */
-  function _trackPresence(auctionId) {
-    if (!_db) return;
-    const presenceRef = _db.ref(`presence/${auctionId}`);
-    const myRef = presenceRef.push();
-    myRef.set({ t: Date.now() });
-    myRef.onDisconnect().remove();
-    _presenceRef = myRef;
-
-    // Listen to count
-    const countHandler = presenceRef.on('value', snap => {
-      const count = snap.numChildren();
-      const countEl = el('online-count-display');
-      const countRow = el('online-count-row');
-      if (countEl) countEl.textContent = count;
-      if (countRow) countRow.style.display = count > 0 ? 'block' : 'none';
-    });
-    _listeners.push(() => presenceRef.off('value', countHandler));
-  }
-
-  /* ── Load auction by ID (buyer side) ─────────────────── */
-  async function loadAuction(auctionId) {
-    if (!_db) return null;
-    _setStatus('syncing', `載入拍賣 ${auctionId}…`);
-    try {
-      const snap = await _db.ref(`auctions/${auctionId}`).once('value');
-      if (!snap.exists()) {
-        _setStatus('offline', '拍賣不存在或已結束');
-        return null;
-      }
-      const data = snap.val();
-      _setStatus('online', `已連線至拍賣 ${auctionId}`);
-      _listenAuction(auctionId);
-      _trackPresence(auctionId);
-      return data;
-    } catch (e) {
-      _setStatus('offline', '載入失敗：' + e.message);
-      return null;
-    }
-  }
-
-  /* ── Push a bid to Firebase ──────────────────────────── */
-  async function pushBid(bidderName, amount) {
-    if (!S.fbReady || !_db || !S.auctionId) return false;
-    const ref = _db.ref(`auctions/${S.auctionId}`);
-    const histEntry = { user: bidderName, amount, time: Date.now() };
-    try {
-      const newHistory = [...S.bidHistory, histEntry];
-      await ref.update({
-        currentBid  : amount,
-        topBidder   : bidderName,
-        topBidTime  : Date.now(),
-        bidHistory  : newHistory,
-        _localBid   : false,   // so other clients show toast
-      });
-      return true;
-    } catch (e) {
-      console.error('[Firebase] pushBid error:', e);
-      showToast('⚠️ 雲端出標失敗，已記錄本機', 'warning');
-      return false;
-    }
-  }
-
-  /* ── Push anti-snipe extension to Firebase ───────────── */
-  async function pushAntiSnipe(newEndAt, newTotalSecs) {
-    if (!S.fbReady || !_db || !S.auctionId) return;
-    try {
-      await _db.ref(`auctions/${S.auctionId}`).update({
-        endAt    : newEndAt,
-        totalSecs: newTotalSecs,
-      });
-    } catch (e) { console.error('[Firebase] pushAntiSnipe error:', e); }
-  }
-
-  /* ── Push end-of-auction to Firebase ─────────────────── */
-  async function pushAuctionEnd() {
-    if (!S.fbReady || !_db || !S.auctionId) return;
-    try {
-      await _db.ref(`auctions/${S.auctionId}`).update({
-        auctionDone: true,
-        auctionLive: false,
-      });
-    } catch (e) { console.error('[Firebase] pushAuctionEnd error:', e); }
-  }
-
-  /* ── Update Share Card UI with Auction ID ────────────── */
-  function _updateShareUI(auctionId) {
-    const idRow  = el('auction-id-row');
-    const idDisp = el('auction-id-display');
-    const idChip = el('auction-id-chip');
-    if (idRow)  idRow.style.display  = 'block';
-    if (idDisp) idDisp.textContent   = auctionId;
-    if (idChip) {
-      idChip.addEventListener('click', () => {
-        navigator.clipboard?.writeText(auctionId).then(() =>
-          showToast('✅ Auction ID 已複製', 'success', 2000)
-        ).catch(() => {});
-      });
-    }
-  }
-
-  /* ── Detach all Firebase listeners ──────────────────────*/
-  function _detachAll() {
-    _listeners.forEach(off => { try { off(); } catch(_) {} });
-    _listeners = [];
-  }
-
-  /* ── Firebase Setup Modal logic ──────────────────────── */
-  function wireSetupModal() {
-    const btnSetup  = el('btn-fb-setup');
-    const modal     = el('fb-setup-modal');
-    const btnCancel = el('btn-fb-cancel');
-    const btnSave   = el('btn-fb-save');
-    const btnClear  = el('btn-fb-clear');
-
-    if (!btnSetup || !modal) return;
-
-    // Pre-fill from saved config
-    function fillForm(cfg) {
-      if (!cfg) return;
-      const set = (id, v) => { const e = el(id); if (e) e.value = v || ''; };
-      set('fb-api-key',    cfg.apiKey);
-      set('fb-auth-domain',cfg.authDomain);
-      set('fb-db-url',     cfg.databaseURL);
-      set('fb-project-id', cfg.projectId);
-      set('fb-app-id',     cfg.appId);
-    }
-
-    btnSetup.addEventListener('click', () => {
-      fillForm(loadConfig());
-      modal.classList.add('open');
-      document.body.style.overflow = 'hidden';
-    });
-
-    btnCancel.addEventListener('click', () => {
-      modal.classList.remove('open');
-      document.body.style.overflow = '';
-    });
-
-    modal.addEventListener('click', e => {
-      if (e.target === modal) { modal.classList.remove('open'); document.body.style.overflow = ''; }
-    });
-
-    btnClear.addEventListener('click', () => {
-      if (!confirm('確定要清除 Firebase 設定嗎？清除後將回到本機模式。')) return;
-      clearConfig();
-      S.fbReady = false; S.fbMode = false; _db = null;
-      _setStatus('offline', '已清除設定（本機模式）');
-      ['fb-api-key','fb-auth-domain','fb-db-url','fb-project-id','fb-app-id'].forEach(id => {
-        const e = el(id); if (e) e.value = '';
-      });
-      showToast('🗑 Firebase 設定已清除', 'info');
-    });
-
-    btnSave.addEventListener('click', () => {
-      const cfg = {
-        apiKey      : el('fb-api-key')?.value.trim()     || '',
-        authDomain  : el('fb-auth-domain')?.value.trim() || '',
-        databaseURL : el('fb-db-url')?.value.trim()      || '',
-        projectId   : el('fb-project-id')?.value.trim()  || '',
-        appId       : el('fb-app-id')?.value.trim()      || '',
-      };
-      if (!cfg.apiKey || !cfg.databaseURL) {
-        showToast('⚠️ 請至少填入 API Key 與 Database URL', 'warning'); return;
-      }
-      saveConfig(cfg);
-      const ok = init(cfg);
-      if (ok) {
-        showToast('✅ Firebase 連線成功！已啟用雲端競標功能', 'success', 4000);
-        modal.classList.remove('open');
-        document.body.style.overflow = '';
-        // Visual update on admin topbar
-        const fbBtn = el('btn-fb-setup');
-        if (fbBtn) { fbBtn.textContent = '✅ 已連線'; fbBtn.style.color = 'var(--c-green)'; }
-      } else {
-        showToast('❌ 連線失敗，請檢查設定是否正確', 'error', 5000);
-      }
-    });
-  }
-
-  /* ── Auto-init on startup ───────────────────────────────
-     Priority: 1. User localStorage override  2. Default config
-  ─────────────────────────────────────────────────────── */
-  function autoInit() {
-    // User may have saved a custom config in localStorage — use it first
-    const userCfg = loadConfig();
-    const cfg = (userCfg && userCfg.apiKey) ? userCfg : DEFAULT_FB_CONFIG;
-
-    const ok = init(cfg);
-    if (ok) {
-      const fbBtn = el('btn-fb-setup');
-      if (fbBtn) {
-        const isDefault = cfg === DEFAULT_FB_CONFIG;
-        fbBtn.textContent = isDefault ? '✅ 已連線（建生工坊）' : '✅ 已連線';
-        fbBtn.style.color = 'var(--c-green)';
-      }
-    }
-  }
-
-  /* ── Public API ──────────────────────────────────────── */
-  return {
-    autoInit,
-    wireSetupModal,
-    publishAuction,
-    loadAuction,
-    pushBid,
-    pushAntiSnipe,
-    pushAuctionEnd,
-    buildCloudUrl,
-    isReady: () => S.fbReady && !!_db,
-    getDb   : () => _db,
-    detachAll: _detachAll,
-  };
-})();
-
-// ─────────────────────────────────────────────────────────
-//  STORAGE MODULE  — 分區獨立記憶 / 重置 / 匯出匯入
-// ─────────────────────────────────────────────────────────
-(function StorageModule() {
-
-
-  /* ── LocalStorage keys ─────────────────────────────── */
-  const LS = {
-    A: 'auctionSect_A',   // 工作室
-    B: 'auctionSect_B',   // 商品 + 影音
-    C: 'auctionSect_C',   // 競標 + 計時 + 條款
-    D: 'auctionSect_D',   // 取貨方式
-  };
-
-  /* ── Section field map: what to read/write per section ─ */
-  const SECT_FIELDS = {
-    A: () => ({
-      studioName : el('cfg-studio-name')?.value ?? '',
-      logoSrc    : S.logoSrc ?? '',   // base64 data URL or remote URL
-    }),
-    B: () => ({
-      itemName    : el('cfg-item-name')?.value     ?? '',
-      itemSubtitle: el('cfg-item-subtitle')?.value ?? '',
-      itemDesc    : el('cfg-item-desc')?.value     ?? '',
-      itemQty     : el('cfg-item-qty')?.value      ?? '1',
-      videoUrl    : el('cfg-video-url')?.value     ?? '',
-      // images array stored separately (base64 too large for frequent writes)
-      images      : S.images.map(i => ({ src: i.src, name: i.name, isCover: i.isCover })),
-    }),
-    C: () => ({
-      startPrice  : el('cfg-start-price')?.value  ?? '100',
-      increment   : el('cfg-increment')?.value    ?? '50',
-      timerMode   : document.querySelector('.mode-tab.active')?.dataset.mode ?? 'fixed',
-      fixedDays   : el('cfg-t-days')?.value   ?? '0',
-      fixedHours  : el('cfg-t-hours')?.value  ?? '1',
-      fixedMins   : el('cfg-t-mins')?.value   ?? '0',
-      fixedSecs   : el('cfg-t-secs')?.value   ?? '0',
-      antiSnipe   : el('cfg-anti-snipe')?.checked ?? true,
-      bufferMins  : el('cfg-buffer-mins')?.value  ?? '3',
-      bufferCustom: el('cfg-buffer-custom')?.value ?? '3',
-      extendMins  : el('cfg-extend-mins')?.value  ?? '3',
-      extendCustom: el('cfg-extend-custom')?.value ?? '3',
-      // Warranty & terms
-      warrantyMode: document.querySelector('input[name="warranty-mode"]:checked')?.value ?? 'limited',
-      warrantyDays: el('cfg-warranty-days')?.value ?? '3',
-      warrantyTime: el('cfg-warranty-time')?.value ?? '12:00',
-      qt48h       : el('qt-48h')?.checked  ?? true,
-      qtTest      : el('qt-test')?.checked ?? true,
-      qtAsis      : el('qt-asis')?.checked ?? true,
-      customTerms : el('cfg-custom-terms')?.value  ?? '',
-    }),
-    D: () => {
-      const checked = [];
-      qsa('input[name="pickup"]:not(#pickup-custom-cb):checked').forEach(cb => checked.push(cb.value));
-      return {
-        pickups     : checked,
-        customPickup: el('pickup-custom-cb')?.checked ?? false,
-        customText  : el('pickup-custom-text')?.value ?? '',
-      };
-    },
-  };
-
-  /* ── Save one section to localStorage ─────────────── */
-  function saveSection(sec) {
-    try {
-      const data = SECT_FIELDS[sec]();
-      data._savedAt = new Date().toISOString();
-      localStorage.setItem(LS[sec], JSON.stringify(data));
-    } catch(e) {
-      console.warn('[StorageModule] save failed', sec, e);
-    }
-  }
-
-  /* ── Apply saved data back to the DOM ─────────────── */
-  function applySection(sec, data) {
-    if (!data) return;
-    const set = (id, val) => { const el_ = el(id); if (el_) el_.value = val; };
-
-    if (sec === 'A') {
-      set('cfg-studio-name', data.studioName ?? '建生工坊');
-      // Restore logo (base64 or URL)
-      const logoSrc = data.logoSrc ?? data.logoUrl ?? '';
-      if (logoSrc) {
-        S.logoSrc = logoSrc;
-        document.dispatchEvent(new CustomEvent('agy:restoreLogo', { detail: logoSrc }));
-      } else {
-        S.logoSrc = '';
-        document.dispatchEvent(new CustomEvent('agy:restoreLogo', { detail: '' }));
-      }
-    }
-
-    if (sec === 'B') {
-      set('cfg-item-name',     data.itemName     ?? '');
-      set('cfg-item-subtitle', data.itemSubtitle ?? '');
-      set('cfg-item-desc',     data.itemDesc     ?? '');
-      set('cfg-item-qty',      data.itemQty      ?? '1');
-      set('cfg-video-url',     data.videoUrl     ?? '');
-
-      // Restore images array
-      if (Array.isArray(data.images) && data.images.length) {
-        S.images = data.images;
-        // Re-trigger dropzone thumb render by dispatching a custom event
-        document.dispatchEvent(new CustomEvent('agy:restoreImages', { detail: data.images }));
-      }
-
-      // Fire video preview update
-      const vid = el('cfg-video-url');
-      if (vid) vid.dispatchEvent(new Event('input'));
-    }
-
-    if (sec === 'C') {
-      set('cfg-start-price',  data.startPrice  ?? '100');
-      set('cfg-increment',    data.increment   ?? '50');
-      set('cfg-t-days',       data.fixedDays   ?? '0');
-      set('cfg-t-hours',      data.fixedHours  ?? '1');
-      set('cfg-t-mins',       data.fixedMins   ?? '0');
-      set('cfg-t-secs',       data.fixedSecs   ?? '0');
-      set('cfg-buffer-custom', data.bufferCustom ?? '3');
-      set('cfg-extend-custom', data.extendCustom ?? '3');
-      set('cfg-custom-terms',  data.customTerms  ?? '');
-      // Warranty settings
-      const wMode = data.warrantyMode ?? 'limited';
-      const wRad  = el(`wmode-${wMode}`);
-      if (wRad) { wRad.checked = true; wRad.dispatchEvent(new Event('change')); }
-      set('cfg-warranty-days', data.warrantyDays ?? '3');
-      set('cfg-warranty-time', data.warrantyTime ?? '12:00');
-      const cb48h = el('qt-48h');  if (cb48h)  cb48h.checked  = data.qt48h  !== false;
-      const cbTest = el('qt-test'); if (cbTest) cbTest.checked = data.qtTest !== false;
-      const cbAsis = el('qt-asis'); if (cbAsis) cbAsis.checked = data.qtAsis !== false;
-
-      // Timer mode tabs
-      if (data.timerMode) {
-        qsa('.mode-tab').forEach(t => {
-          const match = t.dataset.mode === data.timerMode;
-          t.classList.toggle('active', match);
-          t.setAttribute('aria-selected', match);
-        });
-        el('panel-fixed')  ?.classList.toggle('active', data.timerMode === 'fixed');
-        el('panel-rolling')?.classList.toggle('active', data.timerMode === 'rolling');
-        S.timerMode = data.timerMode;
-      }
-
-      // Anti-snipe
-      const asEl = el('cfg-anti-snipe');
-      if (asEl) {
-        asEl.checked = data.antiSnipe !== false;
-        asEl.dispatchEvent(new Event('change'));
-      }
-
-      // Buffer/extend selects
-      const restoreSelect = (selId, inpId, val, customVal) => {
-        const sel = el(selId); const inp = el(inpId);
-        if (!sel) return;
-        const knownVals = Array.from(sel.options).map(o => o.value);
-        if (knownVals.includes(String(val))) {
-          sel.value = String(val);
-          if (inp) inp.style.display = 'none';
-        } else {
-          sel.value = 'custom';
-          if (inp) { inp.style.display = 'block'; inp.value = customVal || val; }
-        }
-      };
-      restoreSelect('cfg-buffer-mins', 'cfg-buffer-custom', data.bufferMins,   data.bufferCustom);
-      restoreSelect('cfg-extend-mins', 'cfg-extend-custom', data.extendMins,   data.extendCustom);
-
-      // Refresh chip highlight
-      if (typeof highlightActiveChip === 'function') {
-        highlightActiveChip(data.increment ?? '50');
-      }
-    }
-
-    if (sec === 'D') {
-      // Uncheck all first
-      qsa('input[name="pickup"]').forEach(cb => { cb.checked = false; });
-      // Check saved ones
-      (data.pickups || ['自取']).forEach(val => {
-        const cb = document.querySelector(`input[name="pickup"][value="${val}"]`);
-        if (cb) cb.checked = true;
-      });
-      // Custom pickup
-      const custCb = el('pickup-custom-cb');
-      const custWrp = el('pickup-custom-wrap');
-      const custTxt = el('pickup-custom-text');
-      if (custCb) {
-        custCb.checked = !!data.customPickup;
-        if (custWrp) custWrp.style.display = data.customPickup ? 'block' : 'none';
-        if (custTxt && data.customText) custTxt.value = data.customText;
-      }
-    }
-  }
-
-  /* ── Load all sections from localStorage on boot ──── */
-  function restoreAll() {
-    Object.keys(LS).forEach(sec => {
-      try {
-        const raw = localStorage.getItem(LS[sec]);
-        if (raw) applySection(sec, JSON.parse(raw));
-      } catch(e) {
-        console.warn('[StorageModule] restore failed', sec, e);
-      }
-    });
-  }
-
-  /* ── Debounced auto-save per section ───────────────── */
-  const _saveTimers = {};
-  function scheduleSave(sec, ms = 800) {
-    clearTimeout(_saveTimers[sec]);
-    _saveTimers[sec] = setTimeout(() => saveSection(sec), ms);
-  }
-
-  /* Wire up auto-save: A & B in left col, C & D in right col */
-  function wireAutoSave() {
-    const secAEls = [
-      el('cfg-studio-name'),
-      // cfg-logo-url url input: wired separately after logo-dropzone init
-    ];
-    const secBEls = [
-      el('cfg-item-name'), el('cfg-item-subtitle'), el('cfg-item-desc'),
-      el('cfg-item-qty'), el('cfg-video-url'),
-    ];
-    const secCEls = [
-      el('cfg-start-price'), el('cfg-increment'),
-      el('cfg-t-days'), el('cfg-t-hours'), el('cfg-t-mins'), el('cfg-t-secs'),
-      el('cfg-anti-snipe'), el('cfg-buffer-mins'), el('cfg-buffer-custom'),
-      el('cfg-extend-mins'), el('cfg-extend-custom'), el('cfg-custom-terms'),
-      el('cfg-warranty-days'), el('cfg-warranty-time'),
-      el('qt-48h'), el('qt-test'), el('qt-asis'),
-      ...Array.from(document.querySelectorAll('input[name="warranty-mode"]')),
-    ];
-    const secDEls = [
-      ...qsa('input[name="pickup"]'), el('pickup-custom-text'),
-    ];
-
-    const wire = (elemArr, sec) => {
-      elemArr.forEach(e => {
-        if (!e) return;
-        const evts = e.type === 'checkbox' ? ['change'] : ['input', 'change'];
-        evts.forEach(ev => e.addEventListener(ev, () => scheduleSave(sec)));
-      });
-    };
-    wire(secAEls, 'A');
-    wire(secBEls, 'B');
-    wire(secCEls, 'C');
-    wire(secDEls, 'D');
-
-    // Mode tabs also trigger C save
-    qsa('.mode-tab').forEach(tab => tab.addEventListener('click', () => scheduleSave('C')));
-
-    // Images change triggers B save (listen for custom event from dropzone)
-    document.addEventListener('agy:imagesChanged', () => scheduleSave('B'));
-
-    // Logo change triggers A save (listen for custom event from logo dropzone)
-    document.addEventListener('agy:logoChanged', () => scheduleSave('A'));
-  }
-
-  /* ── Reset a section to defaults ───────────────────── */
-  const DEFAULTS = {
-    A: { studioName: '建生工坊', logoSrc: '' },
-    B: { itemName:'', itemSubtitle:'', itemDesc:'', itemQty:'1', videoUrl:'', images:[] },
-    C: {
-      startPrice:'100', increment:'50',
-      timerMode:'fixed', fixedDays:'0', fixedHours:'1', fixedMins:'0', fixedSecs:'0',
-      antiSnipe:true, bufferMins:'3', bufferCustom:'3', extendMins:'3', extendCustom:'3',
-      warrantyMode:'limited', warrantyDays:'3', warrantyTime:'12:00',
-      qt48h:true, qtTest:true, qtAsis:true,
-      customTerms:'',
-    },
-    D: { pickups:['自取'], customPickup:false, customText:'' },
-  };
-
-  const SECT_NAMES = { A:'賣家/店鋪資訊', B:'商品資訊', C:'競標與計時設定', D:'取貨方式' };
-
-  function resetSection(sec) {
-    if (!confirm(`⚠️ 確定要清空「${SECT_NAMES[sec]}」區塊（${sec}）的所有設定嗎？\n其他區塊不受影響。`)) return;
-
-    applySection(sec, DEFAULTS[sec]);
-
-    // Extra: clear images if B
-    if (sec === 'B') {
-      S.images = [];
-      document.dispatchEvent(new CustomEvent('agy:restoreImages', { detail: [] }));
-    }
-
-    localStorage.removeItem(LS[sec]);
-    showToast(`↺ 區塊 ${sec}「${SECT_NAMES[sec]}」已重置`, 'info', 3000);
-  }
-
-  /* ── Export ─────────────────────────────────────────── */
-
-  /**
-   * 通用 Blob 下載函數（100% 相容 file:/// 本機環境）
-   * 不使用 File System Access API，完全避開沙筆限制
-   */
-  function exportJSONBlob(payload, filename) {
-    const json = JSON.stringify(payload, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.style.display = 'none';
-    a.href     = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
-
-  /** 生成日期時間標籤 YYYYMMDD_HHMM */
-  function _dateTag() {
-    const d  = new Date();
-    const yy = d.getFullYear();
-    const mo = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mm = pad(d.getMinutes());
-    return `${yy}${mo}${dd}_${hh}${mm}`;
-  }
-
-  /** 儲存目前所有設定（A+B+C+D）並下載 */
-  function saveAll() {
-    Object.keys(LS).forEach(sec => saveSection(sec));
-    const payload = {
-      _type      : 'auction-full-backup',
-      _version   : '1.0',
-      _exportedAt: new Date().toISOString(),
-      sections   : {},
-    };
-    Object.keys(LS).forEach(sec => {
-      try {
-        const raw = localStorage.getItem(LS[sec]);
-        payload.sections[sec] = raw ? JSON.parse(raw) : DEFAULTS[sec];
-      } catch { payload.sections[sec] = DEFAULTS[sec]; }
-    });
-    // 檔名格式：拍賣設定備份_[商品名稱]_[YYYYMMDD_HHMM].json
-    const itemName  = el('cfg-item-name')?.value.trim()   || '';
-    const shopName  = el('cfg-studio-name')?.value.trim() || '拍賣';
-    const namePart  = itemName || shopName;
-    const filename  = `拍賣設定備份_${namePart}_${_dateTag()}.json`;
-    exportJSONBlob(payload, filename);
-    showToast('💾 設定備份已下載', 'success', 3000);
-  }
-
-  /** 匯出全頁 HTML 備份（完整單一網頁檔，含 CSS + JS 內嵌）*/
-  async function exportAll() {
-    // 1. 先儲存目前所有設定到 localStorage
-    Object.keys(LS).forEach(sec => saveSection(sec));
-
-    // 2. 收集所有設定資料
-    const allSettings = {};
-    Object.keys(LS).forEach(sec => {
-      try {
-        const raw = localStorage.getItem(LS[sec]);
-        allSettings[sec] = raw ? JSON.parse(raw) : DEFAULTS[sec];
-      } catch { allSettings[sec] = DEFAULTS[sec]; }
-    });
-
-    // 3. 顯示進度提示
-    showToast('📦 正在打包頁面…', 'info', 2000);
-
-    // 4. 嘗試讀取外部 CSS / JS 檔案（fetch 方式，支援 http:// 環境）
-    let cssContent  = '/* style.css not found */';
-    let jsContent   = '/* app.js not found */';
-
-    try {
-      const cssResp = await fetch('style.css');
-      if (cssResp.ok) cssContent = await cssResp.text();
-    } catch (_) {}
-
-    try {
-      const jsResp  = await fetch('app.js');
-      if (jsResp.ok) jsContent  = await jsResp.text();
-    } catch (_) {}
-
-    // 5. 抓取目前頁面 HTML 骨架並轉換為可獨立運作的備份頁面
-    const originalHtml = document.documentElement.outerHTML;
-
-    // 6. 將設定資料序列化為注入腳本
-    const settingsJson = JSON.stringify(allSettings, null, 2);
-    const shopName     = el('cfg-studio-name')?.value.trim() || '拍賣';
-    const itemName     = el('cfg-item-name')?.value.trim()   || '商品';
-    const dateTag      = _dateTag();
-
-    // 7. 建立可獨立開啟的 HTML 字串
-    //    注入順序：① 設定資料  ② style.css 內嵌  ③ app.js 內嵌
-    const standalonePage = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>拍賣備份 — ${shopName} · ${itemName} (${dateTag})</title>
-  <meta name="description" content="${shopName} 拍賣系統完整頁面備份，匯出於 ${new Date().toLocaleString('zh-TW')}" />
-
-  <!-- QR Code Library (CDN) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
-
-  <!-- Firebase SDK (CDN) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"><\/script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"><\/script>
-
-  <!-- ❶ 注入備份時的所有後台設定（頁面載入後自動還原）-->
-  <script>
-  window.__AUCTION_BACKUP__ = {
-    exportedAt: "${new Date().toISOString()}",
-    shopName  : ${JSON.stringify(shopName)},
-    itemName  : ${JSON.stringify(itemName)},
-    settings  : ${settingsJson}
-  };
-  // 自動還原 localStorage（讓系統讀到備份當下的設定）
-  (function restoreFromBackup() {
-    const backup = window.__AUCTION_BACKUP__;
-    if (!backup || !backup.settings) return;
-    const keyMap = { A: 'auctionSect_A', B: 'auctionSect_B', C: 'auctionSect_C', D: 'auctionSect_D' };
-    Object.entries(backup.settings).forEach(([sec, data]) => {
-      if (keyMap[sec]) {
-        try { localStorage.setItem(keyMap[sec], JSON.stringify(data)); } catch(_) {}
-      }
-    });
-  })();
-  <\/script>
-
-  <!-- ❷ 嵌入 style.css -->
-  <style>
-${cssContent}
-
-  /* ── 備份頁面額外標識樣式 ── */
-  .backup-banner {
-    background: linear-gradient(90deg, #f59e0b, #a855f7);
-    color: white; text-align: center;
-    padding: 7px 16px; font-size: .8rem; font-weight: 700;
-    letter-spacing: .04em; position: sticky; top: 0; z-index: 9999;
-  }
-  </style>
-</head>
-<body>
-
-  <!-- 備份標識 Banner -->
-  <div class="backup-banner">
-    📦 備份頁面 — ${shopName} · ${itemName} · 匯出於 ${new Date().toLocaleString('zh-TW')}
-  </div>
-
-${document.getElementById('page-admin')?.outerHTML || '<p>頁面結構讀取失敗</p>'}
-
-  <!-- Toast / FX Canvas（從原頁面複製）-->
-  ${document.getElementById('toast')?.outerHTML || ''}
-  ${document.getElementById('fx-canvas')?.outerHTML || ''}
-
-  <!-- Modals -->
-  ${document.getElementById('bid-modal')?.outerHTML   || ''}
-  ${document.getElementById('val-modal')?.outerHTML   || ''}
-  ${document.getElementById('pv-modal')?.outerHTML    || ''}
-  ${document.getElementById('fb-setup-modal')?.outerHTML || ''}
-
-  <!-- ❸ 嵌入 app.js -->
-  <script>
-${jsContent}
-  <\/script>
-
-</body>
-</html>`;
-
-    // 8. Blob 下載
-    const blob = new Blob([standalonePage], { type: 'text/html;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.style.display = 'none';
-    a.href     = url;
-    a.download = `拍賣備份頁面_${shopName}_${itemName}_${dateTag}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-
-    showToast(`✅ 完整備份頁面已下載！（${shopName} · ${itemName}）`, 'success', 4500);
-  }
-
-
-
-  /** 單區匹出 */
-  function exportSingleSection(sec) {
-    saveSection(sec);
-    const payload = {
-      _type       : 'auction-section',
-      _section    : sec,
-      _sectionName: SECT_NAMES[sec],
-      _version    : '1.0',
-      _exportedAt : new Date().toISOString(),
-      data        : SECT_FIELDS[sec](),
-    };
-    const shopName = el('cfg-studio-name')?.value.trim() || '拍賣';
-    exportJSONBlob(payload, `區塊${sec}_${SECT_NAMES[sec]}_${shopName}_${_dateTag()}.json`);
-    showToast(`⬆ 區塊 ${sec}「${SECT_NAMES[sec]}」已匯出`, 'success', 2500);
-  }
-
-  /* ── Import ─────────────────────────────────────────── */
-  function importJSON(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const payload = JSON.parse(ev.target.result);
-
-        if (payload._type === 'auction-full-backup' && payload.sections) {
-          // Full backup
-          if (!confirm(`📥 確定要匯入「全頁備份」？\n匯出時間：${payload._exportedAt || '未知'}\n\n這將覆蓋所有四個區塊的設定（A、B、C、D），已填寫的資料將被取代。`)) return;
-          Object.keys(payload.sections).forEach(sec => {
-            if (LS[sec]) {
-              applySection(sec, payload.sections[sec]);
-              localStorage.setItem(LS[sec], JSON.stringify(payload.sections[sec]));
-            }
-          });
-          showToast('📥 全頁備份匯入完成！', 'success', 4000);
-
-        } else if (payload._type === 'auction-section' && payload._section && payload.data) {
-          // Single section
-          const sec = payload._section;
-          if (!LS[sec]) { showToast('⚠️ 無效的區塊代碼', 'error'); return; }
-          if (!confirm(`📥 確定要匯入「${payload._sectionName || sec}」區塊設定？\n匯出時間：${payload._exportedAt || '未知'}\n\n這將覆蓋區塊 ${sec} 的設定，其他區塊不受影響。`)) return;
-          applySection(sec, payload.data);
-          localStorage.setItem(LS[sec], JSON.stringify(payload.data));
-          showToast(`📥 區塊 ${sec}「${payload._sectionName}」匯入完成！`, 'success', 3500);
-
-        } else {
-          showToast('⚠️ 無法識別的 JSON 格式，請使用本系統匯出的備份檔', 'error', 4000);
-        }
-      } catch(e) {
-        showToast('❌ JSON 解析失敗，請確認檔案格式', 'error', 4000);
-        console.error('[StorageModule] import parse error', e);
-      }
-    };
-    reader.readAsText(file, 'utf-8');
-  }
-
-  /* ── Wire UI buttons ─────────────────────────────────── */
-  function wireButtons() {
-    // Per-section reset buttons
-    qsa('.sect-reset-btn').forEach(btn => {
-      btn.addEventListener('click', () => resetSection(btn.dataset.reset));
-    });
-
-    // 儲存全頁（Blob 下載）
-    const btnSaveAll = el('btn-save-all');
-    if (btnSaveAll) btnSaveAll.addEventListener('click', saveAll);
-
-    // Export all (blob download)
-    const btnExpAll = el('btn-export-all');
-    if (btnExpAll) btnExpAll.addEventListener('click', exportAll);
-
-    // Import trigger
-    const btnImpTrig = el('btn-import-trigger');
-    const impFileInp = el('import-file-input');
-    if (btnImpTrig && impFileInp) {
-      btnImpTrig.addEventListener('click', () => impFileInp.click());
-      impFileInp.addEventListener('change', () => {
-        importJSON(impFileInp.files[0]);
-        impFileInp.value = '';   // reset so same file can be re-imported
-      });
-    }
-
-    // Per-section export chips
-    qsa('.sect-exp-btn').forEach(btn => {
-      btn.addEventListener('click', () => exportSingleSection(btn.dataset.section));
-    });
-  }
-
-  /* ── Public API ─────────────────────────────────────── */
-  window._storageSaveA = () => scheduleSave('A');
-  window._storageSaveB = () => scheduleSave('B');
-  window._storageSaveC = () => scheduleSave('C');
-
-  /* ── INIT ─────────────────────────────────────────── */
-  restoreAll();
-  wireAutoSave();
-  wireButtons();
-
-})(); // end StorageModule
-
-// ─────────────────────────────────────────────────────────
-//  WARRANTY & TERMS MODULE
-// ─────────────────────────────────────────────────────────
-(function WarrantyTermsModule() {
-
-  const DEFAULT_TERMS_FN = () => {
-    const days = parseInt(el('cfg-warranty-days')?.value) || 3;
-    const time = el('cfg-warranty-time')?.value || '12:00';
-    const [hh, mm] = time.split(':');
-    const timeStr = `${parseInt(hh)} 點${mm !== '00' ? mm + ' 分' : ''}整`;
-    return [
-      '1. 2手商品外觀難免有瑕疵。完美主義者，請斟酌購買。',
-      '2. 下訂後，請於 48 小時內取件，逾時視為棄標。',
-      '3. 請特別注意，現況出售。全機外觀及出售物件如圖。',
-      `4. 出售後提供 ${days} 天保固（至第 ${days} 天中午 ${timeStr}），有問題可退貨，逾期不候。`,
-      '5. 買回需自行測試，初步測試功能正常。',
-    ].join('\n');
-  };
-
-  /** Build warranty description for modal banner */
-  function getWarrantyInfo() {
-    const mode = document.querySelector('input[name="warranty-mode"]:checked')?.value || 'limited';
-    const days = parseInt(el('cfg-warranty-days')?.value) || 3;
-    const time = el('cfg-warranty-time')?.value || '12:00';
-    if (mode === 'limited') {
-      return {
-        icon : '🛡️',
-        text : `有限保固 ${days} 天（至第 ${days} 天 ${time}）`,
-        cls  : 'mode-limited',
-      };
-    }
-    if (mode === 'none') {
-      return {
-        icon : '🚫',
-        text : '本商品為現況出售，不提供保固',
-        cls  : 'mode-none',
-      };
-    }
-    // onsite
+/**
+ * 商品資料結構向下相容與正規化處理 (Data Migration & Normalization)
+ * 嚴密防護舊版與各版本欄位差異，防止預設資料覆蓋使用者原始珍貴設定
+ */
+function normalizeItem(raw, fallbackId) {
+  if (!raw || typeof raw !== 'object') {
     return {
-      icon : '👁',
-      text : '僅限現場看貨測試，離場後不負保固責任',
-      cls  : 'mode-onsite',
+      id: fallbackId || ('item-' + Date.now()),
+      name: '拍賣商品',
+      subtitle: '',
+      desc: '',
+      images: ['icon-512.png'],
+      videoUrl: '',
+      startPrice: 100,
+      increment: 10,
+      currentBid: 100,
+      topBidder: '',
+      topBidderContact: null,
+      topBidTime: null,
+      bidHistory: [],
+      endTime: Date.now() + 86400000,
+      status: 'active',
+      sellerName: '建生工坊',
+      sellerLogo: 'icon-192.png',
+      timeMode: 'fixed',
+      antiSnipeEnabled: true,
+      antiSnipeMins: 3,
+      antiSnipeExtMins: 3,
+      pickupDeadlineHours: 48,
+      pickupDeadline: null,
+      qa: {},
+      winnerMsgs: []
     };
   }
-  // Expose for collectAdmin / openModal
-  window._getWarrantyInfo   = getWarrantyInfo;
-  window._getDefaultTerms   = DEFAULT_TERMS_FN;
 
-  // ── DOM refs ─────────────────────────────────────────
-  const wModes       = document.querySelectorAll('input[name="warranty-mode"]');
-  const wLimitedOpts = el('warranty-limited-opts');
-  const wDaysInp     = el('cfg-warranty-days');
-  const wTimeInp     = el('cfg-warranty-time');
-  const btnWdMinus   = el('btn-wd-minus');
-  const btnWdPlus    = el('btn-wd-plus');
-  const qtCbs        = document.querySelectorAll('.qt-cb');
-  const termsArea    = el('cfg-custom-terms');
-  const btnRestoreTerms = el('btn-restore-terms');
+  // 0. 賣家/店家/企業名稱與 Logo 商標
+  const sellerName = raw.sellerName || raw.storeName || '建生工坊';
+  const sellerLogo = raw.sellerLogo || raw.storeLogo || 'icon-192.png';
 
-  if (!wDaysInp) return; // guard: not on admin page
+  // 1. 商品名稱 (支援 name, itemName, title)
+  const name = raw.name || raw.itemName || raw.title || raw.itemTitle || '拍賣商品';
 
-  // ── Warranty mode → show/hide limited opts ──────────
-  function syncWarrantyUI() {
-    const mode = document.querySelector('input[name="warranty-mode"]:checked')?.value;
-    if (wLimitedOpts) wLimitedOpts.classList.toggle('hidden', mode !== 'limited');
-    scheduleSaveC();
-  }
-  wModes.forEach(r => r.addEventListener('change', syncWarrantyUI));
-  syncWarrantyUI(); // init
+  // 2. 副標題與特色
+  const subtitle = raw.subtitle || raw.itemSubtitle || '';
 
-  // ── Warranty days stepper ─────────────────────────
-  if (btnWdMinus) {
-    btnWdMinus.addEventListener('click', () => {
-      wDaysInp.value = Math.max(1, (parseInt(wDaysInp.value) || 1) - 1);
-      scheduleSaveC();
-    });
-  }
-  if (btnWdPlus) {
-    btnWdPlus.addEventListener('click', () => {
-      wDaysInp.value = (parseInt(wDaysInp.value) || 1) + 1;
-      scheduleSaveC();
-    });
-  }
-  wDaysInp.addEventListener('input', scheduleSaveC);
-  if (wTimeInp) wTimeInp.addEventListener('change', scheduleSaveC);
+  // 3. 詳細說明
+  const desc = raw.desc || raw.itemDesc || raw.description || '';
 
-  // ── Quick-term checkboxes: auto-update textarea hint ─
-  qtCbs.forEach(cb => cb.addEventListener('change', () => {
-    scheduleSaveC();
-  }));
-
-  // ── Restore defaults button ───────────────────────
-  if (btnRestoreTerms) {
-    btnRestoreTerms.addEventListener('click', () => {
-      if (termsArea) {
-        termsArea.value = DEFAULT_TERMS_FN();
-        termsArea.dispatchEvent(new Event('input'));
-        showToast('↩ 預設條款已還原', 'success', 2000);
-      }
-    });
+  // 4. 多圖片整合提取
+  let images = extractImagesFromRaw(raw);
+  if (!images.length) {
+    images = ['icon-512.png'];
   }
 
-  // ── Helper: trigger StorageModule C save ─────────
-  function scheduleSaveC() {
-    if (typeof window._storageSaveC === 'function') window._storageSaveC();
+  // 5. 影片連結 (YouTube / TikTok / IG / Threads / FB / MP4)
+  const videoUrl = raw.videoUrl || raw.videoLink || raw.video || raw.embedUrl || raw.youtubeUrl || '';
+
+  // 6. 價格設定
+  const startPrice = Number(raw.startPrice ?? raw.price ?? 100);
+  const increment = Number(raw.increment ?? 10);
+  const currentPrice = Number(raw.currentPrice ?? raw.currentBid ?? raw.startPrice ?? startPrice);
+  const currentBid = currentPrice;
+
+  // 7. 出價歷史紀錄
+  let bidHistory = [];
+  if (Array.isArray(raw.bidHistory)) {
+    bidHistory = raw.bidHistory;
+  } else if (raw.bidHistory && typeof raw.bidHistory === 'object') {
+    bidHistory = Object.values(raw.bidHistory);
+  } else if (raw.bids && typeof raw.bids === 'object') {
+    bidHistory = Object.values(raw.bids).map(b => ({
+      user: b.bidderName || b.user || '買家',
+      amount: b.amount,
+      time: b.timestamp || b.time || Date.now(),
+      phoneMasked: b.bidderPhoneMasked
+    })).sort((a, b) => b.amount - a.amount);
   }
+  const bids = (raw.bids && typeof raw.bids === 'object') ? raw.bids : {};
 
-})(); // end WarrantyTermsModule
-
-// ─────────────────────────────────────────────────────────
-//  LOGO DROPZONE MODULE  (Section A)
-// ─────────────────────────────────────────────────────────
-(function initLogoDropzone() {
-  const dropzone   = el('logo-dropzone');
-  const fileInput  = el('logo-file-input');
-  const previewWrp = el('logo-preview-wrap');
-  const previewImg = el('logo-preview-img');
-  const btnRemove  = el('btn-logo-remove');
-  const btnReselect= el('btn-logo-reselect');
-  const btnAddUrl  = el('btn-add-logo-url');
-  const urlInput   = el('cfg-logo-url');
-
-  if (!dropzone) return; // guard: auction page won't have this
-
-  // ── Internal helpers ──────────────────────────────────
-  function showPreview(src) {
-    S.logoSrc = src;
-    previewImg.src = src;
-    previewWrp.style.display = 'flex';
-    dropzone.style.display   = 'none';
-    // Notify StorageModule to auto-save A
-    document.dispatchEvent(new CustomEvent('agy:logoChanged'));
-  }
-
-  function clearLogo() {
-    S.logoSrc = '';
-    previewImg.src = '';
-    previewWrp.style.display = 'none';
-    dropzone.style.display   = 'flex';
-    if (urlInput) urlInput.value = '';
-    document.dispatchEvent(new CustomEvent('agy:logoChanged'));
-  }
-
-  // ── Click / keyboard to open file picker ─────────────
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
-  });
-
-  // ── Drag visual states ────────────────────────────────
-  ['dragenter','dragover'].forEach(ev =>
-    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('dz-over'); })
-  );
-  ['dragleave','dragend'].forEach(ev =>
-    dropzone.addEventListener(ev, () => dropzone.classList.remove('dz-over'))
-  );
-
-  // ── Drop handler ──────────────────────────────────────
-  dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('dz-over');
-    handleLogoFile(e.dataTransfer.files[0]);
-  });
-
-  // ── File input change ─────────────────────────────────
-  fileInput.addEventListener('change', () => {
-    handleLogoFile(fileInput.files[0]);
-    fileInput.value = '';
-  });
-
-  // ── Convert file → base64 and show preview ───────────
-  function handleLogoFile(file) {
-    if (!file) return;
-    const allowed = ['image/jpeg','image/png','image/webp','image/gif','image/svg+xml'];
-    if (!allowed.includes(file.type)) {
-      showToast(`⚠️ 不支援的格式：${file.name}`, 'warning'); return;
-    }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      showPreview(ev.target.result);
-      showToast('✅ Logo 已上傳', 'success', 1800);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  // ── Remove logo ───────────────────────────────────────
-  if (btnRemove) {
-    btnRemove.addEventListener('click', () => {
-      clearLogo();
-      showToast('🗑 Logo 已移除', 'info', 1800);
-    });
-  }
-
-  // ── Reselect (open file picker from preview state) ───
-  if (btnReselect) {
-    btnReselect.addEventListener('click', () => fileInput.click());
-  }
-
-  // ── URL fallback "＋ 套用" button ─────────────────────
-  if (btnAddUrl && urlInput) {
-    btnAddUrl.addEventListener('click', () => {
-      const url = urlInput.value.trim();
-      if (!url) { showToast('⚠️ 請輸入 Logo 網址', 'warning'); return; }
-      showPreview(url);
-      showToast('✅ Logo 網址已套用', 'success', 1800);
-    });
-    urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnAddUrl.click(); });
-    // Also wire URL input changes to auto-save A
-    urlInput.addEventListener('input', () =>
-      document.dispatchEvent(new CustomEvent('agy:logoChanged'))
-    );
-  }
-
-  // ── Listen for restore event from StorageModule ───────
-  document.addEventListener('agy:restoreLogo', ev => {
-    const src = ev.detail;
-    if (src) {
-      showPreview(src);
+  // 8. 結標時間與狀態判斷
+  const nowServer = (typeof getServerNow === 'function') ? getServerNow() : Date.now();
+  let endTime = Number(raw.endTime || raw.endAt || raw.endTimestamp) || (nowServer + 86400000);
+  let status = (raw.status === 'live' || raw.status === 'active') ? 'live' : raw.status;
+  if (!status) {
+    if (raw.auctionDone === true || (endTime <= nowServer && raw.auctionLive === false)) {
+      status = 'ended';
     } else {
-      clearLogo();
+      status = 'live';
+    }
+  }
+
+  // 9. 取貨期限、取貨管道與自訂說明 (核心功能復原)
+  const pickupDeadlineHours = Number(raw.pickupDeadlineHours || (raw.warrantyDays ? raw.warrantyDays * 24 : 48));
+  const pickupOptions = (raw.pickupOptions && typeof raw.pickupOptions === 'object')
+    ? {
+        self: raw.pickupOptions.self !== false,
+        delivery: !!raw.pickupOptions.delivery,
+        cvs: !!raw.pickupOptions.cvs
+      }
+    : { self: true, delivery: false, cvs: false };
+  const pickupCustom = raw.pickupCustom || raw.pickupInfo || raw.pickupText || '';
+
+  // 10. 額外備註欄 (Extra Notes / Remarks)
+  const extraNotes = raw.extraNotes || raw.notes || raw.remarks || raw.customTerms || '';
+
+  // 11. 保固說明 (Warranty)
+  const warrantyDays = Number(raw.warrantyDays ?? (raw.warranty ? parseInt(raw.warranty, 10) : 0)) || 0;
+  const warrantyText = raw.warrantyText || raw.warranty || '原件現況出售';
+
+  // 12. 問答與專屬私訊留言板
+  const qa = (raw.qa && typeof raw.qa === 'object') ? raw.qa : ((raw.questions && typeof raw.questions === 'object') ? raw.questions : {});
+  let winnerMsgs = [];
+  if (Array.isArray(raw.winnerMsgs)) {
+    winnerMsgs = raw.winnerMsgs;
+  } else if (raw.winnerMsgs && typeof raw.winnerMsgs === 'object') {
+    winnerMsgs = Object.values(raw.winnerMsgs);
+  }
+
+  return {
+    id: String(raw.id || raw.itemId || fallbackId || ('item-' + Date.now())),
+    name: name,
+    sellerName: sellerName,
+    sellerLogo: sellerLogo,
+    subtitle: subtitle,
+    desc: desc,
+    images: images,
+    videoUrl: videoUrl,
+    startPrice: startPrice,
+    increment: increment,
+    currentPrice: currentPrice,
+    currentBid: currentBid,
+    bids: bids,
+    topBidder: raw.topBidder || '',
+    topBidderContact: raw.topBidderContact || null,
+    topBidTime: raw.topBidTime || null,
+    bidHistory: bidHistory,
+    endTime: endTime,
+    status: status,
+    timeMode: raw.timeMode === 'reset24' ? 'reset24' : 'fixed',
+    autoRelistIfNoBids: raw.autoRelistIfNoBids !== false,
+    antiSnipeEnable: raw.antiSnipeEnable !== false && raw.antiSnipeEnabled !== false,
+    antiSnipeEnabled: raw.antiSnipeEnable !== false && raw.antiSnipeEnabled !== false,
+    antiSnipeMins: Number(raw.antiSnipeMins || 3),
+    antiSnipeExt: Number(raw.antiSnipeExt || raw.antiSnipeExtMins || 3),
+    antiSnipeExtMins: Number(raw.antiSnipeExt || raw.antiSnipeExtMins || 3),
+    pickupDeadlineHours: pickupDeadlineHours,
+    pickupDeadline: raw.pickupDeadline || null,
+    pickupOptions: pickupOptions,
+    pickupCustom: pickupCustom,
+    extraNotes: extraNotes,
+    warrantyDays: warrantyDays,
+    warrantyText: warrantyText,
+    qa: qa,
+    winnerMsgs: winnerMsgs
+  };
+}
+
+/**
+ * 讀取歷史 localStorage 設定進行舊資料還原保護 (相容舊版分區記憶 auctionSect_A/B/C/D)
+ * 嚴格過濾並清除舊版系統假古董範例（樟木箱/茶盤/官帽椅），保護使用者真實資料
+ */
+function restoreSavedLegacyLocalStorage() {
+  try {
+    const secA = SafeStorage.get('auctionSect_A', null);
+    const secB = SafeStorage.get('auctionSect_B', null);
+    const secC = SafeStorage.get('auctionSect_C', null);
+
+    const savedStudioName = SafeStorage.get('agy_studio_name') || (secA && secA.studioName);
+    if (savedStudioName && !savedStudioName.includes('JianSheng Boutique')) {
+      updateStudioName(savedStudioName, false);
+    }
+
+    // 檢查若包含舊版假範例商品（樟木箱/茶盤/官帽椅），強制清除
+    if (secB && (secB.itemName || secB.itemDesc)) {
+      const bName = String(secB.itemName || '');
+      if (bName.includes('樟木箱') || bName.includes('茶盤') || bName.includes('官帽椅')) {
+        SafeStorage.remove('auctionSect_B');
+        SafeStorage.remove('auctionSect_C');
+      } else {
+        console.log('📦 腳本已自本機快取成功恢復歷史商品設定，保護原有設定不被覆蓋！');
+        const recoveredItem = normalizeItem({
+          ...secB,
+          ...(secC || {})
+        }, 'item-local-recovered');
+        AppState.items = [recoveredItem];
+        AppState.activeItemId = recoveredItem.id;
+      }
+    }
+
+    const cachedItems = SafeStorage.get('agy_items', null);
+    if (Array.isArray(cachedItems) && cachedItems.length > 0) {
+      const filtered = cachedItems.filter(it => {
+        const n = String(it.name || '');
+        return !n.includes('樟木箱') && !n.includes('茶盤') && !n.includes('官帽椅');
+      });
+      if (filtered.length > 0) {
+        AppState.items = filtered;
+        AppState.activeItemId = filtered[0].id;
+        SafeStorage.set('agy_items', filtered);
+      } else {
+        SafeStorage.remove('agy_items');
+      }
+    }
+  } catch (e) {
+    console.warn('本機舊版設定還原檢測：', e);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   4. 多平台影音連結解析器 (Multi-Platform Video Embed - 核心功能 3)
+   支援 YouTube / TikTok / 抖音 / IG Reels / Threads / FB / 直播影片
+   ───────────────────────────────────────────────────────────── */
+function parseVideoEmbed(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const url = rawUrl.trim();
+  if (!url) return null;
+
+  // 0. 直接 MP4 / WebM / OGG / MOV 本地或遠端影片檔案 (100% 內嵌原生播放，免去第三方協定限制)
+  if (/\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url) || url.toLowerCase().endsWith('.mp4') || url.toLowerCase().endsWith('.webm')) {
+    return {
+      platform: '🎬 實拍影音',
+      html: `<video controls playsinline preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:12px;background:#000;" src="${escapeHtml(url)}"></video>`
+    };
+  }
+
+  // 1. YouTube (標準, shorts, youtu.be, embed)
+  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+  if (ytMatch && ytMatch[1]) {
+    return {
+      platform: 'YouTube',
+      html: `<iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0&modestbranding=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%;aspect-ratio:16/9;border-radius:12px;border:none;"></iframe>`
+    };
+  }
+
+  // 2. TikTok
+  const ttMatch = url.match(/tiktok\.com\/(?:@[^\/]+\/video\/|v\/)(\d+)/i);
+  if (ttMatch && ttMatch[1]) {
+    return {
+      platform: 'TikTok',
+      html: `<iframe src="https://www.tiktok.com/embed/v2/${ttMatch[1]}" frameborder="0" allowfullscreen style="width:100%;height:520px;border-radius:12px;border:none;"></iframe>`
+    };
+  }
+
+  // 3. 抖音 (Douyin)
+  const dyMatch = url.match(/douyin\.com\/video\/(\d+)/i);
+  if (dyMatch && dyMatch[1]) {
+    return {
+      platform: '抖音',
+      html: `<iframe src="https://www.douyin.com/embed/video/${dyMatch[1]}" frameborder="0" allowfullscreen style="width:100%;height:520px;border-radius:12px;border:none;"></iframe>`
+    };
+  }
+
+  // 4. Instagram (IG Reels & Posts)
+  const igMatch = url.match(/instagram\.com\/(?:reel|p)\/([a-zA-Z0-9_-]+)/i);
+  if (igMatch && igMatch[1]) {
+    return {
+      platform: 'Instagram Reels',
+      html: `<iframe src="https://www.instagram.com/reel/${igMatch[1]}/embed/" frameborder="0" scrolling="no" allowtransparency="true" style="width:100%;height:520px;border-radius:12px;border:none;background:#000;"></iframe>`
+    };
+  }
+
+  // 5. Threads 影片貼文
+  const thMatch = url.match(/threads\.(?:net|com)\/(?:@[^\/]+\/post\/)([a-zA-Z0-9_-]+)/i);
+  if (thMatch && thMatch[1]) {
+    return {
+      platform: 'Threads',
+      html: `<iframe src="https://www.threads.net/post/${thMatch[1]}/embed" frameborder="0" scrolling="no" allowtransparency="true" style="width:100%;height:480px;border-radius:12px;border:none;"></iframe>`
+    };
+  }
+
+  // 6. Facebook 影片 / Reels
+  if (url.includes('facebook.com') || url.includes('fb.watch')) {
+    const encoded = encodeURIComponent(url);
+    return {
+      platform: 'Facebook 影片',
+      html: `<iframe src="https://www.facebook.com/plugins/video.php?href=${encoded}&show_text=false&width=500" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen style="width:100%;aspect-ratio:16/9;min-height:280px;border-radius:12px;border:none;"></iframe>`
+    };
+  }
+
+  // 7. 直接 MP4 / WebM / OGG 影片檔案 (備用規則)
+  if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url)) {
+    return {
+      platform: '🎬 實拍影音',
+      html: `<video src="${escapeHtml(url)}" controls playsinline preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:12px;background:#000;"></video>`
+    };
+  }
+
+  // 8. 備用外顯外部連結
+  return {
+    platform: '外部影音',
+    html: `
+      <div style="background:rgba(0,0,0,0.4);border:1px solid var(--c-border);padding:18px;border-radius:12px;text-align:center;width:100%;">
+        <p style="font-size:.85rem;color:var(--c-text-1);margin-bottom:10px;">🎬 本商品附有實拍影音連結：</p>
+        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="tbtn tbtn-gold tbtn-sm">
+          ▶ 開啟觀看實拍影片
+        </a>
+      </div>
+    `
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   5. 嚴格電話號碼驗證與防偽檢驗 (核心功能 3)
+   ───────────────────────────────────────────────────────────── */
+function validatePhoneNumber(rawPhone, userName) {
+  if (!rawPhone) {
+    return { valid: false, message: '請輸入聯絡手機號碼！' };
+  }
+  const clean = String(rawPhone).replace(/[\s\-\(\)]/g, '');
+
+  const isTwPhone = /^09\d{8}$/.test(clean);
+  const isIntlPhone = /^\+?\d{9,15}$/.test(clean);
+
+  if (!isTwPhone && !isIntlPhone) {
+    return {
+      valid: false,
+      message: '手機號碼格式不正確！台灣手機號碼需為 09 開頭的 10 位數字。'
+    };
+  }
+
+  // 檢測全重複數字
+  if (/^09(\d)\1{7}$/.test(clean)) {
+    return {
+      valid: false,
+      message: '❌ 檢測到重複異常手機號碼，腳本已攔截並阻止出價。請填寫真實聯絡手機！'
+    };
+  }
+
+  // 虛假號碼黑名單
+  const blacklist = [
+    '0931000000',
+    '0912345678',
+    '0987654321',
+    '0900123456',
+    '0900000001',
+    '0912000000',
+    '0920000000',
+    '0930000000'
+  ];
+  if (blacklist.includes(clean) || /^09\d{2}000000$/.test(clean)) {
+    return {
+      valid: false,
+      message: '❌ 檢測到異常或重複虛假電話號碼，腳本已攔截並阻止出價。請填寫真實有效之聯絡手機！'
+    };
+  }
+
+  // 重複帳號衝突檢驗
+  try {
+    const boundPhones = SafeStorage.get('agy_registered_users', {}) || {};
+    if (boundPhones[clean] && userName && boundPhones[clean] !== userName.trim()) {
+      return {
+        valid: false,
+        message: `⚠️ 該電話已綁定買家帳號「${boundPhones[clean]}」，為防身分冒用，腳本已拒絕本次出價。`
+      };
+    }
+    if (userName) {
+      boundPhones[clean] = userName.trim();
+      SafeStorage.set('agy_registered_users', boundPhones);
+    }
+  } catch (e) {}
+
+  return { valid: true, phone: clean };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   5.5 動態店鋪名稱核心管理 (Dynamic Store Name Management)
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * 全域動態更新店鋪名稱（同步導覽列、分頁 Title、後台標題、輸入框與 Firebase）
+ */
+function updateStudioName(newName, shouldSync = true) {
+  let trimmed = (newName || '').trim();
+  if (!trimmed || trimmed === 'JianSheng Boutique') {
+    trimmed = '建生工坊';
+  }
+
+  AppState.studioName = trimmed;
+  SafeStorage.set('agy_studio_name', trimmed);
+
+  // 1. 網頁最頂部的導覽列標題
+  const navStudio = el('nav-studio-name');
+  if (navStudio) navStudio.textContent = trimmed;
+
+  const brandLink = el('brand-link');
+  if (brandLink) brandLink.title = `${trimmed}線上拍賣系統`;
+
+  // 2. 瀏覽器分頁 Title
+  const pageTitle = el('page-title');
+  if (pageTitle) pageTitle.textContent = `線上拍賣系統｜${trimmed}`;
+  document.title = `線上拍賣系統｜${trimmed}`;
+
+  // 3. 後台控制中心標題
+  const adminTitle = el('admin-top-title');
+  if (adminTitle) adminTitle.textContent = `🔨 ${trimmed}拍賣後台控制中心`;
+
+  // 4. 後台店鋪設定輸入框
+  const cfgInput = el('cfg-studio-name');
+  if (cfgInput && cfgInput !== document.activeElement && cfgInput.value !== trimmed) {
+    cfgInput.value = trimmed;
+  }
+
+  // 5. 前台當前商品賣家名稱同步（若商品未自訂特定賣家）
+  const curItem = getActiveItem();
+  if (curItem && (!curItem.sellerName || curItem.sellerName === '建生工坊')) {
+    const sNameEl = el('product-seller-name');
+    if (sNameEl) sNameEl.textContent = trimmed;
+  }
+
+  // 6. 雲端 Firebase 同步
+  if (shouldSync) {
+    syncStudioNameToFirebase(trimmed);
+  }
+}
+
+/**
+ * 全域動態更新賣家/店家 Logo 與名片貼圖（同步導覽列、後台店鋪設定、前台商品賣家名片與 Firebase）
+ */
+function updateStudioLogo(newLogo, shouldSync = true) {
+  let logo = (newLogo || '').trim();
+  if (!logo) logo = 'icon-192.png';
+
+  AppState.studioLogo = logo;
+  SafeStorage.set('agy_studio_logo', logo);
+
+  // 1. 網頁最頂部的導覽列 Logo
+  const navLogo = el('nav-logo-img');
+  if (navLogo) navLogo.src = logo;
+
+  // 2. 後台店鋪設定 Logo 輸入框與縮圖預覽
+  const shopLogoImg = el('shop-logo-preview-img');
+  if (shopLogoImg) shopLogoImg.src = logo;
+  const cfgLogoInput = el('cfg-studio-logo');
+  if (cfgLogoInput && cfgLogoInput !== document.activeElement && cfgLogoInput.value !== logo) {
+    cfgLogoInput.value = logo;
+  }
+
+  // 3. 前台當前商品賣家名片 Logo（若該商品使用預設 Logo 則同步切換）
+  const curItem = getActiveItem();
+  if (curItem && (!curItem.sellerLogo || curItem.sellerLogo === 'icon-192.png')) {
+    const prodLogo = el('product-seller-logo');
+    if (prodLogo) prodLogo.src = logo;
+  }
+
+  // 4. 雲端 Firebase 同步
+  if (shouldSync) {
+    syncStudioLogoToFirebase(logo);
+  }
+}
+
+/**
+ * 將店鋪名稱儲存至 Firebase 的設定節點 (settings/shop) 與當前拍賣節點
+ */
+function syncStudioNameToFirebase(name) {
+  const db = FirebaseManager.getDb();
+  if (!db) return;
+
+  const validName = (name && name !== 'JianSheng Boutique') ? name : '建生工坊';
+
+  db.ref('settings/shop').update({
+    studioName: validName,
+    updatedAt: Date.now()
+  }).catch(e => console.warn('同步店鋪名稱至 settings/shop 失敗:', e));
+
+  if (AppState.auctionId) {
+    db.ref('auctions/' + AppState.auctionId).update({
+      studioName: validName,
+      lastUpdated: Date.now()
+    }).catch(e => console.warn('同步店鋪名稱至拍賣節點失敗:', e));
+  }
+}
+
+/**
+ * 將賣家 Logo 儲存至 Firebase 的設定節點 (settings/shop) 與當前拍賣節點
+ */
+function syncStudioLogoToFirebase(logo) {
+  const db = FirebaseManager.getDb();
+  if (!db) return;
+
+  const validLogo = logo || 'icon-192.png';
+
+  db.ref('settings/shop').update({
+    studioLogo: validLogo,
+    updatedAt: Date.now()
+  }).catch(e => console.warn('同步店鋪 Logo 至 settings/shop 失敗:', e));
+
+  if (AppState.auctionId) {
+    db.ref('auctions/' + AppState.auctionId).update({
+      studioLogo: validLogo,
+      lastUpdated: Date.now()
+    }).catch(e => console.warn('同步店鋪 Logo 至拍賣節點失敗:', e));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   5.6 賣家 Logo / 企業名片 尺寸拉伸與顯示適配管理
+   ───────────────────────────────────────────────────────────── */
+const DEFAULT_LOGO_CONFIG = {
+  shape: 'circle',     // 'circle' | 'square' | 'card' | 'banner'
+  fit: 'contain',      // 'contain' | 'cover' | 'fill'
+  size: 26,            // badge height in px
+  zoom: 100,           // zoom percentage
+  stretchX: 100,       // width stretch percentage
+  stretchY: 100        // height stretch percentage
+};
+
+function getLogoConfig() {
+  try {
+    const saved = SafeStorage.get('agy_studio_logo_cfg');
+    if (saved) return Object.assign({}, DEFAULT_LOGO_CONFIG, typeof saved === 'object' ? saved : JSON.parse(saved));
+  } catch (_) {}
+  return Object.assign({}, DEFAULT_LOGO_CONFIG);
+}
+
+function applyLogoConfig(cfg, shouldSync = true) {
+  if (!cfg) cfg = getLogoConfig();
+  AppState.logoConfig = cfg;
+  SafeStorage.set('agy_studio_logo_cfg', cfg);
+
+  const size = cfg.size || 26;
+  let width = size;
+  let height = size;
+  let borderRadius = '50%';
+
+  if (cfg.shape === 'circle') {
+    width = size;
+    height = size;
+    borderRadius = '50%';
+  } else if (cfg.shape === 'square') {
+    width = size;
+    height = size;
+    borderRadius = '6px';
+  } else if (cfg.shape === 'card') {
+    width = Math.round(size * 1.77); // 16:9 企業名片
+    height = size;
+    borderRadius = '4px';
+  } else if (cfg.shape === 'banner') {
+    width = Math.round(size * 2.5); // 2.5:1 長條名片橫幅
+    height = size;
+    borderRadius = '4px';
+  }
+
+  const transformStr = `scale(${(cfg.zoom / 100) * (cfg.stretchX / 100)}, ${(cfg.zoom / 100) * (cfg.stretchY / 100)})`;
+  const fitMode = cfg.fit || 'contain';
+
+  // 1. 前台商品標題膠囊徽章 Logo
+  const prodLogo = el('product-seller-logo');
+  if (prodLogo) {
+    prodLogo.style.width = width + 'px';
+    prodLogo.style.height = height + 'px';
+    prodLogo.style.borderRadius = borderRadius;
+    prodLogo.style.objectFit = fitMode;
+    prodLogo.style.transform = transformStr;
+  }
+
+  // 2. 後台店鋪設定與基本資料預覽圖
+  const shopLogoImg = el('shop-logo-preview-img');
+  if (shopLogoImg) {
+    shopLogoImg.style.objectFit = fitMode;
+    shopLogoImg.style.transform = transformStr;
+    if (shopLogoImg.parentElement) {
+      if (cfg.shape === 'card' || cfg.shape === 'banner') {
+        shopLogoImg.parentElement.style.width = Math.min(width, 70) + 'px';
+      } else {
+        shopLogoImg.parentElement.style.width = '44px';
+      }
+    }
+  }
+  const sellerLogoImg = el('seller-logo-preview-img');
+  if (sellerLogoImg) {
+    sellerLogoImg.style.objectFit = fitMode;
+    sellerLogoImg.style.transform = transformStr;
+    if (sellerLogoImg.parentElement) {
+      if (cfg.shape === 'card' || cfg.shape === 'banner') {
+        sellerLogoImg.parentElement.style.width = Math.min(width, 70) + 'px';
+      } else {
+        sellerLogoImg.parentElement.style.width = '44px';
+      }
+    }
+  }
+
+  // 3. 頂端導覽列 Logo
+  const navLogo = el('nav-logo-img');
+  if (navLogo) {
+    navLogo.style.objectFit = fitMode;
+    if (cfg.shape === 'circle') navLogo.style.borderRadius = '50%';
+    else if (cfg.shape === 'square') navLogo.style.borderRadius = '6px';
+  }
+
+  // 4. 彈窗即時預覽元件同步
+  const previewBadgeLogo = el('preview-badge-logo');
+  if (previewBadgeLogo) {
+    previewBadgeLogo.style.width = width + 'px';
+    previewBadgeLogo.style.height = height + 'px';
+    previewBadgeLogo.style.borderRadius = borderRadius;
+    previewBadgeLogo.style.objectFit = fitMode;
+    previewBadgeLogo.style.transform = transformStr;
+  }
+  const previewNavLogo = el('preview-nav-logo');
+  if (previewNavLogo) {
+    previewNavLogo.style.objectFit = fitMode;
+    previewNavLogo.style.borderRadius = (cfg.shape === 'circle') ? '50%' : '6px';
+  }
+
+  // 5. 雲端 Firebase 同步
+  if (shouldSync) {
+    const db = FirebaseManager.getDb();
+    if (db) {
+      db.ref('settings/shop/logoConfig').set(cfg).catch(() => {});
+      if (AppState.auctionId) {
+        db.ref('auctions/' + AppState.auctionId + '/logoConfig').set(cfg).catch(() => {});
+      }
+    }
+  }
+}
+
+let currentTargetIsShop = true;
+let tempLogoConfig = null;
+
+function openLogoFitModal(isShop = true) {
+  currentTargetIsShop = isShop;
+  tempLogoConfig = Object.assign({}, getLogoConfig());
+
+  let currentLogo = 'icon-192.png';
+  let currentName = '建生工坊';
+  if (isShop) {
+    currentLogo = el('cfg-studio-logo')?.value.trim() || SafeStorage.get('agy_studio_logo') || 'icon-192.png';
+    currentName = el('cfg-studio-name')?.value.trim() || '建生工坊';
+  } else {
+    currentLogo = el('edit-item-seller-logo')?.value.trim() || 'icon-192.png';
+    currentName = el('edit-item-seller-name')?.value.trim() || '建生工坊';
+  }
+
+  if (el('preview-badge-logo')) el('preview-badge-logo').src = currentLogo;
+  if (el('preview-badge-name')) el('preview-badge-name').textContent = currentName;
+  if (el('preview-nav-logo')) el('preview-nav-logo').src = currentLogo;
+  if (el('preview-nav-name')) el('preview-nav-name').textContent = currentName;
+
+  updateModalUIFromConfig(tempLogoConfig);
+  applyModalLivePreview(tempLogoConfig);
+
+  const modal = el('modal-logo-fit');
+  if (modal) modal.classList.add('show', 'active');
+}
+
+function closeLogoFitModal() {
+  const modal = el('modal-logo-fit');
+  if (modal) modal.classList.remove('show', 'active');
+}
+
+function updateModalUIFromConfig(cfg) {
+  document.querySelectorAll('.logo-shape-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.shape === cfg.shape);
+  });
+  document.querySelectorAll('.logo-fit-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.fit === cfg.fit);
+  });
+  if (el('slider-logo-size')) el('slider-logo-size').value = cfg.size;
+  if (el('val-logo-size')) el('val-logo-size').textContent = cfg.size + 'px';
+
+  if (el('slider-logo-zoom')) el('slider-logo-zoom').value = cfg.zoom;
+  if (el('val-logo-zoom')) el('val-logo-zoom').textContent = cfg.zoom + '%';
+
+  if (el('slider-logo-stretch-x')) el('slider-logo-stretch-x').value = cfg.stretchX;
+  if (el('val-logo-stretch-x')) el('val-logo-stretch-x').textContent = cfg.stretchX + '%';
+
+  if (el('slider-logo-stretch-y')) el('slider-logo-stretch-y').value = cfg.stretchY;
+  if (el('val-logo-stretch-y')) el('val-logo-stretch-y').textContent = cfg.stretchY + '%';
+}
+
+function applyModalLivePreview(cfg) {
+  const size = cfg.size || 26;
+  let width = size;
+  let height = size;
+  let borderRadius = '50%';
+
+  if (cfg.shape === 'circle') {
+    width = size;
+    height = size;
+    borderRadius = '50%';
+  } else if (cfg.shape === 'square') {
+    width = size;
+    height = size;
+    borderRadius = '6px';
+  } else if (cfg.shape === 'card') {
+    width = Math.round(size * 1.77);
+    height = size;
+    borderRadius = '4px';
+  } else if (cfg.shape === 'banner') {
+    width = Math.round(size * 2.5);
+    height = size;
+    borderRadius = '4px';
+  }
+
+  const transformStr = `scale(${(cfg.zoom / 100) * (cfg.stretchX / 100)}, ${(cfg.zoom / 100) * (cfg.stretchY / 100)})`;
+  const fitMode = cfg.fit || 'contain';
+
+  const previewBadgeLogo = el('preview-badge-logo');
+  if (previewBadgeLogo) {
+    previewBadgeLogo.style.width = width + 'px';
+    previewBadgeLogo.style.height = height + 'px';
+    previewBadgeLogo.style.borderRadius = borderRadius;
+    previewBadgeLogo.style.objectFit = fitMode;
+    previewBadgeLogo.style.transform = transformStr;
+  }
+}
+
+function setupLogoFitModal() {
+  el('shop-logo-preview-box')?.addEventListener('click', () => openLogoFitModal(true));
+  el('btn-edit-shop-logo-fit')?.addEventListener('click', () => openLogoFitModal(true));
+  el('seller-logo-preview-box')?.addEventListener('click', () => openLogoFitModal(false));
+  el('btn-edit-item-logo-fit')?.addEventListener('click', () => openLogoFitModal(false));
+
+  document.querySelectorAll('.logo-shape-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.logo-shape-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (tempLogoConfig) {
+        tempLogoConfig.shape = btn.dataset.shape;
+        applyModalLivePreview(tempLogoConfig);
+      }
+    });
+  });
+
+  document.querySelectorAll('.logo-fit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.logo-fit-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (tempLogoConfig) {
+        tempLogoConfig.fit = btn.dataset.fit;
+        applyModalLivePreview(tempLogoConfig);
+      }
+    });
+  });
+
+  el('slider-logo-size')?.addEventListener('input', e => {
+    const val = Number(e.target.value);
+    if (el('val-logo-size')) el('val-logo-size').textContent = val + 'px';
+    if (tempLogoConfig) {
+      tempLogoConfig.size = val;
+      applyModalLivePreview(tempLogoConfig);
     }
   });
 
-  // ── Wire agy:logoChanged → StorageModule auto-save A ─
-  // (StorageModule listens for this; wire inside StorageModule via window API)
-  document.addEventListener('agy:logoChanged', () => {
-    if (typeof window._storageSaveA === 'function') window._storageSaveA();
+  el('slider-logo-zoom')?.addEventListener('input', e => {
+    const val = Number(e.target.value);
+    if (el('val-logo-zoom')) el('val-logo-zoom').textContent = val + '%';
+    if (tempLogoConfig) {
+      tempLogoConfig.zoom = val;
+      applyModalLivePreview(tempLogoConfig);
+    }
   });
 
-})(); // end LogoDropzone
-
-// ─────────────────────────────────────────────────────────
-//  IMAGE DROPZONE MODULE
-(function initDropzone() {
-  const dropzone   = el('img-dropzone');
-  const fileInput  = el('img-file-input');
-  const thumbGrid  = el('img-thumb-grid');
-  const btnAddUrl  = el('btn-add-url-img');
-  const urlInput   = el('cfg-img-url');
-
-  if (!dropzone) return; // guard
-
-  // ── Open file dialog on click / Enter / Space ──────────
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  el('slider-logo-stretch-x')?.addEventListener('input', e => {
+    const val = Number(e.target.value);
+    if (el('val-logo-stretch-x')) el('val-logo-stretch-x').textContent = val + '%';
+    if (tempLogoConfig) {
+      tempLogoConfig.stretchX = val;
+      applyModalLivePreview(tempLogoConfig);
+    }
   });
 
-  // ── Drag visual states ─────────────────────────────────
-  ['dragenter','dragover'].forEach(ev =>
-    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('dz-over'); })
-  );
-  ['dragleave','dragend'].forEach(ev =>
-    dropzone.addEventListener(ev, () => dropzone.classList.remove('dz-over'))
-  );
-
-  // ── Drop handler ───────────────────────────────────────
-  dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('dz-over');
-    handleFiles(e.dataTransfer.files);
+  el('slider-logo-stretch-y')?.addEventListener('input', e => {
+    const val = Number(e.target.value);
+    if (el('val-logo-stretch-y')) el('val-logo-stretch-y').textContent = val + '%';
+    if (tempLogoConfig) {
+      tempLogoConfig.stretchY = val;
+      applyModalLivePreview(tempLogoConfig);
+    }
   });
 
-  // ── File input change ──────────────────────────────────
-  fileInput.addEventListener('change', () => {
-    handleFiles(fileInput.files);
-    fileInput.value = ''; // reset so same file can be re-selected
+  el('btn-logo-fit-reset')?.addEventListener('click', () => {
+    tempLogoConfig = Object.assign({}, DEFAULT_LOGO_CONFIG);
+    updateModalUIFromConfig(tempLogoConfig);
+    applyModalLivePreview(tempLogoConfig);
+    showToast('🔄 已恢復預設適配與尺寸數值');
   });
 
-  // ── URL fallback "＋ 加入" button ───────────────────────
-  if (btnAddUrl && urlInput) {
-    btnAddUrl.addEventListener('click', () => {
-      const url = urlInput.value.trim();
-      if (!url) { showToast('⚠️ 請輸入圖片網址', 'warning'); return; }
-      addImage({ src: url, name: url.split('/').pop() || '外部圖片' });
-      urlInput.value = '';
-      showToast('✅ 圖片網址已加入', 'success', 1800);
-    });
-    urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnAddUrl.click(); });
-  }
+  el('btn-logo-fit-cancel')?.addEventListener('click', closeLogoFitModal);
+  el('modal-logo-fit')?.addEventListener('click', e => {
+    if (e.target === el('modal-logo-fit')) closeLogoFitModal();
+  });
 
-  // ── Convert FileList → base64, add to S.images ─────────
-  function handleFiles(files) {
-    if (!files || !files.length) return;
-    const allowed = ['image/jpeg','image/png','image/webp','image/gif','image/svg+xml'];
-    let added = 0;
-    Array.from(files).forEach(file => {
-      if (!allowed.includes(file.type)) {
-        showToast(`⚠️ 不支援的格式：${file.name}`, 'warning'); return;
-      }
+  el('btn-logo-fit-apply')?.addEventListener('click', () => {
+    if (tempLogoConfig) {
+      applyLogoConfig(tempLogoConfig, true);
+      closeLogoFitModal();
+      showToast('✅ 賣家 Logo / 名片尺寸拉伸與顯示適配已儲存生效！');
+    }
+  });
+
+  const dropzone = el('modal-logo-dropzone');
+  const fileInput = el('modal-logo-file-input');
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = ev => {
-        addImage({ src: ev.target.result, name: file.name });
-        added++;
-        if (added === 1) showToast(`✅ 已上傳 ${files.length} 張圖片`, 'success', 2000);
+        const dataUrl = ev.target.result;
+        if (el('preview-badge-logo')) el('preview-badge-logo').src = dataUrl;
+        if (el('preview-nav-logo')) el('preview-nav-logo').src = dataUrl;
+        if (currentTargetIsShop) {
+          updateStudioLogo(dataUrl, true);
+        } else {
+          if (el('edit-item-seller-logo')) el('edit-item-seller-logo').value = dataUrl;
+          if (el('seller-logo-preview-img')) el('seller-logo-preview-img').src = dataUrl;
+        }
+        showToast('📷 已成功選取新圖片！請點選「確認套用」生效。');
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+  }
+}
+
+function setupLogoDragAndDrop() {
+  const targets = [
+    { zone: el('shop-logo-preview-box'), input: el('cfg-studio-logo'), isGlobal: true },
+    { zone: el('cfg-studio-logo'), input: el('cfg-studio-logo'), isGlobal: true },
+    { zone: el('seller-logo-preview-box'), input: el('edit-item-seller-logo'), isGlobal: false },
+    { zone: el('edit-item-seller-logo'), input: el('edit-item-seller-logo'), isGlobal: false },
+    { zone: el('modal-logo-dropzone'), input: null, isGlobal: true }
+  ];
+
+  targets.forEach(({ zone, input, isGlobal }) => {
+    if (!zone) return;
+
+    ['dragenter', 'dragover'].forEach(name => {
+      zone.addEventListener(name, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.add('logo-drag-over', 'drag-over');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      zone.addEventListener(name, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove('logo-drag-over', 'drag-over');
+      });
+    });
+
+    zone.addEventListener('drop', e => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.files || !dt.files.length) return;
+      const file = dt.files[0];
+      if (!file.type.startsWith('image/')) {
+        showToast('⚠️ 請拖曳圖片檔案（支援 JPG、PNG、WEBP、GIF、SVG 等）！');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target.result;
+        if (input) input.value = dataUrl;
+        if (isGlobal) {
+          updateStudioLogo(dataUrl, true);
+        } else {
+          if (el('seller-logo-preview-img')) el('seller-logo-preview-img').src = dataUrl;
+        }
+        if (el('preview-badge-logo')) el('preview-badge-logo').src = dataUrl;
+        if (el('preview-nav-logo')) el('preview-nav-logo').src = dataUrl;
+        showToast('📷 已成功透過拖曳載入圖片！點選可自由拉伸調整大小與適配。');
       };
       reader.readAsDataURL(file);
     });
-  }
-
-  // ── Add image to S.images & re-render thumbs ───────────
-  function addImage({ src, name }) {
-    const isCover = S.images.length === 0; // first image auto-becomes cover
-    S.images.push({ src, name, isCover });
-    renderThumbs();
-  }
-
-  // ── Render admin thumbnail grid ────────────────────────
-  function renderThumbs() {
-    thumbGrid.innerHTML = '';
-    S.images.forEach((img, idx) => {
-      const item = document.createElement('div');
-      item.className = 'thumb-item' + (img.isCover ? ' is-cover' : '');
-      item.tabIndex = 0;
-      item.setAttribute('aria-label', img.name);
-
-      // thumbnail img
-      const picture = document.createElement('img');
-      picture.className = 'thumb-img';
-      picture.src   = img.src;
-      picture.alt   = img.name;
-      picture.loading = 'lazy';
-      item.appendChild(picture);
-
-      // delete button
-      const del = document.createElement('button');
-      del.className = 'thumb-del';
-      del.type = 'button';
-      del.title = '移除圖片';
-      del.setAttribute('aria-label', '移除圖片');
-      del.innerHTML = '✕';
-      del.addEventListener('click', e => {
-        e.stopPropagation();
-        S.images.splice(idx, 1);
-        // ensure there's still a cover
-        if (S.images.length && !S.images.some(i => i.isCover)) {
-          S.images[0].isCover = true;
-        }
-        renderThumbs();
-        showToast('🗑 圖片已移除', 'info', 1600);
-      });
-      item.appendChild(del);
-
-      // cover badge (shown when IS cover)
-      if (img.isCover) {
-        const badge = document.createElement('div');
-        badge.className = 'thumb-cover-badge';
-        badge.textContent = '★ 主圖';
-        item.appendChild(badge);
-      } else {
-        // set-as-cover button (shown on hover)
-        const setCover = document.createElement('div');
-        setCover.className = 'thumb-set-cover';
-        setCover.textContent = '設為主圖';
-        setCover.addEventListener('click', e => {
-          e.stopPropagation();
-          S.images.forEach(i => { i.isCover = false; });
-          S.images[idx].isCover = true;
-          renderThumbs();
-          showToast('✅ 已設為主圖', 'success', 1600);
-        });
-        item.appendChild(setCover);
-      }
-
-      thumbGrid.appendChild(item);
-    });
-
-    // Update dropzone visual state
-    dropzone.classList.toggle('dz-has-files', S.images.length > 0);
-    const dzText = dropzone.querySelector('.dz-text');
-    if (dzText) {
-      dzText.textContent = S.images.length > 0
-        ? `已上傳 ${S.images.length} 張（點擊或拖曳可繼續新增）`
-        : '點擊選取 或 拖曳圖片至此';
-    }
-    // Notify StorageModule that images changed → auto-save B
-    document.dispatchEvent(new CustomEvent('agy:imagesChanged'));
-  }
-
-  // ── Listen for restore event from StorageModule ────────
-  document.addEventListener('agy:restoreImages', ev => {
-    // ev.detail is the images array (may be empty for reset)
-    // S.images has already been set by StorageModule's applySection
-    renderThumbs();
   });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   6. Firebase 雲端模組 (Firebase Module)
+   ───────────────────────────────────────────────────────────── */
+const FirebaseManager = (function () {
+  let _app = null;
+  let _db = null;
+
+  const DEFAULT_CONFIG = {
+    apiKey: "AIzaSyDemoAuctionKeyFake1234567890",
+    databaseURL: "https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "chien-sheng-auction"
+  };
+
+  function init() {
+    let cfg = DEFAULT_CONFIG;
+    try {
+      const stored = SafeStorage.get('agy_fb_config');
+      if (stored) cfg = typeof stored === 'object' ? stored : JSON.parse(stored);
+    } catch (e) {}
+
+    try {
+      if (typeof firebase !== 'undefined' && !_app) {
+        _app = firebase.initializeApp(cfg);
+        _db = firebase.database();
+        if (typeof initServerTimeSync === 'function') {
+          initServerTimeSync(_db);
+        }
+        listenShopSettings();
+        listenAuctionItems();
+      }
+    } catch (e) {
+      console.warn('Firebase init fallback:', e);
+    }
+  }
+
+  // 即時監聽 Firebase 全域設定節點（保證任何訪客與買家都能獲取最新店名與 Logo）
+  function listenShopSettings() {
+    if (!_db) return;
+    _db.ref('settings/shop').on('value', snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        if (val) {
+          if (val.studioName) {
+            if (val.studioName === 'JianSheng Boutique') {
+              updateStudioName('建生工坊', true);
+            } else {
+              updateStudioName(val.studioName, false);
+            }
+          }
+          if (val.studioLogo) {
+            updateStudioLogo(val.studioLogo, false);
+          }
+          if (val.logoConfig) {
+            applyLogoConfig(val.logoConfig, false);
+          }
+        }
+      }
+    });
+  }
+
+  function getDb() { return _db; }
+  function isReady() { return !!_db; }
+
+  return { init: init, getDb: getDb, isReady: isReady };
 })();
 
-// ─────────────────────────────────────────────────────────
-//  GALLERY RENDERER  (Auction page)
-// ─────────────────────────────────────────────────────────
-function renderGallery(imgList) {
-  // Reset
-  aImg.style.display    = 'none';
-  aImgPh.style.display  = 'flex';
-  galleryStrip.innerHTML  = '';
-  galleryCounter.style.display = 'none';
-  galleryPrev.style.display = 'none';
-  galleryNext.style.display = 'none';
-
-  if (!imgList || !imgList.length) return;
-
-  // Reorder: put cover first
-  const ordered = [
-    ...imgList.filter(i => i.isCover),
-    ...imgList.filter(i => !i.isCover),
-  ];
-
-  _galleryIdx = 0;
-
-  function showIdx(idx) {
-    _galleryIdx = Math.max(0, Math.min(idx, ordered.length - 1));
-    const cur = ordered[_galleryIdx];
-    aImg.src = cur.src;
-    aImg.style.display = 'block';
-    aImgPh.style.display = 'none';
-
-    // counter
-    if (ordered.length > 1) {
-      galleryCounter.textContent    = `${_galleryIdx + 1} / ${ordered.length}`;
-      galleryCounter.style.display  = 'block';
-      galleryPrev.style.display     = 'flex';
-      galleryNext.style.display     = 'flex';
-      galleryPrev.disabled = _galleryIdx === 0;
-      galleryNext.disabled = _galleryIdx === ordered.length - 1;
-    }
-
-    // strip highlight
-    galleryStrip.querySelectorAll('.gs-thumb').forEach((th, i) => {
-      th.classList.toggle('active', i === _galleryIdx);
-    });
-    // scroll active thumb into view
-    const activeThumb = galleryStrip.querySelectorAll('.gs-thumb')[_galleryIdx];
-    if (activeThumb) activeThumb.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-  }
-
-  // Build thumbnail strip
-  ordered.forEach((img, idx) => {
-    const th = document.createElement('div');
-    th.className = 'gs-thumb' + (idx === 0 ? ' active' : '');
-    th.innerHTML = `<img src="${img.src}" alt="${img.name}" loading="lazy" />`;
-    th.addEventListener('click', () => showIdx(idx));
-    galleryStrip.appendChild(th);
-  });
-
-  // Arrow listeners (replace old ones by cloning)
-  const newPrev = galleryPrev.cloneNode(true);
-  const newNext = galleryNext.cloneNode(true);
-  galleryPrev.parentNode.replaceChild(newPrev, galleryPrev);
-  galleryNext.parentNode.replaceChild(newNext, galleryNext);
-  newPrev.addEventListener('click', () => showIdx(_galleryIdx - 1));
-  newNext.addEventListener('click', () => showIdx(_galleryIdx + 1));
-
-  // Swipe support (touch)
-  let _tsx = 0;
-  const gMain = el('gallery-main');
-  gMain.addEventListener('touchstart', e => { _tsx = e.touches[0].clientX; }, { passive: true });
-  gMain.addEventListener('touchend',   e => {
-    const dx = e.changedTouches[0].clientX - _tsx;
-    if (Math.abs(dx) > 40) showIdx(_galleryIdx + (dx < 0 ? 1 : -1));
-  }, { passive: true });
-
-  showIdx(0);
-}
-
-// ─────────────────────────────────────────────────────────
-//  ADMIN: SELECT & COLLECT
-// ─────────────────────────────────────────────────────────
-
-/* Mode tabs */
-qsa('.mode-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    qsa('.mode-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected','false'); });
-    tab.classList.add('active'); tab.setAttribute('aria-selected','true');
-    const mode = tab.dataset.mode;
-    el('panel-fixed').classList.toggle('active', mode === 'fixed');
-    el('panel-rolling').classList.toggle('active', mode === 'rolling');
-    S.timerMode = mode;
-  });
-});
-
-/* Anti-snipe toggle */
-cfgAntiSnipe.addEventListener('change', () => {
-  antiSnipeOpts.style.display = cfgAntiSnipe.checked ? 'flex' : 'none';
-});
-
-/* Buffer / extend dropdowns */
-cfgBufferMins.addEventListener('change', () => {
-  cfgBufferCustom.style.display = cfgBufferMins.value === 'custom' ? 'block' : 'none';
-});
-cfgExtendMins.addEventListener('change', () => {
-  cfgExtendCustom.style.display = cfgExtendMins.value === 'custom' ? 'block' : 'none';
-});
-
-/* Custom pickup */
-cfgPickupCustCb.addEventListener('change', () => {
-  cfgPickupCustWrp.style.display = cfgPickupCustCb.checked ? 'block' : 'none';
-});
-
-/* Live video preview */
-cfgVideoUrl.addEventListener('input', () => {
-  const url = parseVideoUrl(cfgVideoUrl.value);
-  if (url) {
-    cfgVideoPreview.style.display = 'block';
-    cfgVideoPreview.innerHTML = `<div class="video-embed"><iframe src="${url}" allowfullscreen></iframe></div>`;
-  } else {
-    cfgVideoPreview.style.display = 'none';
-    cfgVideoPreview.innerHTML = '';
-  }
-});
-
-function getBufferVal(sel, inp) {
-  return sel.value === 'custom' ? (parseInt(inp.value) || 3) : parseInt(sel.value);
-}
-
-function collectAdmin() {
-  S.studioName   = cfgStudioName.value.trim()   || '建生工坊';
-  S.logoUrl      = S.logoSrc || (cfgLogoUrl ? cfgLogoUrl.value.trim() : '');  // prefer dropzone, fallback to URL input
-  S.itemName     = cfgItemName.value.trim()     || '（未命名商品）';
-  S.itemSubtitle = cfgItemSubtitle.value.trim();
-  S.itemDesc     = cfgItemDesc.value.trim();
-  S.itemQty      = Math.max(1, parseInt(cfgItemQty.value) || 1);
-  // images come from S.images (managed by dropzone module)
-  // S.imgUrl is only used as fallback when S.images is empty
-  S.imgUrl       = cfgImgUrl ? cfgImgUrl.value.trim() : '';
-  S.startPrice   = Math.max(0, parseFloat(cfgStartPrice.value) || 0);
-  S.increment    = Math.max(1, parseFloat(cfgIncrement.value)  || 1);
-  S.videoUrl     = cfgVideoUrl.value.trim();
-  S.customTerms  = cfgCustomTerms.value.trim();
-  // Warranty settings
-  S.warrantyMode = document.querySelector('input[name="warranty-mode"]:checked')?.value || 'limited';
-  S.warrantyDays = parseInt(el('cfg-warranty-days')?.value) || 3;
-  S.warrantyTime = el('cfg-warranty-time')?.value || '12:00';
-  S.qt48h        = el('qt-48h')?.checked  ?? true;
-  S.qtTest       = el('qt-test')?.checked ?? true;
-  S.qtAsis       = el('qt-asis')?.checked ?? true;
-
-  // Pickups
-  S.pickups = [];
-  qsa('input[name="pickup"]:not(#pickup-custom-cb):checked').forEach(cb => S.pickups.push(cb.value));
-  if (cfgPickupCustCb.checked && cfgPickupCustTxt.value.trim()) {
-    S.pickups.push(cfgPickupCustTxt.value.trim());
-  }
-  if (!S.pickups.length) S.pickups = ['自取'];
-
-  // Timer mode
-  const activeTab = document.querySelector('.mode-tab.active');
-  S.timerMode = activeTab ? activeTab.dataset.mode : 'fixed';
-
-  // Fixed durations
-  S.fixedDays  = Math.max(0, parseInt(cfgTDays.value)  || 0);
-  S.fixedHours = Math.max(0, parseInt(cfgTHours.value) || 0);
-  S.fixedMins  = Math.max(0, parseInt(cfgTMins.value)  || 0);
-  S.fixedSecs  = Math.max(0, parseInt(cfgTSecs.value)  || 0);
-
-  // Anti-snipe
-  S.antiSnipe  = cfgAntiSnipe.checked;
-  S.bufferMins = getBufferVal(cfgBufferMins, cfgBufferCustom);
-  S.extendMins = getBufferVal(cfgExtendMins, cfgExtendCustom);
-}
-
-// ─────────────────────────────────────────────────────────
-//  PUBLISH & PREVIEW — VALIDATION + BUYER-VIEW MODAL
-// ─────────────────────────────────────────────────────────
-
-/* ── DOM refs for new modals ── */
-const valModal    = el('val-modal');
-const valErrList  = el('val-error-list');
-const btnValClose = el('btn-val-close');
-const pvModal     = el('pv-modal');
-const pvInner     = el('pv-inner');
-const pvFrame     = el('pv-device-frame');
-const btnPvClose  = el('btn-pv-close');
-const btnPvBack   = el('btn-pv-back');
-const btnPvPublish = el('btn-pv-publish');
-const pvBtnMobile  = el('pv-btn-mobile');
-const pvBtnDesktop = el('pv-btn-desktop');
-
-/* ── Validation rules ──────────────────────────────────── */
-function validateAll() {
-  collectAdmin();
-  const errors = [];
-
-  // A: Seller name
-  const sellerName = el('cfg-studio-name')?.value.trim() || '';
-  if (!sellerName) {
-    errors.push({
-      icon: '🏪', targetId: 'cfg-studio-name',
-      cardSel: '[data-section="A"]',
-      msg: '<strong>【區塊 A】</strong> 請填寫「賣家 / 店鋪名稱」',
-    });
-  }
-
-  // B: Item name
-  if (!cfgItemName.value.trim()) {
-    errors.push({
-      icon: '📦', targetId: 'cfg-item-name',
-      cardSel: '[data-section="B"]',
-      msg: '<strong>【區塊 B】</strong> 請填寫「商品名稱」',
-    });
-  }
-
-  // B: Item desc
-  if (!cfgItemDesc.value.trim()) {
-    errors.push({
-      icon: '📝', targetId: 'cfg-item-desc',
-      cardSel: '[data-section="B"]',
-      msg: '<strong>【區塊 B】</strong> 請填寫「詳細說明」',
-    });
-  }
-
-  // B: At least 1 image
-  const hasImages = S.images && S.images.length > 0;
-  const hasImgUrl = el('cfg-img-url')?.value.trim();
-  if (!hasImages && !hasImgUrl) {
-    errors.push({
-      icon: '🖼️', targetId: 'img-dropzone',
-      cardSel: '[data-section="B"]',
-      msg: '<strong>【區塊 B】</strong> 請至少上傳 1 張商品圖片',
-    });
-  }
-
-  // B: YouTube URL format (if provided)
-  const vidUrl = cfgVideoUrl.value.trim();
-  if (vidUrl) {
-    const ytRe = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/)|youtu\.be\/)[\w\-]{11}/;
-    if (!ytRe.test(vidUrl)) {
-      errors.push({
-        icon: '▶️', targetId: 'cfg-video-url',
-        cardSel: '[data-section="B"]',
-        msg: '<strong>【區塊 B】</strong> YouTube 網址格式不正確（需為有效的 YouTube 連結）',
-      });
-    }
-  }
-
-  // C: Start price > 0
-  const sp = parseFloat(cfgStartPrice.value) || 0;
-  if (sp <= 0) {
-    errors.push({
-      icon: '💰', targetId: 'cfg-start-price',
-      cardSel: '[data-section="C"]',
-      msg: '<strong>【區塊 C】</strong> 起標價格須大於 0',
-    });
-  }
-
-  // C: Increment > 0
-  const inc = parseFloat(cfgIncrement.value) || 0;
-  if (inc <= 0) {
-    errors.push({
-      icon: '📈', targetId: 'cfg-increment',
-      cardSel: '[data-section="C"]',
-      msg: '<strong>【區塊 C】</strong> 最低加價單位須大於 0',
-    });
-  }
-
-  // C: Fixed timer must have duration > 0
-  if (S.timerMode === 'fixed') {
-    const totalSecs = S.fixedDays * 86400 + S.fixedHours * 3600 + S.fixedMins * 60 + S.fixedSecs;
-    if (totalSecs <= 0) {
-      errors.push({
-        icon: '⏱️', targetId: 'cfg-t-hours',
-        cardSel: '[data-section-part="timer"]',
-        msg: '<strong>【區塊 C】</strong> 固定期限倒數模式請設定倒數時間（至少 1 秒）',
-      });
-    }
-  }
-
-  // D: At least 1 pickup option
-  const pickupChecked = document.querySelectorAll('input[name="pickup"]:checked').length;
-  if (!pickupChecked) {
-    errors.push({
-      icon: '🚚', targetId: null,
-      cardSel: '[data-section="D"]',
-      msg: '<strong>【區塊 D】</strong> 請至少勾選一種取貨方式',
-    });
-  }
-
-  return errors;
-}
-
-/* ── Show validation error modal ──────────────────────── */
-function openValModal(errors) {
-  valErrList.innerHTML = '';
-  errors.forEach((err, i) => {
-    const li = document.createElement('li');
-    li.className = 'val-error-item';
-    li.style.animationDelay = `${i * 0.05}s`;
-    li.innerHTML = `
-      <span class="val-error-icon">${err.icon}</span>
-      <span class="val-error-msg">${err.msg}</span>
-      <span class="val-error-arrow">→</span>`;
-    li.addEventListener('click', () => {
-      valModal.classList.remove('open');
-      document.body.style.overflow = '';
-      _scrollToError(err);
-    });
-    valErrList.appendChild(li);
-  });
-  valModal.classList.add('open');
-  document.body.style.overflow = 'hidden';
-  // Store first error for auto-scroll on close
-  valModal._firstError = errors[0];
-}
-
-/** Scroll to and highlight an error target */
-function _scrollToError(err, delay = 200) {
-  setTimeout(() => {
-    // Highlight card
-    if (err.cardSel) {
-      const card = document.querySelector(err.cardSel);
-      if (card) {
-        card.classList.add('card-error');
-        setTimeout(() => card.classList.remove('card-error'), 2500);
-      }
-    }
-    // Highlight + scroll to field
-    const target = err.targetId ? el(err.targetId) : null;
-    if (target) {
-      target.classList.add('field-error');
-      setTimeout(() => target.classList.remove('field-error'), 2500);
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => { try { target.focus(); } catch(_) {} }, 400);
-    } else if (err.cardSel) {
-      document.querySelector(err.cardSel)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, delay);
-}
-
-btnValClose?.addEventListener('click', () => {
-  const firstErr = valModal._firstError;
-  valModal.classList.remove('open');
-  document.body.style.overflow = '';
-  // Auto-scroll to first error after modal closes
-  if (firstErr) _scrollToError(firstErr, 250);
-});
-valModal?.addEventListener('click', e => {
-  if (e.target === valModal) {
-    const firstErr = valModal._firstError;
-    valModal.classList.remove('open');
-    document.body.style.overflow = '';
-    if (firstErr) _scrollToError(firstErr, 250);
-  }
-});
-
-/* ── Preview Modal ─────────────────────────────────────── */
-let _pendingTotalSecs = 0;
-let _pvTimerInterval = null;   // preview countdown interval
-let _pvGalleryIdx    = 0;      // preview gallery index
-let _pvImgList       = [];     // preview image list
-
-/* ── Build summary strip ─────────────────────────────────── */
-function buildSummaryStrip() {
-  const wi = typeof window._getWarrantyInfo === 'function'
-    ? window._getWarrantyInfo()
-    : { icon: '🛡️', text: '有限保固 3 天' };
-  const timerStr = S.timerMode === 'rolling'
-    ? '🔄 24小時滾動'
-    : `📅 ${S.fixedDays}天 ${pad(S.fixedHours)}:${pad(S.fixedMins)}:${pad(S.fixedSecs)}`;
-  el('pvs-name').innerHTML     = `<strong>${S.itemName || '—'}</strong>商品名稱`;
-  el('pvs-price').innerHTML    = `<strong>NT$ ${Number(S.startPrice).toLocaleString('zh-TW')}</strong>起標 / +${Number(S.increment).toLocaleString('zh-TW')}`;
-  el('pvs-timer').innerHTML    = `<strong>${timerStr}</strong>計時模式`;
-  el('pvs-pickup').innerHTML   = `<strong>${S.pickups.join('・')}</strong>取貨方式`;
-  el('pvs-warranty').innerHTML = `<strong>${wi.icon} ${wi.text}</strong>保固說明`;
-}
-
-/* ── Build full rich preview content ───────────────────── */
-function buildPreviewContent() {
-  collectAdmin();
-  buildSummaryStrip();
-
-  const wi = typeof window._getWarrantyInfo === 'function'
-    ? window._getWarrantyInfo()
-    : { icon: '🛡️', text: '有限保固 3 天', cls: 'mode-limited' };
-
-  // ── Image list ─────────────────────────────────────────
-  _pvImgList = [
-    ...S.images.filter(i => i.isCover),
-    ...S.images.filter(i => !i.isCover),
-  ];
-  if (!_pvImgList.length && S.imgUrl) {
-    _pvImgList = [{ src: S.imgUrl, name: '外部圖片', isCover: true }];
-  }
-  _pvGalleryIdx = 0;
-
-  // ── Logo ───────────────────────────────────────────────
-  const logoHtml = S.logoSrc
-    ? `<img src="${S.logoSrc}" class="pv-logo-img" alt="Logo" />`
-    : `<div class="pv-logo-placeholder">🏪</div>`;
-
-  // ── Timer string ──────────────────────────────────────
-  const timerModeLabel = S.timerMode === 'rolling' ? '🔄 24小時滾動重置' : '📅 固定期限倒數';
-  const timerBadgeColor = S.timerMode === 'rolling'
-    ? 'rgba(168,85,247,.2);border:1px solid rgba(168,85,247,.45);color:#d8b4fe'
-    : 'rgba(99,102,241,.2);border:1px solid rgba(129,140,248,.45);color:#a5b4fc';
-
-  // ── Anti-snipe label ──────────────────────────────────
-  const antiSnipeHtml = S.antiSnipe
-    ? `<div class="pv-anti-snipe-pill">🛡️ 防壓標啟動（最後 ${S.bufferMins} 分鐘延長 ${S.extendMins} 分鐘）</div>`
-    : '';
-
-  // ── Pickup pills ──────────────────────────────────────
-  const pickupPills = S.pickups.map(p =>
-    `<span class="pv-pickup-pill">${p}</span>`
-  ).join('');
-
-  // ── Warranty class ────────────────────────────────────
-  const wiClass = wi.cls || 'mode-limited';
-  const wiColors = {
-    'mode-limited': 'rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);',
-    'mode-none'   : 'rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);',
-    'mode-onsite' : 'rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);',
-  };
-  const wiColorStyle = wiColors[wiClass] || wiColors['mode-limited'];
-
-  // ── Video embed ────────────────────────────────────────
-  const embedUrl = parseVideoUrl(S.videoUrl);
-  const videoSection = embedUrl
-    ? `<div class="pv-section-card">
-         <div class="pv-section-title">🎬 商品影片</div>
-         <div class="pv-video-wrap"><iframe src="${embedUrl}" allowfullscreen></iframe></div>
-       </div>`
-    : '';
-
-  // ── Custom terms ──────────────────────────────────────
-  const termsSection = S.customTerms
-    ? `<div class="pv-section-card pv-terms-block">
-         <div class="pv-section-title">📜 競標條款</div>
-         <div class="pv-terms-text">${S.customTerms.slice(0, 400)}${S.customTerms.length > 400 ? '\n…（點擊「我要出標」查看完整條款）' : ''}</div>
-       </div>`
-    : '';
-
-  // ── Build gallery HTML ────────────────────────────────
-  const galleryImages = _pvImgList;
-  const mainImgHtml = galleryImages.length
-    ? `<img id="pv-gallery-img" class="pv-gallery-img" src="${galleryImages[0].src}" alt="商品圖" />`
-    : `<div class="pv-gallery-placeholder">📷 尚未上傳圖片</div>`;
-  const hasMulti = galleryImages.length > 1;
-  const arrowsHtml = hasMulti
-    ? `<button class="pv-gallery-arrow pv-gallery-prev" id="pv-gallery-prev" aria-label="上一張">‹</button>
-       <button class="pv-gallery-arrow pv-gallery-next" id="pv-gallery-next" aria-label="下一張">›</button>
-       <div class="pv-gallery-counter" id="pv-gallery-counter">1 / ${galleryImages.length}</div>`
-    : '';
-  const thumbsHtml = hasMulti
-    ? `<div class="pv-gallery-thumbs" id="pv-gallery-thumbs">${
-        galleryImages.map((img, i) =>
-          `<div class="pv-gs-thumb${i === 0 ? ' active' : ''}" data-idx="${i}">
-             <img src="${img.src}" alt="${img.name}" loading="lazy" />
-           </div>`
-        ).join('')
-      }</div>`
-    : '';
-
-  // ── QR Code placeholder ────────────────────────────────
-  const qrSection = `
-    <div class="pv-section-card">
-      <div class="pv-section-title">🔗 分享 & QR Code</div>
-      <div class="pv-qr-row">
-        <div class="pv-qr-box" id="pv-qr-box"></div>
-        <div class="pv-qr-meta">
-          <div style="font-size:.75rem;color:var(--c-text-2);margin-bottom:6px;">正式發布後將生成專屬 QR Code，掃描即可直接進入競標頁面。</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <span class="pv-tag-chip">📋 複製連結</span>
-            <span class="pv-tag-chip">⬇ 下載 QR</span>
-          </div>
-        </div>
-      </div>
-    </div>`;
-
-  // ── Inject HTML ───────────────────────────────────────
-  pvInner.innerHTML = `
-    <div class="pv-page-wrap">
-
-      <!-- Seller Nav Bar -->
-      <div class="pv-nav-bar">
-        <div class="pv-nav-brand">
-          ${logoHtml}
-          <span class="pv-nav-studio">${S.studioName || '賣家資訊'}</span>
-        </div>
-        <div class="pv-nav-badge">👁 買家視角</div>
-      </div>
-
-      <!-- Gallery -->
-      <div class="pv-gallery-wrap">
-        <div class="pv-gallery-main" id="pv-gallery-main">
-          ${mainImgHtml}
-          ${arrowsHtml}
-        </div>
-        ${thumbsHtml}
-        <div class="pv-qty-badge">數量：${S.itemQty} 件</div>
-      </div>
-
-      <!-- Item info -->
-      <div class="pv-info-block">
-        <h2 class="pv-item-name">${S.itemName || '—'}</h2>
-        ${S.itemSubtitle ? `<p class="pv-item-subtitle">${S.itemSubtitle}</p>` : ''}
-        <div class="pv-pickup-row">${pickupPills}</div>
-      </div>
-
-      <!-- Timer Card -->
-      <div class="pv-section-card pv-timer-card">
-        <div class="pv-timer-mode-badge" style="background:${timerBadgeColor};">${timerModeLabel}</div>
-        <div class="pv-timer-ring-wrap">
-          <svg class="pv-ring-svg" viewBox="0 0 200 200">
-            <defs>
-              <linearGradient id="pv-rg" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%"   stop-color="#f59e0b"/>
-                <stop offset="50%"  stop-color="#ef4444"/>
-                <stop offset="100%" stop-color="#a855f7"/>
-              </linearGradient>
-            </defs>
-            <circle class="pv-ring-track" cx="100" cy="100" r="86" />
-            <circle class="pv-ring-fill"  cx="100" cy="100" r="86"
-              id="pv-ring-fill"
-              stroke="url(#pv-rg)"
-              stroke-dasharray="540.35"
-              stroke-dashoffset="0" />
-          </svg>
-          <div class="pv-ring-inner">
-            <div class="pv-ring-label">剩餘時間</div>
-            <div class="pv-ring-digits" id="pv-ring-digits">${
-              _pendingTotalSecs > 0
-                ? (() => { const r = dhms(_pendingTotalSecs); return r.d > 0 ? `${r.d}天 ${pad(r.h)}:${pad(r.m)}:${pad(r.s)}` : `${pad(r.h)}:${pad(r.m)}:${pad(r.s)}`; })()
-                : '--:--:--'
-            }</div>
-            <div class="pv-ring-status live" id="pv-ring-status">🟢 倒數示意</div>
-          </div>
-        </div>
-        ${antiSnipeHtml}
-      </div>
-
-      <!-- Bid Card -->
-      <div class="pv-section-card pv-bid-card">
-        <div style="font-size:.75rem;color:var(--c-text-2);margin-bottom:4px;">💰 目前最高出價</div>
-        <div class="pv-bid-amount">NT$ ${Number(S.startPrice).toLocaleString('zh-TW')}</div>
-        <div style="font-size:.78rem;color:var(--c-text-3);margin:4px 0 12px;">起標 ・ 每次加價 ${Number(S.increment).toLocaleString('zh-TW')} 元</div>
-        <div class="pv-bid-hint-row">
-          <span>下一口最低：</span>
-          <strong style="color:#22c55e;font-family:var(--f-num);">NT$ ${Number(S.startPrice + S.increment).toLocaleString('zh-TW')}</strong>
-          <span class="pv-inc-tag">加價單位 NT$${Number(S.increment).toLocaleString('zh-TW')}</span>
-        </div>
-
-        <!-- Demo Bid Input -->
-        <div class="pv-bid-input-row">
-          <button class="pv-bid-adj-btn" disabled>−</button>
-          <input type="number" class="pv-bid-field" value="${S.startPrice + S.increment}" readonly />
-          <button class="pv-bid-adj-btn" disabled>＋</button>
-        </div>
-
-        <!-- Demo submit → opens terms demo modal -->
-        <button class="pv-submit-btn" id="pv-demo-bid-btn">🔨 我要出標（試演條款彈窗）</button>
-      </div>
-
-      <!-- Description -->
-      <div class="pv-section-card">
-        <div class="pv-section-title">📝 商品詳情</div>
-        <div class="pv-desc-text">${S.itemDesc || '（無詳細說明）'}</div>
-      </div>
-
-      <!-- Video -->
-      ${videoSection}
-
-      <!-- Warranty -->
-      <div class="pv-section-card" style="background:${wiColorStyle}border-radius:14px;padding:14px;">
-        <div class="pv-warranty-row">
-          <span style="font-size:1.3rem;">${wi.icon}</span>
-          <span style="font-size:.85rem;font-weight:600;">${wi.text}</span>
-        </div>
-      </div>
-
-      <!-- Terms -->
-      ${termsSection}
-
-      <!-- QR -->
-      ${qrSection}
-
-    </div>
-
-    <!-- ── Terms Demo Modal (inside pv-inner) ── -->
-    <div class="pv-terms-modal" id="pv-terms-modal">
-      <div class="pv-terms-sheet">
-        <div class="pv-terms-drag"></div>
-        <div class="pv-terms-hd">🔨 競標規則與宣告</div>
-        <div class="pv-terms-body">
-          <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">請仔細閱讀並勾選全部條款後，方可送出競標。</p>
-          <div class="pv-warranty-banner">
-            <span>${wi.icon}</span>
-            <span>${wi.text}</span>
-          </div>
-          <div class="pv-term-item">
-            <input type="checkbox" class="pv-tcb" id="pvt1" />
-            <label for="pvt1"><strong>1. 遵守拍賣規則</strong><br>
-              <span>本人已閱讀並完全同意本次拍賣之所有規則，承諾嚴格遵守。</span></label>
-          </div>
-          <div class="pv-term-item">
-            <input type="checkbox" class="pv-tcb" id="pvt2" />
-            <label for="pvt2"><strong>2. 同意取貨方式</strong><br>
-              <span>本人同意依拍賣主所設定之取貨方式辦理。</span></label>
-          </div>
-          <div class="pv-term-item">
-            <input type="checkbox" class="pv-tcb" id="pvt3" />
-            <label for="pvt3"><strong>3. 絕不棄標切結</strong><br>
-              <span>得標後若無故拒絕付款或取貨，視同棄標，主辦方保留追訴權利。</span></label>
-          </div>
-          ${S.customTerms ? `
-          <div class="pv-full-terms">${S.customTerms}</div>` : ''}
-          <div class="pv-term-item pv-term-final">
-            <input type="checkbox" class="pv-tcb" id="pvt5" />
-            <label for="pvt5"><strong>✅ 我已完整閱讀並同意上述所有條款</strong><br>
-              <span>包含保固條件、取件期限及現況出售等所有說明事項。</span></label>
-          </div>
-          <div class="pv-modal-confirm-box">
-            <div class="pv-mcrow"><span>競標者</span><strong>示範帳號</strong></div>
-            <div class="pv-mcrow"><span>出價金額</span><strong style="color:#fbbf24;font-family:var(--f-num);font-size:1.1rem;">NT$ ${Number(S.startPrice + S.increment).toLocaleString('zh-TW')}</strong></div>
-          </div>
-        </div>
-        <div class="pv-terms-ft">
-          <button class="pv-cancel-btn" id="pv-demo-cancel">取消</button>
-          <button class="pv-confirm-btn" id="pv-demo-confirm" disabled>✅ 確認競標（示演）</button>
-        </div>
-      </div>
-    </div>`;
-
-  // ── Wire preview gallery ──────────────────────────────
-  _wirePvGallery();
-
-  // ── Wire preview countdown timer ─────────────────────
-  _startPvTimer();
-
-  // ── Wire terms demo modal ─────────────────────────────
-  _wirePvTermsDemo();
-
-  // ── Wire QR placeholder ───────────────────────────────
-  _renderPvQr();
-}
-
-/* ── Preview Gallery Logic ───────────────────────────── */
-function _wirePvGallery() {
-  const imgs = _pvImgList;
-  if (!imgs.length) return;
-
-  const pvImg     = pvInner.querySelector('#pv-gallery-img');
-  const pvCounter = pvInner.querySelector('#pv-gallery-counter');
-  const pvPrev    = pvInner.querySelector('#pv-gallery-prev');
-  const pvNext    = pvInner.querySelector('#pv-gallery-next');
-  const pvThumbs  = pvInner.querySelectorAll('.pv-gs-thumb');
-
-  function pvShowIdx(idx) {
-    _pvGalleryIdx = Math.max(0, Math.min(idx, imgs.length - 1));
-    if (pvImg) { pvImg.src = imgs[_pvGalleryIdx].src; }
-    if (pvCounter) pvCounter.textContent = `${_pvGalleryIdx + 1} / ${imgs.length}`;
-    pvThumbs.forEach((th, i) => th.classList.toggle('active', i === _pvGalleryIdx));
-    if (pvPrev) pvPrev.disabled = _pvGalleryIdx === 0;
-    if (pvNext) pvNext.disabled = _pvGalleryIdx === imgs.length - 1;
-  }
-
-  if (pvPrev) pvPrev.addEventListener('click', () => pvShowIdx(_pvGalleryIdx - 1));
-  if (pvNext) pvNext.addEventListener('click', () => pvShowIdx(_pvGalleryIdx + 1));
-  pvThumbs.forEach((th, i) => th.addEventListener('click', () => pvShowIdx(i)));
-
-  // Touch swipe
-  const gMain = pvInner.querySelector('#pv-gallery-main');
-  if (gMain) {
-    let _tsx = 0;
-    gMain.addEventListener('touchstart', e => { _tsx = e.touches[0].clientX; }, { passive: true });
-    gMain.addEventListener('touchend',   e => {
-      const dx = e.changedTouches[0].clientX - _tsx;
-      if (Math.abs(dx) > 40) pvShowIdx(_pvGalleryIdx + (dx < 0 ? 1 : -1));
-    }, { passive: true });
-  }
-
-  pvShowIdx(0);
-}
-
-/* ── Preview Countdown Timer ─────────────────────────── */
-function _startPvTimer() {
-  clearInterval(_pvTimerInterval);
-  if (_pendingTotalSecs <= 0) return;
-
-  const PV_RING_CIRC = 2 * Math.PI * 86; // r=86 → ≈540.35
-  let _pvRemaining = _pendingTotalSecs;
-  const _pvTotal   = _pendingTotalSecs;
-
-  function _tickPv() {
-    _pvRemaining = Math.max(0, _pvRemaining - 1);
-    const pvDigits = pvInner.querySelector('#pv-ring-digits');
-    const pvFill   = pvInner.querySelector('#pv-ring-fill');
-    const pvStatus = pvInner.querySelector('#pv-ring-status');
-    if (!pvDigits) { clearInterval(_pvTimerInterval); return; }
-
-    const { d, h, m, s } = dhms(_pvRemaining);
-    pvDigits.textContent = d > 0 ? `${d}天 ${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(h)}:${pad(m)}:${pad(s)}`;
-
-    if (pvFill) {
-      const ratio = Math.min(1, _pvRemaining / _pvTotal);
-      pvFill.style.strokeDashoffset = (PV_RING_CIRC * (1 - ratio)).toFixed(2);
-    }
-    if (_pvRemaining <= 0) {
-      clearInterval(_pvTimerInterval);
-      if (pvStatus) { pvStatus.textContent = '⏰ 示演結束'; pvStatus.className = 'pv-ring-status ended'; }
-    } else if (_pvRemaining < 300) {
-      if (pvDigits) pvDigits.style.color = '#ef4444';
-    } else {
-      if (pvDigits) pvDigits.style.color = '';
-    }
-  }
-
-  _pvTimerInterval = setInterval(_tickPv, 1000);
-}
-
-/* ── Terms Demo Modal ────────────────────────────────── */
-function _wirePvTermsDemo() {
-  const termsModal = pvInner.querySelector('#pv-terms-modal');
-  const demoBtn    = pvInner.querySelector('#pv-demo-bid-btn');
-  const cancelBtn  = pvInner.querySelector('#pv-demo-cancel');
-  const confirmBtn = pvInner.querySelector('#pv-demo-confirm');
-  const tcbs       = pvInner.querySelectorAll('.pv-tcb');
-
-  if (!termsModal || !demoBtn) return;
-
-  demoBtn.addEventListener('click', () => {
-    termsModal.classList.add('open');
-    tcbs.forEach(cb => { cb.checked = false; });
-    if (confirmBtn) confirmBtn.disabled = true;
-  });
-
-  tcbs.forEach(cb => cb.addEventListener('change', () => {
-    if (confirmBtn) confirmBtn.disabled = !Array.from(tcbs).every(c => c.checked);
-  }));
-
-  cancelBtn?.addEventListener('click', () => termsModal.classList.remove('open'));
-
-  confirmBtn?.addEventListener('click', () => {
-    termsModal.classList.remove('open');
-    showToast('🎉 條款試演完成！（實際出標請在正式頁面操作）', 'success', 3500);
-  });
-}
-
-/* ── Preview QR placeholder ──────────────────────────── */
-function _renderPvQr() {
-  const pvQrBox = pvInner.querySelector('#pv-qr-box');
-  if (!pvQrBox) return;
-  pvQrBox.innerHTML = '';
-  const previewUrl = buildShareUrl();
-  try {
-    new QRCode(pvQrBox, {
-      text: previewUrl || 'https://example.com',
-      width: 90, height: 90,
-      colorDark: '#000', colorLight: '#fff',
-      correctLevel: QRCode.CorrectLevel.M,
-    });
-  } catch { pvQrBox.innerHTML = '<div style="font-size:.7rem;color:#888;padding:8px;">QR 預覽</div>'; }
-}
-
-function openPreviewModal() {
-  buildPreviewContent();
-  pvModal.classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closePreviewModal() {
-  clearInterval(_pvTimerInterval);
-  _pvTimerInterval = null;
-  pvModal.classList.remove('open');
-  document.body.style.overflow = '';
-  if (pvInner) pvInner.innerHTML = ''; // clean up
-}
-
-// Device toggle
-[pvBtnMobile, pvBtnDesktop].forEach(btn => btn?.addEventListener('click', () => {
-  pvBtnMobile?.classList.toggle('active',  btn === pvBtnMobile);
-  pvBtnDesktop?.classList.toggle('active', btn === pvBtnDesktop);
-  pvFrame?.classList.toggle('desktop', btn === pvBtnDesktop);
-}));
-
-btnPvClose?.addEventListener('click', closePreviewModal);
-btnPvBack?.addEventListener('click',  closePreviewModal);
-pvModal?.addEventListener('click', e => { if (e.target === pvModal) closePreviewModal(); });
-
-// Confirm & Publish from preview modal
-btnPvPublish?.addEventListener('click', () => {
-  closePreviewModal();
-  doPublish(_pendingTotalSecs);
-});
-
-/* ── Core publish logic (extracted) ───────────────────── */
-async function doPublish(totalSecs) {
-  collectAdmin();
-  S.currentBid      = S.startPrice;
-  S.topBidder       = '';
-  S.topBidTime      = null;
-  S.bidHistory      = [];
-  S.auctionLive     = true;
-  S.auctionDone     = false;
-  S.antiSnipeActive = false;
-  S.totalSecs       = totalSecs;
-  S.endTime         = new Date(Date.now() + totalSecs * 1000);
-  S.shareUrl        = buildShareUrl();
-
-  renderAuction();
-  startTimer();
-  generateQR();
-  switchPage('auction');
-
-  // ── Firebase: publish to cloud ────────────────────────
-  if (FirebaseModule.isReady()) {
-    showToast('☁️ 正在上傳至雲端…', 'info', 2000);
-    const auctionId = await FirebaseModule.publishAuction(totalSecs);
-    if (auctionId) {
-      // Override share URL with cloud URL
-      const cloudUrl = FirebaseModule.buildCloudUrl(auctionId);
-      S.shareUrl = cloudUrl;
-      S.auctionId = auctionId;
-      // Update share URL field + regenerate QR
-      const shareEl = el('a-share-url');
-      if (shareEl) shareEl.value = cloudUrl;
-      generateQR(cloudUrl);
-      showToast(`🚀 拍賣已發布至雲端！ID: ${auctionId}`, 'success', 5000);
-    } else {
-      showToast('⚠️ 雲端上傳失敗，以本機模式繼續', 'warning', 4000);
-    }
-  } else {
-    // Local mode
-    showToast('🚀 拍賣已成功發布！QR Code 已生成', 'success', 4000);
-  }
-
-  confetti(3000);
-
-  // 2.5s 後提示複製分享連結
-  setTimeout(() => {
-    if (!FirebaseModule.isReady()) {
-      showToast('🔗 請至下方複製分享連結或下載 QR Code', 'info', 4500);
-    }
-    // 自動選取分享網址欄位（方便複製）
-    const shareEl = el('a-share-url');
-    if (shareEl) {
-      const shareCard = el('share-card');
-      if (shareCard) {
-        shareCard.classList.add('just-published');
-        setTimeout(() => shareCard.classList.remove('just-published'), 2000);
-        shareCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      setTimeout(() => { try { shareEl.select(); } catch(_) {} }, 600);
-    }
-  }, 2500);
-}
-
-
-/* ── 👁 Preview button: validate then open preview ─────── */
-btnPreview.addEventListener('click', () => {
-  const errors = validateAll();
-  if (errors.length) {
-    openValModal(errors);
-    return;
-  }
-  // Compute totalSecs for display
-  if (S.timerMode === 'fixed') {
-    _pendingTotalSecs = S.fixedDays * 86400 + S.fixedHours * 3600 + S.fixedMins * 60 + S.fixedSecs;
-  } else {
-    _pendingTotalSecs = 86400;
-  }
-  openPreviewModal();
-});
-
-/* ── 🚀 Publish button: validate → preview → confirm ──── */
-btnPublish.addEventListener('click', () => {
-  const errors = validateAll();
-  if (errors.length) {
-    openValModal(errors);
-    return;
-  }
-
-  if (S.timerMode === 'fixed') {
-    _pendingTotalSecs = S.fixedDays * 86400 + S.fixedHours * 3600 + S.fixedMins * 60 + S.fixedSecs;
-  } else {
-    _pendingTotalSecs = 86400;
-  }
-  openPreviewModal();
-});
-
-btnBack.addEventListener('click', () => {
-  stopTimer();
-  switchPage('admin');
-});
-
-// ─────────────────────────────────────────────────────────
-//  PAGE SWITCH  ── 確保頁面完整切換，避免排版重疊
-// ─────────────────────────────────────────────────────────
-function switchPage(which) {
-  const adminEl   = el('page-admin');
-  const auctionEl = el('page-auction');
-
-  if (which === 'auction') {
-    // ── 顯示買家競標頁面 ────────────────────────────────
-    if (adminEl) {
-      adminEl.classList.remove('active');
-      adminEl.style.display = 'none';     // 確實隱藏，避免 z-index / overflow 衝突
-    }
-    if (auctionEl) {
-      auctionEl.classList.add('active');
-      auctionEl.style.display = '';       // 讓 CSS (#page-auction.active) 接管
-      // 確保 admin topbar 的 sticky 不再覆蓋競標頁面
-      const adminTopbar = document.querySelector('.admin-topbar');
-      if (adminTopbar) adminTopbar.style.display = 'none';
-    }
-  } else {
-    // ── 顯示賣家後台管理頁面 ────────────────────────────
-    if (auctionEl) {
-      auctionEl.classList.remove('active');
-      auctionEl.classList.remove('buyer-loading');
-      auctionEl.style.display = 'none';
-    }
-    if (adminEl) {
-      adminEl.classList.add('active');
-      adminEl.style.display = '';         // 讓 CSS (.page.active) 接管
-      const adminTopbar = document.querySelector('.admin-topbar');
-      if (adminTopbar) adminTopbar.style.display = '';
-    }
-  }
-
-  window.scrollTo({ top: 0, behavior: 'instant' });
-}
-
-/** 顯示買家頁面載入中狀態（Firebase 資料尚未就緒時） */
-function showBuyerLoading(show = true) {
-  const auctionEl = el('page-auction');
-  if (!auctionEl) return;
-  if (show) {
-    auctionEl.classList.add('buyer-loading');
-  } else {
-    auctionEl.classList.remove('buyer-loading');
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────
-//  RENDER AUCTION PAGE
-// ─────────────────────────────────────────────────────────
-function renderAuction() {
-  document.querySelector('#page-title').textContent = `${S.itemName}｜${S.studioName}`;
-
-  // Header / Nav
-  aStudio.textContent = S.studioName;
-  if (S.logoUrl) { aLogo.src = S.logoUrl; aLogo.style.display = 'block'; }
-  else aLogo.style.display = 'none';
-
-  // Product
-  aItemName.textContent = S.itemName;
-  aItemSub.textContent  = S.itemSubtitle;
-  aQtyBadge.textContent = `數量：${S.itemQty} 件`;
-
-  // ── Gallery / Images ──────────────────────────────────
-  _galleryIdx = 0;
-
-  // Build combined image list: S.images first, then URL fallback
-  const imgList = [...S.images];
-  if (!imgList.length && S.imgUrl) {
-    imgList.push({ src: S.imgUrl, name: '外部網址', isCover: true });
-  }
-
-  renderGallery(imgList);
-
-  // Pickup chips
-  aPickupChips.innerHTML = '';
-  const icns = { '自取':'🏠', '宅配/寄送':'📦', '超商取貨':'🏪' };
-  S.pickups.forEach(p => {
-    const sp = document.createElement('span');
-    sp.className = 'pickup-chip';
-    sp.textContent = (icns[p] || '✏️') + ' ' + p;
-    aPickupChips.appendChild(sp);
-  });
-
-  // Description
-  aDesc.textContent = S.itemDesc || '（無詳細說明）';
-
-  // Video
-  const vUrl = parseVideoUrl(S.videoUrl);
-  const isMobile = window.innerWidth < 768;
-
-  if (vUrl) {
-    const ifrHtml = `<div class="video-embed"><iframe src="${vUrl}" allowfullscreen></iframe></div>`;
-    if (isMobile) {
-      aVideoMobile.innerHTML = ifrHtml;
-      aVideoMobile.style.display = 'block';
-      aVideoCard.style.display = 'none';
-    } else {
-      aVideoEmbed.innerHTML = ifrHtml;
-      aVideoCard.style.display = 'block';
-      aVideoMobile.style.display = 'none';
-    }
-  } else {
-    aVideoCard.style.display = 'none';
-    aVideoMobile.style.display = 'none';
-  }
-
-  // Mode badge
-  aModeBadge.textContent = S.timerMode === 'rolling' ? '🔄 24小時滾動' : '📅 固定倒數';
-
-  // Anti-snipe pill
-  antiSnipePill.style.display = S.antiSnipe ? 'block' : 'none';
-
-  // Bid display
-  renderBid();
-
-  // Share URL
-  aShareUrl.value = S.shareUrl || buildShareUrl();
-
-  // Custom terms in modal
-  if (S.customTerms) {
-    t4Wrap.style.display = 'flex';
-    t4Text.textContent = S.customTerms;
-  } else {
-    t4Wrap.style.display = 'none';
-  }
-
-  // Bid input default
-  inpBid._userEdited = false;
-  setNextBidInput();
-}
-
-function renderBid() {
-  aCurBid.textContent      = fmt(S.currentBid);
-  aIncrTag.textContent     = `加價單位 ${fmt(S.increment)}`;
-  mbarBid.textContent      = fmt(S.currentBid);
-  histBadge.textContent    = S.bidHistory.length;
-
-  if (S.topBidder) {
-    aTopBidder.textContent = '🏆 ' + maskName(S.topBidder);
-    aBidTime.textContent   = relTime(S.topBidTime);
-  } else {
-    aTopBidder.textContent = '尚無出價，搶先下標！';
-    aBidTime.textContent   = '';
-  }
-
-  setNextBidInput();
-  renderHistory();
-}
-
-function setNextBidInput() {
-  const next = Math.max(S.startPrice, S.currentBid + S.increment);
-  aNextBid.textContent = fmt(next);
-  inpBid.min = next;
-  if (!inpBid._userEdited) inpBid.value = next;
-}
-
-function renderHistory() {
-  histList.innerHTML = '';
-  [...S.bidHistory].reverse().forEach((e, i) => {
-    const d = document.createElement('div');
-    d.className = 'h-item' + (i === 0 ? ' top' : '');
-    d.innerHTML = `
-      <span class="h-item-user">${maskName(e.user)}</span>
-      <span class="h-item-amt">${fmt(e.amount)}</span>
-      <span class="h-item-time">${relTime(e.time)}</span>`;
-    histList.appendChild(d);
-  });
-}
-
-// ─────────────────────────────────────────────────────────
-//  COUNTDOWN TIMER
-// ─────────────────────────────────────────────────────────
-function startTimer() {
-  stopTimer();
-  if (!S.endTime) return;
-
-  ringStatus.textContent  = '競標進行中';
-  ringStatus.className    = 'ring-status live';
-  ringLabel.textContent   = S.timerMode === 'rolling' ? '24小時重置' : '剩餘時間';
-
-  _timerInterval = setInterval(tickTimer, 500);
-}
-
-function stopTimer() {
-  clearInterval(_timerInterval);
-  _timerInterval = null;
-}
-
-function tickTimer() {
-  const rem = (S.endTime - Date.now()) / 1000;
-  if (rem <= 0) {
-    endAuction(); return;
-  }
-  renderTimer(rem);
-}
-
-function renderTimer(rem) {
-  const { d, h, m, s, total } = dhms(rem);
-
-  // Digits
-  if (d > 0) {
-    ringDays.textContent   = `${d} 天`;
-    ringDigits.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
-  } else {
-    ringDays.textContent   = '';
-    ringDigits.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
-  }
-
-  // Ring arc
-  const ratio = Math.min(1, total / S.totalSecs);
-  ringFill.style.strokeDashoffset = (RING_CIRCUMFERENCE * (1 - ratio)).toFixed(2);
-
-  // Colour urgency
-  if (total < 60) {
-    ringDigits.style.color = '#ef4444';
-    ringDigits.style.textShadow = '0 0 18px rgba(239,68,68,.6)';
-  } else if (total < 300) {
-    ringDigits.style.color = '#f97316';
-    ringDigits.style.textShadow = '0 0 16px rgba(249,115,22,.5)';
-  } else {
-    ringDigits.style.color = '';
-    ringDigits.style.textShadow = '';
-  }
-
-  // Mobile bar
-  mbarStatus.textContent = d > 0
-    ? `剩 ${d}天 ${pad(h)}:${pad(m)}:${pad(s)}`
-    : `剩 ${pad(h)}:${pad(m)}:${pad(s)}`;
-
-  // Show anti-snipe indicator
-  antiSnipePill.style.display = (S.antiSnipe && S.antiSnipeActive) ? 'block' : (S.antiSnipe ? 'block' : 'none');
-}
-
-// ─────────────────────────────────────────────────────────
-//  END AUCTION
-// ─────────────────────────────────────────────────────────
-function endAuction() {
-  stopTimer();
-  S.auctionLive = false;
-  S.auctionDone = true;
-
-  ringDigits.textContent = '00:00:00';
-  ringDays.textContent   = '';
-  ringStatus.textContent = '拍賣結束';
-  ringStatus.className   = 'ring-status ended';
-  ringFill.style.strokeDashoffset = RING_CIRCUMFERENCE.toFixed(2);
-  mbarStatus.textContent = '拍賣已結束';
-
-  btnBid.disabled = true;
-  bidBtnText.textContent = '拍賣已結束';
-  // Disable all bid interaction controls
-  [btnMinus, btnPlus].forEach(b => { b.disabled = true; });
-  qsa('.qb-chip').forEach(c => { c.disabled = true; });
-
-  // ── Sync auction end to Firebase ─────────────────────
-  FirebaseModule.pushAuctionEnd();
-
-  if (S.topBidder) {
-    showToast(`🎉 得標：${maskName(S.topBidder)} · ${fmt(S.currentBid)}`, 'success', 8000);
-    confetti(4500);
-  } else {
-    showToast('⏰ 拍賣結束，無人出價', 'warning', 5000);
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────
-//  ANTI-SNIPE LOGIC
-// ─────────────────────────────────────────────────────────
 /**
- * Called after every successful bid.
- * MODE FIXED:   If remaining time < bufferMins, extend by extendMins.
- * MODE ROLLING: Always reset to 24h.
+ * 即時監聽拍賣商品即時節點（支援高併發 Transaction 與多買家同步跳轉）
  */
-function handleAntiSnipe() {
-  if (!S.antiSnipe || !S.endTime) return;
-
-  const rem = (S.endTime - Date.now()) / 1000;
-
-  if (S.timerMode === 'rolling') {
-    // Always reset to 24h
-    S.totalSecs = 86400;
-    S.endTime   = new Date(Date.now() + 86400 * 1000);
-    S.antiSnipeActive = true;
-    showToast('🔄 24小時滾動重置！有人出標，計時重置。', 'warning', 4500);
-    startTimer();
-    // ── Sync to Firebase ─────────────────────────────────
-    FirebaseModule.pushAntiSnipe(S.endTime.getTime(), 86400);
-
-  } else {
-    // Fixed: only if within buffer window
-    const bufferSecs = S.bufferMins * 60;
-    if (rem <= bufferSecs) {
-      const extSecs = S.extendMins * 60;
-      S.endTime = new Date(Date.now() + extSecs * 1000);
-      S.totalSecs = extSecs;
-      S.antiSnipeActive = true;
-      showToast(`🛡️ 防壓標！最後 ${S.bufferMins} 分鐘內有人出標，延長 ${S.extendMins} 分鐘！`, 'warning', 5000);
-      startTimer();
-      // ── Sync to Firebase ─────────────────────────────────
-      FirebaseModule.pushAntiSnipe(S.endTime.getTime(), extSecs);
-    }
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────
-//  LOGIN
-// ─────────────────────────────────────────────────────────
-function doLogin() {
-  const acc = inpAccount.value.trim();
-  if (!acc) {
-    inpAccount.classList.add('shake');
-    setTimeout(() => inpAccount.classList.remove('shake'), 400);
-    showToast('⚠️ 請輸入帳號 / 暱稱', 'warning'); return;
-  }
-  S.loggedUser = acc;
-  loggedUserLbl.textContent = `👤 ${acc}`;
-  loginForm.style.display = 'none';
-  loggedUserBar.style.display = 'flex';
-  showToast(`✅ 已登入：${acc}`, 'success');
-}
-
-btnLogin.addEventListener('click', doLogin);
-inpAccount.addEventListener('keydown',  e => { if (e.key === 'Enter') doLogin(); });
-inpPassword.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-
-btnLogout.addEventListener('click', () => {
-  S.loggedUser = null;
-  loginForm.style.display = 'flex';
-  loggedUserBar.style.display = 'none';
-  inpAccount.value = ''; inpPassword.value = '';
-  showToast('👋 已登出');
-});
-
-// ─────────────────────────────────────────────────────────
-//  LONG-PRESS HELPER  (hold to repeat action)
-// ─────────────────────────────────────────────────────────
-function setupLongPress(btn, action, delay = 500, interval = 100) {
-  let timer, repeat;
-  const start = () => {
-    timer = setTimeout(() => { repeat = setInterval(action, interval); }, delay);
-  };
-  const stop = () => { clearTimeout(timer); clearInterval(repeat); };
-  btn.addEventListener('mousedown',   start);
-  btn.addEventListener('touchstart',  start, { passive: true });
-  btn.addEventListener('mouseup',     stop);
-  btn.addEventListener('mouseleave',  stop);
-  btn.addEventListener('touchend',    stop);
-  btn.addEventListener('touchcancel', stop);
-}
-
-// ─────────────────────────────────────────────────────────
-//  ADMIN STEPPER — 起標價格
-// ─────────────────────────────────────────────────────────
-/** Get current increment value safely */
-function getAdminIncrement() {
-  return Math.max(1, parseFloat(cfgIncrement.value) || 1);
-}
-
-/** Clamp start price to >= 0 */
-btnSpMinus.addEventListener('click', () => {
-  const step = getAdminIncrement();
-  const cur  = parseFloat(cfgStartPrice.value) || 0;
-  cfgStartPrice.value = Math.max(0, cur - step);
-  cfgStartPrice.dispatchEvent(new Event('input'));
-});
-btnSpPlus.addEventListener('click', () => {
-  const step = getAdminIncrement();
-  const cur  = parseFloat(cfgStartPrice.value) || 0;
-  cfgStartPrice.value = cur + step;
-  cfgStartPrice.dispatchEvent(new Event('input'));
-});
-
-// Long-press support for admin steppers
-setupLongPress(btnSpMinus, () => {
-  const step = getAdminIncrement();
-  cfgStartPrice.value = Math.max(0, (parseFloat(cfgStartPrice.value) || 0) - step);
-});
-setupLongPress(btnSpPlus, () => {
-  const step = getAdminIncrement();
-  cfgStartPrice.value = (parseFloat(cfgStartPrice.value) || 0) + step;
-});
-
-// ─────────────────────────────────────────────────────────
-//  ADMIN STEPPER — 加價單位 + 快捷預設値
-// ─────────────────────────────────────────────────────────
-const INC_STEP = 10; // step for the increment field itself
-
-btnIncMinus.addEventListener('click', () => {
-  const cur = parseFloat(cfgIncrement.value) || INC_STEP;
-  cfgIncrement.value = Math.max(1, cur - INC_STEP);
-  highlightActiveChip(cfgIncrement.value);
-});
-btnIncPlus.addEventListener('click', () => {
-  const cur = parseFloat(cfgIncrement.value) || INC_STEP;
-  cfgIncrement.value = cur + INC_STEP;
-  highlightActiveChip(cfgIncrement.value);
-});
-
-setupLongPress(btnIncMinus, () => {
-  cfgIncrement.value = Math.max(1, (parseFloat(cfgIncrement.value) || INC_STEP) - INC_STEP);
-  highlightActiveChip(cfgIncrement.value);
-});
-setupLongPress(btnIncPlus, () => {
-  cfgIncrement.value = (parseFloat(cfgIncrement.value) || INC_STEP) + INC_STEP;
-  highlightActiveChip(cfgIncrement.value);
-});
-
-// Sync highlight when typed manually
-cfgIncrement.addEventListener('input', () => highlightActiveChip(cfgIncrement.value));
-
-/** Highlight active inc-chip that matches current value */
-function highlightActiveChip(val) {
-  const numVal = parseFloat(val);
-  qsa('.inc-chip').forEach(chip => {
-    chip.classList.toggle('active', parseFloat(chip.dataset.val) === numVal);
-  });
-}
-
-/** Preset chip click: set increment value directly */
-qsa('.inc-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    cfgIncrement.value = chip.dataset.val;
-    highlightActiveChip(chip.dataset.val);
-    showToast(`✅ 加價單位已設為 ${Number(chip.dataset.val).toLocaleString('zh-TW')} 元`, 'success', 1600);
-  });
-});
-
-// Highlight initial value
-highlightActiveChip(cfgIncrement.value);
-
-// ─────────────────────────────────────────────────────────
-//  BUYER BID INPUT ADJUSTMENTS
-// ─────────────────────────────────────────────────────────
-inpBid.addEventListener('input', () => { inpBid._userEdited = true; });
-
-/** Returns minimum allowed bid */
-function minBidVal() {
-  return Math.max(S.startPrice, S.currentBid + S.increment);
-}
-
-/** Clamp and set inp-bid value, mark as user-edited */
-function setBidValue(val) {
-  inpBid.value = Math.max(minBidVal(), val);
-  inpBid._userEdited = true;
-}
-
-// − button: subtract one increment (floor at minimum)
-btnMinus.addEventListener('click', () => {
-  const cur = parseFloat(inpBid.value) || minBidVal();
-  setBidValue(cur - S.increment);
-});
-
-// + button: add one increment
-btnPlus.addEventListener('click', () => {
-  const cur = parseFloat(inpBid.value) || minBidVal();
-  setBidValue(cur + S.increment);
-});
-
-// Long-press on buyer ± buttons
-setupLongPress(btnMinus, () => {
-  const cur = parseFloat(inpBid.value) || minBidVal();
-  setBidValue(cur - S.increment);
-});
-setupLongPress(btnPlus, () => {
-  const cur = parseFloat(inpBid.value) || minBidVal();
-  setBidValue(cur + S.increment);
-});
-
-// Quick-bid chip clicks: add fixed amount on top of current input
-qsa('.qb-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    if (S.auctionDone) return;
-    const addAmt = parseFloat(chip.dataset.add) || 0;
-    const cur = parseFloat(inpBid.value) || minBidVal();
-    // Ensure result is at least minBidVal
-    setBidValue(Math.max(minBidVal(), cur + addAmt));
-    // Brief visual feedback
-    chip.classList.add('active');
-    setTimeout(() => chip.classList.remove('active'), 300);
-  });
-});
-
-// ─────────────────────────────────────────────────────────
-//  SUBMIT BID → OPEN MODAL
-// ─────────────────────────────────────────────────────────
-btnBid.addEventListener('click', () => {
-  if (S.auctionDone)  { showToast('⏰ 拍賣已結束', 'warning'); return; }
-  if (!S.auctionLive) { showToast('⚠️ 拍賣尚未開始，請先從後台發布', 'warning'); return; }
-
-  if (!S.loggedUser) {
-    showToast('⚠️ 請先登入身份', 'warning');
-    inpAccount.focus();
-    el('login-card').classList.add('shake');
-    setTimeout(() => el('login-card').classList.remove('shake'), 400);
-    return;
-  }
-
-  const amt = parseFloat(inpBid.value);
-  const minReq = Math.max(S.startPrice, S.currentBid + S.increment);
-
-  if (isNaN(amt) || amt < minReq) {
-    showToast(`⚠️ 出價至少需 ${fmt(minReq)}`, 'warning');
-    inpBid.classList.add('shake');
-    setTimeout(() => inpBid.classList.remove('shake'), 400);
-    return;
-  }
-
-  S.pendingAmt = amt;
-  openModal();
-});
-
-// ─────────────────────────────────────────────────────────
-//  MODAL
-// ─────────────────────────────────────────────────────────
-function openModal() {
-  // Reset all checkboxes
-  [t1, t2, t3, t5].forEach(cb => { if (cb) cb.checked = false; });
-  btnMConfirm.disabled = true;
-
-  // ── Warranty banner ──────────────────────────────────
-  if (modalWarrantyBox && typeof window._getWarrantyInfo === 'function') {
-    const wi = window._getWarrantyInfo();
-    modalWarrantyBox.className = `modal-warranty-box ${wi.cls}`;
-    if (modalWarrantyIcon) modalWarrantyIcon.textContent = wi.icon;
-    if (modalWarrantyText) modalWarrantyText.textContent = wi.text;
-  }
-
-  // ── Full terms display (read-only) ───────────────────
-  if (S.customTerms && t4Wrap && t4Text) {
-    t4Text.textContent = S.customTerms;
-    t4Wrap.style.display = 'block';
-  } else if (t4Wrap) {
-    t4Wrap.style.display = 'none';
-  }
-
-  // ── Confirm box ──────────────────────────────────────
-  mBidder.textContent = S.loggedUser;
-  mAmount.textContent = fmt(S.pendingAmt);
-  bidModal.classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeModal() {
-  bidModal.classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function checkTerms() {
-  // t1+t2+t3 always required; t5 (final agree) always required
-  const allChecked = [t1, t2, t3, t5].filter(Boolean).every(cb => cb.checked);
-  btnMConfirm.disabled = !allChecked;
-}
-
-[t1, t2, t3, t5].forEach(cb => { if (cb) cb.addEventListener('change', checkTerms); });
-btnMCancel.addEventListener('click', closeModal);
-bidModal.addEventListener('click', e => { if (e.target === bidModal) closeModal(); });
-
-btnMConfirm.addEventListener('click', () => {
-  closeModal();
-  confirmBid();
-});
-
-// ─────────────────────────────────────────────────────────
-//  CONFIRM BID
-// ─────────────────────────────────────────────────────────
-async function confirmBid() {
-  const amt    = S.pendingAmt;
-  const minReq = Math.max(S.startPrice, S.currentBid + S.increment);
-  if (amt < minReq) {
-    showToast(`⚠️ 出價不足，最低 ${fmt(minReq)}`, 'error'); return;
-  }
-
-  // Local state update
-  S.bidHistory.push({ user: S.loggedUser, amount: amt, time: Date.now() });
-  S.currentBid  = amt;
-  S.topBidder   = S.loggedUser;
-  S.topBidTime  = Date.now();
-  inpBid._userEdited = false;
-
-  // ── Firebase: push bid to cloud ───────────────────────
-  if (FirebaseModule.isReady()) {
-    const ok = await FirebaseModule.pushBid(S.loggedUser, amt);
-    // If cloud push succeeded, Firebase listener will handle renderBid()
-    // for remote clients. Local render below is for immediate feedback.
-    if (!ok) {
-      showToast('⚠️ 雲端同步失敗，已記錄本機', 'warning', 3000);
-    }
-  }
-
-  // Anti-snipe (local + cloud)
-  handleAntiSnipe();
-
-  renderBid();
-
-  // Flash animation on bid amount
-  aCurBid.style.transition = 'none';
-  aCurBid.style.transform = 'scale(1.15)';
-  aCurBid.style.color = '#22c55e';
-  setTimeout(() => {
-    aCurBid.style.transform = '';
-    aCurBid.style.color = '';
-    aCurBid.style.transition = '';
-  }, 500);
-
-  showToast(`🔨 ${maskName(S.loggedUser)} 出標 ${fmt(amt)}！`, 'success', 4000);
-  confetti(1500);
-}
-
-
-// ─────────────────────────────────────────────────────────
-//  HISTORY TOGGLE
-// ─────────────────────────────────────────────────────────
-btnHistTog.addEventListener('click', () => {
-  const open = histList.classList.toggle('open');
-  histArrow.classList.toggle('open', open);
-  // Refresh text
-  btnHistTog.childNodes[0].textContent = (open ? '🔼 收起' : '📋') + ' 出價紀錄 ';
-});
-
-// ─────────────────────────────────────────────────────────
-//  QR CODE
-// ─────────────────────────────────────────────────────────
-function generateQR() {
-  qrContainer.innerHTML = '';
-  const url = S.shareUrl || location.href;
-  try {
-    _qrInstance = new QRCode(qrContainer, {
-      text: url,
-      width: 102, height: 102,
-      colorDark: '#000000', colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.H,
+function listenAuctionItems() {
+  const db = FirebaseManager.getDb();
+  if (!db) return;
+  db.ref('auction/items').on('value', snap => {
+    if (!snap.exists()) return;
+    const remoteItems = snap.val();
+    if (!remoteItems) return;
+    let changed = false;
+    Object.keys(remoteItems).forEach(key => {
+      const rItem = remoteItems[key];
+      if (!rItem) return;
+      const id = rItem.id || key;
+      const local = AppState.items.find(i => i.id === id);
+      if (local) {
+        if (rItem.currentPrice !== undefined && rItem.currentPrice > (local.currentPrice || local.currentBid || 0)) {
+          const bidderName = rItem.topBidder?.name || rItem.topBidder || '';
+          checkOutbidNotice(id, bidderName, rItem.currentPrice);
+          local.currentPrice = rItem.currentPrice;
+          local.currentBid = rItem.currentPrice;
+          local.topBidder = bidderName;
+          if (rItem.topBidder && typeof rItem.topBidder === 'object') {
+            local.topBidderContact = rItem.topBidder;
+          }
+          changed = true;
+        }
+        if (rItem.endTime && rItem.endTime !== local.endTime) {
+          local.endTime = rItem.endTime;
+          changed = true;
+        }
+        if (rItem.status && rItem.status !== local.status) {
+          local.status = rItem.status;
+          changed = true;
+        }
+        if (rItem.bids) {
+          local.bids = rItem.bids;
+          local.bidHistory = Object.values(rItem.bids).map(b => ({
+            user: b.bidderName || b.user || '買家',
+            amount: b.amount,
+            time: b.timestamp || b.time || (typeof getServerNow === 'function' ? getServerNow() : Date.now()),
+            phoneMasked: b.bidderPhoneMasked
+          })).sort((a, b) => b.amount - a.amount);
+          changed = true;
+        }
+      }
     });
-  } catch { qrContainer.textContent = 'QR 生成失敗'; }
+    if (changed) {
+      renderActiveItemDisplay();
+      renderItemTabs();
+      renderBidHistory();
+      renderWinnerStatus();
+      if (typeof updateAuctionTimerUI === 'function') {
+        updateAuctionTimerUI();
+      }
+    }
+  });
 }
 
-btnDlQr.addEventListener('click', () => {
-  const cv = qrContainer.querySelector('canvas');
-  const im = qrContainer.querySelector('img');
-  if (cv) {
-    const a = document.createElement('a');
-    a.download = `qr-${S.itemName || 'auction'}.png`;
-    a.href = cv.toDataURL(); a.click();
-    showToast('⬇ QR 已儲存', 'success');
-  } else if (im) {
-    const a = document.createElement('a');
-    a.download = 'qr.png'; a.href = im.src; a.click();
-    showToast('⬇ QR 已儲存', 'success');
-  }
-});
+/* ─────────────────────────────────────────────────────────────
+   7. 拍賣主邏輯 (Auction Core Operations)
+   ───────────────────────────────────────────────────────────── */
 
-// ─────────────────────────────────────────────────────────
-//  SHARE
-// ─────────────────────────────────────────────────────────
-async function doShare() {
-  const url = aShareUrl.value || location.href;
-  const data = {
-    title: `${S.studioName} — ${S.itemName}`,
-    text: `快來競標：${S.itemName} · 目前最高 ${fmt(S.currentBid)}`,
-    url,
+/** 獲取當前選定的商品品項 (若空則返回 null) */
+function getActiveItem() {
+  if (!AppState.items || !AppState.items.length) return null;
+  const item = AppState.items.find(i => i.id === AppState.activeItemId);
+  return item || AppState.items[0];
+}
+
+/** 切換當前選定的商品品項 */
+function switchActiveItem(itemId) {
+  const target = AppState.items.find(i => i.id === itemId);
+  if (!target) return;
+  AppState.activeItemId = itemId;
+  AppState.galleryIndex = 0;
+
+  // 動態更新網頁標題與網址列 (保留既有 mode 參數)
+  const isEnded = target.status === 'ended' || target.status === 'picked_up';
+  const studio = AppState.studioName || '建生工坊';
+  const statusPrefix = isEnded ? '【已結標】' : '【競標中】';
+  document.title = `${statusPrefix} ${target.name}｜${studio}`;
+  const pageTitle = el('page-title');
+  if (pageTitle) pageTitle.textContent = document.title;
+
+  try {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('id', itemId);
+    window.history.replaceState(null, '', currentUrl.toString());
+  } catch (e) {}
+
+  renderItemTabs();
+  renderActiveItemDisplay();
+  renderBidHistory();
+  renderQA();
+  renderWinnerStatus();
+  if (typeof updateAuctionTimerUI === 'function') {
+    updateAuctionTimerUI();
+  }
+  updateShareUrl();
+}
+
+/** 渲染商品切換標籤列 */
+function renderItemTabs() {
+  const scroll = el('item-tabs-scroll');
+  const section = el('item-tabs-section');
+  if (!scroll) return;
+  scroll.innerHTML = '';
+
+  // 若商品已全部刪除，隱藏切換列
+  if (!AppState.items || !AppState.items.length) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+
+  // 若處於單品鎖定模式 (mode=single) 且尚未被主動展開，則隱藏商品切換分頁列
+  const params = new URLSearchParams(window.location.search);
+  const isSingle = (params.get('mode') === 'single') && !AppState.isTabsManuallyExpanded;
+  if (section) {
+    section.style.display = isSingle ? 'none' : 'block';
+  }
+
+  AppState.items.forEach(item => {
+    const chip = document.createElement('div');
+    chip.className = `item-tab-chip ${item.id === AppState.activeItemId ? 'active' : ''}`;
+    chip.dataset.itemId = item.id;
+
+    let badgeClass = 'badge-live';
+    let badgeText = '競標中';
+    if (item.status === 'picked_up') {
+      badgeClass = 'badge-picked';
+      badgeText = '已取貨';
+    } else if (item.status === 'ended') {
+      badgeClass = 'badge-ended';
+      badgeText = '已結標';
+    }
+
+    const priceText = formatMoney(item.currentBid || item.startPrice, AppState.activeCurrency);
+
+    chip.innerHTML = `
+      <span>📦</span>
+      <span class="item-tab-title">${escapeHtml(item.name)}</span>
+      <span style="font-family:var(--f-num);font-size:.78rem;font-weight:800;">${priceText}</span>
+      <span class="item-tab-badge ${badgeClass}">${badgeText}</span>
+    `;
+
+    chip.addEventListener('click', () => switchActiveItem(item.id));
+    scroll.appendChild(chip);
+  });
+}
+
+/** 渲染選定商品的圖片輪播、影音與文字 (支援全部刪除空狀態 - 核心功能 1 & 3) */
+function renderActiveItemDisplay() {
+  const item = getActiveItem();
+  const emptyState = el('auction-empty-state');
+  const container = el('auction-container');
+  const bidBar = el('mobile-bid-bar');
+
+  // 全部商品已刪除時的乾淨空狀態版面 (核心功能 1)
+  if (!item) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (container) container.style.display = 'none';
+    if (bidBar) bidBar.style.display = 'none';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (container) container.style.display = 'flex';
+  if (bidBar && (item.status === 'active' || item.status === 'live')) bidBar.style.display = 'block';
+
+  // 1-0. 店家識別標籤 (在商品名稱正上方：[店家 Logo 縮圖/商標] + 店家或企業名稱)
+  const sellerBadge = el('product-seller-badge');
+  const sellerNameEl = el('product-seller-name');
+  const sellerLogoEl = el('product-seller-logo');
+  if (sellerBadge) {
+    const sName = item.sellerName || '建生工坊';
+    const sLogo = item.sellerLogo || 'icon-192.png';
+    if (sellerNameEl) sellerNameEl.textContent = sName;
+    if (sellerLogoEl) sellerLogoEl.src = sLogo;
+    sellerBadge.style.display = 'inline-flex';
+    applyLogoConfig(getLogoConfig(), false);
+  }
+
+  // 1. 文字與標題
+  if (el('product-name')) el('product-name').textContent = item.name;
+  if (el('product-subtitle')) el('product-subtitle').textContent = item.subtitle || '';
+  if (el('product-desc')) el('product-desc').textContent = item.desc || '';
+
+  // 1-1. 取件標籤與說明動態渲染 (核心功能復原)
+  const pickupBox = el('pickup-chips-container');
+  if (pickupBox) {
+    pickupBox.innerHTML = '';
+    const opts = item.pickupOptions || { self: true };
+    if (opts.self) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏠 實體門市面交</span>';
+    }
+    if (opts.delivery) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">📦 宅配/貨運寄送</span>';
+    }
+    if (opts.cvs) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏪 超商取件</span>';
+    }
+    if (item.pickupCustom) {
+      pickupBox.innerHTML += `<span class="item-tab-badge badge-live">📍 ${escapeHtml(item.pickupCustom)}</span>`;
+    }
+  }
+
+  // 1-2. 額外備註說明與注意事項動態渲染 (核心功能復原)
+  const extraNotesBox = el('product-extra-notes-box');
+  const extraNotesText = el('product-extra-notes-text');
+  if (extraNotesBox && extraNotesText) {
+    if (item.extraNotes && item.extraNotes.trim()) {
+      extraNotesText.textContent = item.extraNotes.trim();
+      extraNotesBox.style.display = 'block';
+    } else {
+      extraNotesBox.style.display = 'none';
+    }
+  }
+
+  // 1-3. 保固說明動態渲染 (核心功能復原)
+  const warrantyBox = el('product-warranty-box');
+  const warrantyText = el('product-warranty-text');
+  if (warrantyBox && warrantyText) {
+    if (item.warrantyText && item.warrantyText.trim()) {
+      warrantyText.textContent = item.warrantyText.trim();
+      warrantyBox.style.display = 'block';
+    } else {
+      warrantyBox.style.display = 'none';
+    }
+  }
+
+  // 2. 圖片輪播
+  const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
+  if (AppState.galleryIndex >= images.length) AppState.galleryIndex = 0;
+
+  const mainImg = el('gallery-main-img');
+  if (mainImg) {
+    mainImg.src = images[AppState.galleryIndex];
+  }
+  const counter = el('gallery-counter');
+  if (counter) {
+    counter.textContent = `${AppState.galleryIndex + 1} / ${images.length}`;
+  }
+
+  // 縮圖 (強制固定 60px x 60px，並水平平滑滾動)
+  const thumbsBox = el('gallery-thumbs');
+  if (thumbsBox) {
+    thumbsBox.innerHTML = '';
+    images.forEach((src, idx) => {
+      const th = document.createElement('img');
+      const isActive = idx === AppState.galleryIndex;
+      th.className = `gallery-thumb ${isActive ? 'active' : ''}`;
+      th.src = src;
+      th.alt = `縮圖 ${idx + 1}`;
+      th.loading = 'lazy';
+      th.addEventListener('click', () => {
+        AppState.galleryIndex = idx;
+        renderActiveItemDisplay();
+      });
+      thumbsBox.appendChild(th);
+      if (isActive) {
+        setTimeout(() => {
+          th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 30);
+      }
+    });
+  }
+
+  // 3. 多平台影音播放器嵌入 (核心功能 3)
+  const videoCard = el('product-video-card');
+  const videoContainer = el('video-embed-container');
+  const videoPlatformBadge = el('video-platform-badge');
+
+  if (item.videoUrl && videoCard && videoContainer) {
+    const embedInfo = parseVideoEmbed(item.videoUrl);
+    if (embedInfo) {
+      videoCard.style.display = 'block';
+      if (videoPlatformBadge) videoPlatformBadge.textContent = embedInfo.platform;
+      videoContainer.innerHTML = embedInfo.html;
+    } else {
+      videoCard.style.display = 'none';
+      videoContainer.innerHTML = '';
+    }
+  } else if (videoCard) {
+    videoCard.style.display = 'none';
+    if (videoContainer) videoContainer.innerHTML = '';
+  }
+
+  // 4. 出價金額顯示 (核心功能 2 多幣別換算)
+  const curBidVal = item.currentPrice ?? item.currentBid ?? item.startPrice ?? 0;
+  if (el('cur-bid-amount')) {
+    el('cur-bid-amount').textContent = formatMoney(curBidVal, AppState.activeCurrency);
+  }
+  const topName = getBidderName(item.topBidder);
+  if (el('cur-top-bidder')) {
+    el('cur-top-bidder').textContent = topName
+      ? maskBuyerName(topName)
+      : '尚無人出價（起標價等待中）';
+  }
+  if (el('active-currency-badge')) {
+    el('active-currency-badge').textContent = `${AppState.activeCurrency} (${CURRENCY_RATES[AppState.activeCurrency].name})`;
+  }
+
+  // 5. 下一口最低出價
+  const hasPriorBids = !!topName || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
+  const nextMinBid = hasPriorBids ? (curBidVal + item.increment) : item.startPrice;
+  if (el('next-min-bid-val')) {
+    el('next-min-bid-val').textContent = formatMoney(nextMinBid, AppState.activeCurrency);
+  }
+
+  // 6. 底部出價輸入框預設值
+  const inpBid = el('inp-bid-val');
+  if (inpBid && !inpBid.value) {
+    inpBid.value = nextMinBid;
+  }
+  if (el('btn-submit-text') && !(typeof isSubmittingBid !== 'undefined' && isSubmittingBid)) {
+    el('btn-submit-text').textContent = '立即出標';
+  }
+
+  // 7. 管理者應變按鈕顯示 (核心功能 7)
+  const adminItemControls = el('admin-item-controls');
+  if (adminItemControls) {
+    adminItemControls.style.display = AppState.isAdmin ? 'flex' : 'none';
+  }
+}
+
+/** 渲染出價歷史清單 */
+function renderBidHistory() {
+  const item = getActiveItem();
+  const list = el('history-list');
+  const countSpan = el('history-count');
+  if (!list) return;
+
+  if (!item) {
+    list.innerHTML = '<div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無商品</div>';
+    if (countSpan) countSpan.textContent = '0';
+    return;
+  }
+
+  const history = item.bidHistory || [];
+  if (countSpan) countSpan.textContent = history.length;
+
+  if (!history.length) {
+    list.innerHTML = '<div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無出價紀錄，成為第一位出標者！</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  history.slice().reverse().forEach((b, idx) => {
+    const d = document.createElement('div');
+    d.className = `history-item ${idx === 0 ? 'is-top' : ''}`;
+
+    const isTopTag = idx === 0 ? '<span class="item-tab-badge badge-live" style="margin-right:4px;">目前最高</span>' : '';
+    const phoneDisplay = AppState.isAdmin && b.contact && b.contact.phone ? ` (${b.contact.phone})` : '';
+
+    d.innerHTML = `
+      <div>
+        ${isTopTag}
+        <span class="history-user">${maskBuyerName(b.user)}${phoneDisplay}</span>
+        <div class="history-time">${formatRelTime(b.time)}</div>
+      </div>
+      <div class="history-amt">${formatMoney(b.amount, AppState.activeCurrency)}</div>
+    `;
+    list.appendChild(d);
+  });
+}
+
+/** 判斷商品是否具有有效出價紀錄 */
+function hasItemBids(item) {
+  if (!item) return false;
+  const winnerName = getBidderName(item.topBidder);
+  if (winnerName && winnerName !== '無人出標' && winnerName !== 'null') return true;
+  if (item.bids && Object.keys(item.bids).length > 0) return true;
+  if (item.bidHistory && item.bidHistory.length > 0) return true;
+  return false;
+}
+
+/**
+ * 🔄 一鍵重新開啟競標核心函式 (支援改價重開 + 多種時段)
+ */
+function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newStartPrice = null) {
+  const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
+  if (!item) return;
+
+  const now = getServerNow();
+  let price = Number(newStartPrice);
+  if (isNaN(price) || price <= 0) {
+    price = Number(item.startPrice || 100);
+  }
+
+  // 1. 更新商品競標數據
+  item.startPrice = price;
+  item.currentPrice = price;
+  item.currentBid = price;
+  item.topBidder = '';
+  item.topBidderContact = null;
+  item.topBidTime = null;
+  item.bids = {};
+  item.bidHistory = [];
+  item.winnerMsgs = [];
+  item.status = 'live';
+  item.auctionDone = false;
+  item.auctionLive = true;
+  item.timeMode = (mode === 'reset24') ? 'reset24' : 'fixed';
+  item.endTime = now + Number(durationHours) * 3600 * 1000;
+  item.autoRelistIfNoBids = (item.autoRelistIfNoBids !== false);
+
+  // 2. 本機快取更新
+  SafeStorage.set('agy_items', AppState.items);
+  if (AppState.editingItemId === item.id) {
+    loadItemIntoEditForm(item.id);
+  }
+
+  // 3. 畫面刷新
+  renderItemTabs();
+  renderActiveItemDisplay();
+  renderBidHistory();
+  renderWinnerStatus();
+  renderAdminItemsList();
+  updateAuctionTimerUI();
+
+  // 4. 解鎖底部出價按鈕
+  const submitBidBtn = el('btn-submit-bid');
+  if (submitBidBtn) {
+    submitBidBtn.disabled = false;
+    delete submitBidBtn.dataset.submitting;
+  }
+  const mobileBidBar = el('mobile-bid-bar');
+  if (mobileBidBar) mobileBidBar.style.display = 'block';
+
+  // 5. 跨端同步：更新本機伺服器 my_auction_data.json 與 Firebase
+  syncToFirebase();
+  syncToLocalServer();
+
+  const durationLabel = (mode === 'reset24')
+    ? '24 小時（動態重置模式）'
+    : (Number(durationHours) >= 24 ? `${Number(durationHours) / 24} 天` : `${durationHours} 小時`);
+  showToast(`🚀 商品【${item.name}】已成功重新開啟競標（${durationLabel}，起標價 NT$ ${price.toLocaleString()}）！`);
+}
+
+/** 渲染結標狀態與得標專屬卡片 (智慧區分有人得標與無人出標流標) */
+function renderWinnerStatus() {
+  const item = getActiveItem();
+  const card = el('winner-card');
+  const timerCard = el('timer-card');
+  const bidBar = el('mobile-bid-bar');
+  if (!card) return;
+
+  if (!item) {
+    card.classList.remove('show');
+    return;
+  }
+
+  if (item.status === 'ended' || item.status === 'picked_up') {
+    card.classList.add('show');
+    if (bidBar) bidBar.style.display = 'none';
+
+    const winnerName = getBidderName(item.topBidder);
+    const hasBids = hasItemBids(item);
+
+    const trophyIcon = el('winner-trophy-icon');
+    const deadlineAlert = el('winner-deadline-alert');
+    const adminContacts = el('winner-admin-contacts');
+    const adminActions = el('winner-admin-actions');
+    const chatSection = el('winner-chat-section') || card.querySelector('.winner-chat-section');
+    const relistPanel = el('winner-relist-panel');
+
+    if (hasBids) {
+      // ── A. 有人得標情況 ──
+      if (trophyIcon) trophyIcon.textContent = '🏆';
+      if (timerCard) {
+        el('timer-status-text').textContent = item.status === 'picked_up' ? '已完成取貨' : '競價成功・已結標';
+        el('timer-status-chip').className = 'timer-status-chip ended';
+      }
+      el('winner-headline').textContent = (AppState.userProfile.name && AppState.userProfile.name === winnerName)
+        ? '🎉 競價成功！恭喜您得標！'
+        : '🎉 拍賣圓滿結標！';
+      el('winner-subline').textContent = `得標商品：${item.name}`;
+      el('winner-name-tag').textContent = `得標買家：${maskBuyerName(winnerName)}`;
+      el('winner-amount-tag').textContent = `結標金額：${formatMoney(item.currentPrice ?? item.currentBid, AppState.activeCurrency)}`;
+
+      if (deadlineAlert) {
+        deadlineAlert.style.display = 'block';
+        const deadlineHours = item.pickupDeadlineHours || 48;
+        el('winner-deadline-time').textContent = `${deadlineHours} 小時內（預計至 ${new Date(item.endTime + deadlineHours * 3600000).toLocaleString('zh-TW', { hour12: false })} 止）`;
+      }
+
+      if (AppState.isAdmin) {
+        if (adminContacts) adminContacts.style.display = 'block';
+        if (adminActions) adminActions.style.display = 'block';
+        renderWinnerContacts(item.topBidderContact || (typeof item.topBidder === 'object' ? item.topBidder : null));
+      } else {
+        if (adminContacts) adminContacts.style.display = 'none';
+        if (adminActions) adminActions.style.display = 'none';
+      }
+
+      if (chatSection) chatSection.style.display = 'block';
+      renderWinnerMessages(item);
+
+      // 若管理員檢視已結標卡片，底部也提供重開競標控制台
+      if (relistPanel) {
+        relistPanel.style.display = AppState.isAdmin ? 'block' : 'none';
+        if (el('winner-relist-price')) el('winner-relist-price').value = item.startPrice || 10000;
+      }
+    } else {
+      // ── B. 無人出標（流標）情況 ──
+      if (trophyIcon) trophyIcon.textContent = '⏳';
+      if (timerCard) {
+        el('timer-status-text').textContent = '競標已截止（無人出標）';
+        el('timer-status-chip').className = 'timer-status-chip ended';
+      }
+      el('winner-headline').textContent = '⏳ 本檔期競標時間已結束（尚無人出標）';
+      el('winner-subline').textContent = '可由下方快速重新開啟競標，或調整起標價後再次發布';
+      el('winner-name-tag').textContent = '得標買家：無人出標（流標）';
+      el('winner-amount-tag').textContent = `起標金額：${formatMoney(item.startPrice, AppState.activeCurrency)}`;
+
+      // 強制隱藏取貨提醒、管理者聯絡、私訊留言板與取貨按鈕
+      if (deadlineAlert) deadlineAlert.style.display = 'none';
+      if (adminContacts) adminContacts.style.display = 'none';
+      if (adminActions) adminActions.style.display = 'none';
+      if (chatSection) chatSection.style.display = 'none';
+
+      // 顯示「重新開啟競標控制面板」
+      if (relistPanel) {
+        relistPanel.style.display = 'block';
+        if (el('winner-relist-price')) el('winner-relist-price').value = item.startPrice || 10000;
+      }
+    }
+  } else {
+    card.classList.remove('show');
+    if (bidBar) bidBar.style.display = 'block';
+    if (timerCard) {
+      el('timer-status-text').textContent = '競標進行中';
+      el('timer-status-chip').className = 'timer-status-chip live';
+    }
+  }
+}
+
+/** 渲染得標者聯絡按鈕管道 */
+function renderWinnerContacts(contact) {
+  const box = el('winner-contacts-list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!contact) {
+    box.innerHTML = '<span style="font-size:.78rem;color:var(--c-text-3);">買家未填寫詳細聯絡資料</span>';
+    return;
+  }
+  if (contact.phone) {
+    box.innerHTML += `<a href="tel:${escapeHtml(contact.phone)}" class="contact-btn phone">📞 撥打電話 (${escapeHtml(contact.phone)})</a>`;
+  }
+  if (contact.line) {
+    box.innerHTML += `<a href="https://line.me/ti/p/~${escapeHtml(contact.line)}" target="_blank" rel="noopener" class="contact-btn line">💬 Line ID: ${escapeHtml(contact.line)}</a>`;
+  }
+  if (contact.ig) {
+    box.innerHTML += `<a href="https://instagram.com/${escapeHtml(contact.ig)}" target="_blank" rel="noopener" class="contact-btn ig">📸 IG: ${escapeHtml(contact.ig)}</a>`;
+  }
+  if (contact.fb) {
+    const fbHref = contact.fb.startsWith('http') ? contact.fb : `https://facebook.com/${contact.fb}`;
+    box.innerHTML += `<a href="${escapeHtml(fbHref)}" target="_blank" rel="noopener" class="contact-btn fb">👤 FB 聯絡</a>`;
+  }
+}
+
+/** 渲染得標者專屬私訊留言板 */
+function renderWinnerMessages(item) {
+  const msgsBox = el('winner-chat-msgs');
+  if (!msgsBox) return;
+  const msgs = item.winnerMsgs || [];
+  msgsBox.innerHTML = '';
+
+  if (!msgs.length) {
+    msgsBox.innerHTML = '<div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:10px 0;">尚無私訊紀錄，請於此處發送訊息確認交割事宜</div>';
+    return;
+  }
+
+  msgs.forEach(m => {
+    const d = document.createElement('div');
+    d.className = `winner-chat-item ${m.isSeller ? 'seller' : 'buyer'}`;
+    const who = m.isSeller ? '🛡️ 賣家' : `👤 買家 ${maskBuyerName(m.sender)}`;
+    d.innerHTML = `
+      <div style="font-size:.68rem;color:var(--c-text-3);margin-bottom:2px;font-weight:700;">
+        ${who} · ${formatRelTime(m.time)}
+      </div>
+      <div>${escapeHtml(m.text)}</div>
+    `;
+    msgsBox.appendChild(d);
+  });
+  msgsBox.scrollTop = msgsBox.scrollHeight;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   8. 樹狀 Q&A 問答模組 (Structured Threaded Q&A - 核心功能 8)
+   ───────────────────────────────────────────────────────────── */
+function renderQA() {
+  const item = getActiveItem();
+  const listEl = el('qa-list');
+  const emptyHint = el('qa-empty-hint');
+  if (!listEl) return;
+
+  if (!item) {
+    listEl.innerHTML = '<div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:14px;">目前尚無商品</div>';
+    return;
+  }
+
+  const qaData = item.qa || {};
+  const keys = Object.keys(qaData);
+
+  if (!keys.length) {
+    if (emptyHint) emptyHint.style.display = 'block';
+    Array.from(listEl.children).forEach(c => { if (c !== emptyHint) c.remove(); });
+    return;
+  }
+  if (emptyHint) emptyHint.style.display = 'none';
+
+  listEl.innerHTML = '';
+  keys.forEach(k => {
+    const q = qaData[k];
+    const card = document.createElement('div');
+    card.className = 'qa-card';
+    card.dataset.qaKey = k;
+
+    const displayUser = AppState.isAdmin
+      ? `${escapeHtml(q.user)}${q.phone ? ' (' + escapeHtml(q.phone) + ')' : ''}`
+      : maskBuyerName(q.user);
+
+    let replyBlock = '';
+    if (q.reply) {
+      replyBlock = `
+        <div class="qa-reply-block">
+          <div class="qa-reply-header">
+            <span>🛡️ 賣家官方回覆</span>
+            <span style="font-size:.68rem;color:var(--c-text-3);">${formatRelTime(q.replyTime)}</span>
+          </div>
+          <div class="qa-reply-text">${escapeHtml(q.reply)}</div>
+        </div>
+      `;
+    }
+
+    let adminReplyForm = '';
+    if (AppState.isAdmin) {
+      adminReplyForm = `
+        <div class="qa-admin-reply-box">
+          <textarea class="qa-admin-textarea" placeholder="輸入此問題的賣家回覆..." maxlength="300" id="inp-reply-${k}">${q.reply ? escapeHtml(q.reply) : ''}</textarea>
+          <div style="display:flex;justify-content:flex-end;">
+            <button class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply" data-qa-key="${k}">
+              ${q.reply ? '✏️ 更新回覆' : '💬 送出回覆'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="qa-question-block">
+        <div class="qa-meta-row">
+          <span class="qa-user-tag">❓ ${displayUser}</span>
+          <span>${formatRelTime(q.time)}</span>
+        </div>
+        <div class="qa-question-text">${escapeHtml(q.question)}</div>
+      </div>
+      ${replyBlock}
+      ${adminReplyForm}
+    `;
+
+    listEl.appendChild(card);
+  });
+
+  listEl.querySelectorAll('.btn-submit-qa-reply').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qKey = btn.dataset.qaKey;
+      const inp = el(`inp-reply-${qKey}`);
+      if (!inp || !inp.value.trim()) {
+        showToast('請輸入回覆內容！');
+        return;
+      }
+      submitQAReply(qKey, inp.value.trim());
+    });
+  });
+}
+
+function submitQuestion() {
+  const inp = el('qa-ask-input');
+  const text = inp ? inp.value.trim() : '';
+  if (!text) {
+    showToast('請輸入提問內容！');
+    return;
+  }
+  if (!AppState.userProfile.name || !AppState.userProfile.phone) {
+    showToast('提問前請先填寫您的稱呼與聯絡手機！');
+    openBuyerProfileModal();
+    return;
+  }
+
+  const item = getActiveItem();
+  if (!item) {
+    showToast('目前尚無商品可供提問！');
+    return;
+  }
+
+  const qKey = 'qa_' + Date.now();
+  if (!item.qa) item.qa = {};
+  item.qa[qKey] = {
+    user: AppState.userProfile.name,
+    phone: AppState.userProfile.phone,
+    question: text,
+    time: Date.now(),
+    reply: null,
+    replyTime: null
   };
-  if (navigator.share) {
-    try { await navigator.share(data); return; }
-    catch(e) { if (e.name === 'AbortError') return; }
+
+  inp.value = '';
+  renderQA();
+  showToast('提問已送出！賣家回覆後將直接嵌套顯示於下方卡片。');
+  syncToFirebase();
+}
+
+function submitQAReply(qKey, replyText) {
+  const item = getActiveItem();
+  if (!item || !item.qa || !item.qa[qKey]) return;
+  item.qa[qKey].reply = replyText;
+  item.qa[qKey].replyTime = Date.now();
+  renderQA();
+  showToast('回覆已送出並精準嵌入該買家問答區塊！');
+  syncToFirebase();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   9. 嚴格出價檢驗與送出 (Strict Bidding Validation)
+   ───────────────────────────────────────────────────────────── */
+
+// === 出價送出與 Firebase Transaction 原子交易 + 防壓標機制 ===
+let isSubmittingBid = false;
+
+async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
+  if (isSubmittingBid) return;
+
+  const submitBtn = document.getElementById('btn-submit-bid');
+  const submitText = document.getElementById('btn-submit-text');
+  const bidInput = document.getElementById('inp-bid-val');
+
+  // 1. 立即鎖定按鈕防止重複點擊
+  isSubmittingBid = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.dataset.submitting = 'true';
   }
-  // fallback copy
+  if (submitText) submitText.textContent = '出標同步中…';
+
   try {
-    await navigator.clipboard.writeText(url);
-    showToast('📋 連結已複製！', 'success');
-  } catch {
-    aShareUrl.select(); document.execCommand('copy');
-    showToast('📋 已複製', 'success');
+    const itemRef = firebase.database().ref(`auction/items/${itemId}`);
+    let extendMessage = '';
+
+    const result = await itemRef.transaction((item) => {
+      if (!item) {
+        const local = AppState.items.find(i => i.id === itemId);
+        if (local) {
+          item = {
+            id: local.id,
+            name: local.name,
+            startPrice: Number(local.startPrice || 0),
+            increment: Number(local.increment || 10),
+            currentPrice: Number(local.currentPrice || local.currentBid || local.startPrice || 0),
+            endTime: Number(local.endTime || 0),
+            status: local.status || 'active',
+            timeMode: local.timeMode || 'fixed',
+            antiSnipeEnable: local.antiSnipeEnable !== false && local.antiSnipeEnabled !== false,
+            antiSnipeMins: Number(local.antiSnipeMins || 3),
+            antiSnipeExt: Number(local.antiSnipeExt || local.antiSnipeExtMins || 3),
+            bids: local.bids || {}
+          };
+        } else {
+          return item; // 節點尚未載入時返回原值
+        }
+      }
+
+      const now = getServerNow();
+      const endTime = Number(item.endTime || 0);
+
+      // 檢查是否已經結標
+      if (item.status === 'ended' || (endTime > 0 && now >= endTime)) {
+        return; // 中止 Transaction
+      }
+
+      const startPrice = Number(item.startPrice || 0);
+      const increment = Number(item.increment || 10);
+      const currentPrice = Number(item.currentPrice || 0);
+      const hasBids = item.bids && Object.keys(item.bids).length > 0;
+
+      // 計算最低合法出價金額
+      const minRequiredBid = hasBids ? (currentPrice + increment) : Math.max(startPrice, increment);
+      if (bidAmountTWD < minRequiredBid) {
+        return; // 出價低於最新門檻，中止 Transaction
+      }
+
+      // 更新最高價與領先買家資訊
+      item.currentPrice = bidAmountTWD;
+      item.topBidder = {
+        name: buyerProfile.name,
+        phone: buyerProfile.phone,
+        line: buyerProfile.line || '',
+        ig: buyerProfile.ig || '',
+        fb: buyerProfile.fb || '',
+        timestamp: now
+      };
+
+      // 新增出價歷史紀錄
+      if (!item.bids) item.bids = {};
+      const newBidKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
+      item.bids[newBidKey] = {
+        bidderName: buyerProfile.name,
+        bidderPhoneMasked: maskPhone(buyerProfile.phone),
+        amount: bidAmountTWD,
+        timestamp: now
+      };
+
+      // 處理競標時間模式（選項 A 固定期限防壓標 vs 選項 B 24小時動態重置）
+      if (item.timeMode === 'reset24') {
+        item.endTime = now + (24 * 60 * 60 * 1000);
+        extendMessage = '⚡ 已觸發 24 小時動態重置，倒數計時重新計算！';
+      } else if (item.antiSnipeEnable !== false) {
+        const triggerMs = Number(item.antiSnipeMins || 3) * 60 * 1000;
+        const extMs = Number(item.antiSnipeExt || 3) * 60 * 1000;
+        const remainingMs = endTime - now;
+
+        // 若進入結標前 N 分鐘防壓標區間，自動延長結束時間
+        if (remainingMs > 0 && remainingMs <= triggerMs) {
+          item.endTime = endTime + extMs;
+          extendMessage = `🛡️ 觸發防壓標保護！結標時間已自動延長 ${item.antiSnipeExt || 3} 分鐘。`;
+        }
+      }
+
+      return item;
+    });
+
+    if (!result.committed) {
+      showToast('⚠️ 出價失敗：可能已有其他買家搶先出更高價，或競標已結束！');
+    } else {
+      showToast(extendMessage || '🎉 出價成功！您目前已成為最高出價領先者！');
+      if (bidInput) {
+        const nextIncrement = Number(result.snapshot.val()?.increment || 10);
+        bidInput.value = bidAmountTWD + nextIncrement;
+      }
+      const val = result.snapshot.val();
+      const localItem = AppState.items.find(i => i.id === itemId);
+      if (localItem && val) {
+        localItem.currentPrice = val.currentPrice;
+        localItem.currentBid = val.currentPrice;
+        localItem.endTime = val.endTime;
+        localItem.topBidder = buyerProfile.name;
+        localItem.topBidderContact = JSON.parse(JSON.stringify(buyerProfile));
+        localItem.topBidTime = getServerNow();
+        if (val.bids) localItem.bids = val.bids;
+        if (!localItem.bidHistory) localItem.bidHistory = [];
+        localItem.bidHistory.push({
+          user: buyerProfile.name,
+          amount: bidAmountTWD,
+          time: getServerNow(),
+          contact: JSON.parse(JSON.stringify(buyerProfile)),
+          phoneMasked: maskPhone(buyerProfile.phone)
+        });
+      }
+      renderActiveItemDisplay();
+      renderItemTabs();
+      renderBidHistory();
+      renderWinnerStatus();
+      triggerConfetti();
+      syncToFirebase();
+    }
+  } catch (err) {
+    console.error('Bid transaction error:', err);
+    // 展示/離線模式保底容錯
+    const localItem = AppState.items.find(i => i.id === itemId);
+    if (localItem && (!firebase.apps || !firebase.apps.length || !FirebaseManager.isReady())) {
+      const now = getServerNow();
+      localItem.currentPrice = bidAmountTWD;
+      localItem.currentBid = bidAmountTWD;
+      localItem.topBidder = buyerProfile.name;
+      localItem.topBidderContact = JSON.parse(JSON.stringify(buyerProfile));
+      localItem.topBidTime = now;
+      if (!localItem.bidHistory) localItem.bidHistory = [];
+      localItem.bidHistory.push({
+        user: buyerProfile.name,
+        amount: bidAmountTWD,
+        time: now,
+        contact: JSON.parse(JSON.stringify(buyerProfile)),
+        phoneMasked: maskPhone(buyerProfile.phone)
+      });
+      if (localItem.timeMode === 'reset24') {
+        localItem.endTime = now + (24 * 60 * 60 * 1000);
+      }
+      renderActiveItemDisplay();
+      renderItemTabs();
+      renderBidHistory();
+      renderWinnerStatus();
+      triggerConfetti();
+      showToast(localItem.timeMode === 'reset24' ? '⚡ 已觸發 24 小時動態重置，倒數重新起算！' : '🎉 出價成功！您目前已成為最高出價領先者！');
+      if (bidInput) {
+        bidInput.value = bidAmountTWD + Number(localItem.increment || 10);
+      }
+    } else {
+      showToast('❌ 網路連線異常，請稍後再試。');
+    }
+  } finally {
+    // 2. 解鎖按鈕狀態
+    isSubmittingBid = false;
+    if (submitBtn) {
+      delete submitBtn.dataset.submitting;
+      submitBtn.disabled = false;
+    }
+    if (submitText) submitText.textContent = '立即出標';
+    updateAuctionTimerUI();
   }
 }
 
-btnCopyUrl.addEventListener('click', async () => {
-  const url = aShareUrl.value;
-  if (!url) { showToast('尚未發布', 'warning'); return; }
+function maskPhone(phone = '') {
+  const clean = String(phone).replace(/\D/g, '');
+  if (clean.length < 7) return clean;
+  return clean.slice(0, 4) + '***' + clean.slice(-3);
+}
+
+async function handleBidSubmit() {
+  const item = getActiveItem();
+  if (!item) {
+    showToast('⚠️ 目前尚無可出標之商品！');
+    return;
+  }
+
+  if (item.status === 'ended' || item.status === 'picked_up') {
+    showToast('⚠️ 本商品拍賣已結束，無法再出價！');
+    return;
+  }
+
+  if (!AppState.userProfile.name || !AppState.userProfile.phone) {
+    openBuyerProfileModal();
+    return;
+  }
+
+  const inpBid = el('inp-bid-val');
+  const bidAmt = Number(inpBid ? inpBid.value : 0);
+
+  const curPrice = Number(item.currentPrice ?? item.currentBid ?? 0);
+  const inc = Number(item.increment || 10);
+  const hasPriorBids = !!item.topBidder || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
+  const minRequired = hasPriorBids ? (curPrice + inc) : Math.max(Number(item.startPrice || 0), inc);
+
+  if (bidAmt <= curPrice && curPrice > 0) {
+    alert(`❌ 出價無效！\n您的出價（${formatMoney(bidAmt)}）必須「嚴格大於」目前最高價（${formatMoney(curPrice)}）。\n腳本已攔截並阻止出價！`);
+    if (inpBid) inpBid.value = minRequired;
+    return;
+  }
+
+  if (bidAmt < minRequired) {
+    alert(`❌ 出價未達加價門檻！\n目前下一口最低出價必須為 ${formatMoney(minRequired)}（每口加價 ${formatMoney(inc)}）。\n腳本已阻止出價！`);
+    if (inpBid) inpBid.value = minRequired;
+    return;
+  }
+
+  const phoneCheck = validatePhoneNumber(AppState.userProfile.phone, AppState.userProfile.name);
+  if (!phoneCheck.valid) {
+    alert(phoneCheck.message);
+    openBuyerProfileModal();
+    return;
+  }
+
+  await submitBidTransaction(item.id, bidAmt, AppState.userProfile);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   10. 出價超越通知監聽 (Outbid Alert - 核心功能 5)
+   ───────────────────────────────────────────────────────────── */
+function checkOutbidNotice(itemId, newTopBidder, newAmount) {
+  const myName = AppState.userProfile.name;
+  if (!myName) return;
+
+  const topName = getBidderName(newTopBidder);
+  const prev = AppState.prevTopBidders[itemId];
+  if (prev && prev === myName && topName !== myName) {
+    const modal = el('modal-outbid-alert');
+    const msg = el('outbid-alert-msg');
+    const price = el('outbid-new-price');
+    if (msg) msg.textContent = `買家「${maskBuyerName(topName)}」剛剛提出了更高金額，超越了您的領先地位！`;
+    if (price) price.textContent = formatMoney(newAmount, AppState.activeCurrency);
+    if (modal) modal.classList.add('show');
+
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100]);
+  }
+
+  AppState.prevTopBidders[itemId] = topName;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   11. 管理者操作與刪除全部商品 (Admin Actions - 核心功能 1 & 7)
+   ───────────────────────────────────────────────────────────── */
+
+/** 手動提前結標按鈕 */
+function handleAdminEndEarly() {
+  const item = getActiveItem();
+  if (!item || item.status === 'ended') return;
+
+  if (!confirm(`🛑 確定要立即手動提前結束【${item.name}】的競標嗎？\n結標後將鎖定當前最高出價者為得標人，並向全員廣播通知。`)) {
+    return;
+  }
+
+  item.status = 'ended';
+  item.endTime = getServerNow();
+  renderWinnerStatus();
+  renderItemTabs();
+  if (typeof updateAuctionTimerUI === 'function') {
+    updateAuctionTimerUI();
+  }
+
+  sendBroadcast(`📢 賣家公告：商品【${item.name}】已手動提前結標！恭喜得標買家 ${maskBuyerName(item.topBidder || '無人出標')}！`);
+  syncToFirebase();
+}
+
+/** 確認客人已取貨 */
+function handleAdminMarkPickedUp() {
+  const item = getActiveItem();
+  if (!item) return;
+
+  item.status = 'picked_up';
+  renderWinnerStatus();
+  renderItemTabs();
+  showToast(`✅ 商品【${item.name}】已成功標記為「已取貨完成」歸檔！`);
+  syncToFirebase();
+}
+
+/**
+ * 徹底移除商品刪除限制 (核心功能 1 修復)：
+ * 允許刪除全部商品！當最後一個商品被刪除時，資料庫允許清空，
+ * 前台自動切換為「目前尚無競標商品」的乾淨提示版面。
+ */
+function handleAdminDeleteItem(targetItemId) {
+  const item = targetItemId
+    ? AppState.items.find(i => i.id === targetItemId)
+    : getActiveItem();
+  if (!item) return;
+
+  if (!confirm(`🗑️ 確定要刪除拍賣品項【${item.name}】嗎？\n此動作將同步從雲端資料庫移除！`)) {
+    return;
+  }
+
+  // 移除指定商品，無任何保留一個之限制
+  AppState.items = AppState.items.filter(i => i.id !== item.id);
+  AppState.activeItemId = AppState.items.length ? AppState.items[0].id : null;
+
+  renderItemTabs();
+  renderActiveItemDisplay();
+  renderBidHistory();
+  renderQA();
+  renderWinnerStatus();
+  renderAdminItemsList();
+
+  if (AppState.activeItemId) {
+    loadItemIntoEditForm(AppState.activeItemId);
+  } else {
+    // 全部清空時，重置編輯表單預覽
+    if (el('edit-item-name-preview')) el('edit-item-name-preview').textContent = '尚無品項';
+    if (el('edit-item-name')) el('edit-item-name').value = '';
+    if (el('edit-item-subtitle')) el('edit-item-subtitle').value = '';
+    if (el('edit-item-desc')) el('edit-item-desc').value = '';
+    if (el('edit-item-video-url')) el('edit-item-video-url').value = '';
+    if (el('edit-item-images')) el('edit-item-images').value = '';
+    AppState.currentEditImages = [];
+    if (el('edit-thumbs-grid')) el('edit-thumbs-grid').innerHTML = '';
+  }
+
+  showToast(`🗑️ 已成功刪除品項【${item.name}】！`);
+  syncToFirebase();
+}
+
+/** 手動輸入公告並廣播給所有買家 */
+function sendBroadcast(text) {
+  const msg = text || (el('admin-broadcast-input') ? el('admin-broadcast-input').value.trim() : '');
+  if (!msg) {
+    showToast('請輸入廣播內容！');
+    return;
+  }
+
+  const bObj = { msg: msg, time: Date.now() };
+  AppState.broadcasts.push(bObj);
+
+  showTopBroadcastBanner(msg);
+
+  if (el('admin-broadcast-input')) el('admin-broadcast-input').value = '';
+  renderBroadcastHistory();
+  showToast('📢 全員廣播公告已成功發送！');
+
+  syncToFirebase();
+}
+
+function showTopBroadcastBanner(msg) {
+  const b = el('broadcast-banner');
+  const txt = el('broadcast-text');
+  if (!b || !txt) return;
+  txt.textContent = msg;
+  b.classList.add('show');
+  clearTimeout(b._timer);
+  b._timer = setTimeout(() => b.classList.remove('show'), 15000);
+}
+
+function renderBroadcastHistory() {
+  const box = el('admin-broadcast-history');
+  if (!box) return;
+  box.innerHTML = '';
+  AppState.broadcasts.slice().reverse().slice(0, 5).forEach(b => {
+    box.innerHTML += `
+      <div style="background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:6px;font-size:.74rem;">
+        <span style="color:var(--c-text-3);">${formatRelTime(b.time)}</span>：${escapeHtml(b.msg)}
+      </div>
+    `;
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   12. 圖片拖曳上傳與管理模組 (Drag & Drop Images - 核心功能 2)
+   ───────────────────────────────────────────────────────────── */
+function renderEditThumbs() {
+  const box = el('edit-thumbs-grid');
+  if (!box) return;
+  box.innerHTML = '';
+
+  if (!AppState.currentEditImages.length) {
+    box.innerHTML = '<div style="font-size:.74rem;color:var(--c-text-3);padding:6px;">尚未上傳或設定圖片</div>';
+    return;
+  }
+
+  AppState.currentEditImages.forEach((src, idx) => {
+    const itemEl = document.createElement('div');
+    itemEl.className = 'edit-thumb-item';
+    itemEl.title = '點擊設為封面首圖';
+
+    const coverTag = idx === 0 ? '<span class="edit-thumb-cover-tag">封面</span>' : '';
+    const moveBtn = idx > 0 ? `<button class="edit-thumb-move" type="button" title="設為封面" data-action="make-cover" data-idx="${idx}">👑</button>` : '';
+
+    itemEl.innerHTML = `
+      <img src="${src}" class="edit-thumb-img" alt="圖片 ${idx + 1}" />
+      ${coverTag}
+      <button class="edit-thumb-del" type="button" title="刪除圖片" data-action="del" data-idx="${idx}">✕</button>
+      ${moveBtn}
+    `;
+
+    // 刪除單張圖片
+    itemEl.querySelector('[data-action="del"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      AppState.currentEditImages.splice(idx, 1);
+      renderEditThumbs();
+      showToast('已移除該張圖片');
+    });
+
+    // 設為封面
+    itemEl.querySelector('[data-action="make-cover"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const img = AppState.currentEditImages.splice(idx, 1)[0];
+      AppState.currentEditImages.unshift(img);
+      renderEditThumbs();
+      showToast('已將該圖片設為封面主圖！');
+    });
+
+    // 點擊本體直接設為封面
+    itemEl.addEventListener('click', () => {
+      if (idx !== 0) {
+        const img = AppState.currentEditImages.splice(idx, 1)[0];
+        AppState.currentEditImages.unshift(img);
+        renderEditThumbs();
+        showToast('已將該圖片設為封面主圖！');
+      }
+    });
+
+    box.appendChild(itemEl);
+  });
+
+  if (el('edit-item-images')) {
+    el('edit-item-images').value = AppState.currentEditImages.join('\n');
+  }
+}
+
+function handleImageFiles(fileList) {
+  let loaded = 0;
+  const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  if (!files.length) {
+    showToast('請選取有效的圖檔 (JPG, PNG, WEBP, GIF)！');
+    return;
+  }
+
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      AppState.currentEditImages.push(ev.target.result);
+      loaded++;
+      renderEditThumbs();
+      if (loaded === files.length) {
+        showToast(`📷 已成功載入 ${loaded} 張圖片！點選任一張可設為封面。`);
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function setupImageDropzone() {
+  const dropzone = el('img-dropzone');
+  const fileInput = el('edit-img-file-input');
+  const browseBtn = el('btn-browse-images');
+  const applyUrlsBtn = el('btn-apply-img-urls');
+
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', () => fileInput.click());
+    browseBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+
+    // 拖曳進入 / 懸停樣式
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.add('drag-over');
+      });
+    });
+
+    ['dragleave', 'dragend', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('drag-over');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files && files.length) {
+        handleImageFiles(files);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length) {
+        handleImageFiles(fileInput.files);
+        fileInput.value = '';
+      }
+    });
+  }
+
+  // 套用備用圖片網址
+  applyUrlsBtn?.addEventListener('click', () => {
+    const urls = el('edit-item-images')?.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean) || [];
+    if (!urls.length) {
+      showToast('請先輸入圖片網址！');
+      return;
+    }
+    urls.forEach(u => {
+      if (!AppState.currentEditImages.includes(u)) {
+        AppState.currentEditImages.push(u);
+      }
+    });
+    renderEditThumbs();
+    showToast(`✅ 已成功套用 ${urls.length} 張圖片網址！`);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   13. 後台多商品管理渲染 (Admin Item Manager - 俐落折疊與卡片化)
+   ───────────────────────────────────────────────────────────── */
+function renderAdminItemsList() {
+  const container = el('admin-items-list-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const countSpan = el('admin-items-count');
+  if (countSpan) countSpan.textContent = AppState.items ? AppState.items.length : 0;
+
+  if (!AppState.items || !AppState.items.length) {
+    container.innerHTML = `
+      <div style="font-size:.84rem;color:var(--c-text-3);padding:20px;text-align:center;background:rgba(255,255,255,0.02);border-radius:12px;">
+        目前無任何拍賣商品品項。<br>請點擊上方「➕ 新增商品品項」開始上架！
+      </div>
+    `;
+    return;
+  }
+
+  AppState.items.forEach((item, index) => {
+    const card = document.createElement('div');
+    card.className = 'item-manage-card';
+    card.style.flexDirection = 'column';
+    card.style.alignItems = 'stretch';
+    const coverSrc = (item.images && item.images.length) ? item.images[0] : 'icon-512.png';
+    const isLive = item.status === 'active' || item.status === 'live';
+    const statusBadge = isLive
+      ? '<span class="item-tab-badge badge-live" style="font-size:.7rem;padding:2px 6px;">競標中</span>'
+      : (item.status === 'picked_up'
+          ? '<span class="item-tab-badge badge-picked" style="font-size:.7rem;padding:2px 6px;">已取貨</span>'
+          : '<span class="item-tab-badge badge-ended" style="font-size:.7rem;padding:2px 6px;">已結標</span>');
+    const itemNum = String(index + 1).padStart(2, '0');
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span style="background:rgba(255,215,0,0.15);color:var(--c-gold-1);border:1px solid rgba(255,215,0,0.3);font-family:monospace;font-weight:900;font-size:.8rem;padding:2px 7px;border-radius:6px;flex-shrink:0;">#${itemNum}</span>
+          <img src="${coverSrc}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#000;border:1px solid var(--c-border);" alt="" />
+          <div class="item-manage-info" style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="item-manage-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${escapeHtml(item.name)}</span>
+              ${statusBadge}
+            </div>
+            <div class="item-manage-meta">起標：${formatMoney(item.startPrice)} ｜ 最高：${formatMoney(item.currentBid)}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+          <button class="tbtn tbtn-gold tbtn-xs btn-relist-toggle" data-id="${item.id}" title="重新開啟此商品競標">🔄 重開</button>
+          <button class="tbtn tbtn-ghost tbtn-xs btn-edit-item" data-id="${item.id}">✏️ 編輯</button>
+          <button class="tbtn tbtn-danger tbtn-xs btn-del-item" data-id="${item.id}" title="刪除此商品">🗑️</button>
+        </div>
+      </div>
+
+      <!-- 單品專屬發布工具列 (手機優先 RWD 排版) -->
+      <div class="admin-item-share-bar" style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);">
+        <span style="font-size:.74rem;color:var(--c-text-3);font-weight:600;">單品發布：</span>
+        <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-admin-copy-url" data-id="${item.id}" title="複製此商品專屬單品連結">🔗 複製單品網址</button>
+        <button type="button" class="tbtn tbtn-purple tbtn-xs btn-admin-qr-card" data-id="${item.id}" title="下載帶有品名標籤的專屬 QR 圖卡">📱 下載專屬 QR 圖卡</button>
+        <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-admin-preview-item" data-id="${item.id}" title="另開分頁以買家單品專屬模式預覽">👁️ 預覽</button>
+      </div>
+
+      <!-- 快捷重開競標迷你控制台 -->
+      <div class="admin-relist-shelf" id="admin-relist-shelf-${item.id}" style="display:none;margin-top:10px;padding:10px;background:rgba(255,215,0,0.06);border-radius:8px;border:1px dashed rgba(255,215,0,0.3);width:100%;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="font-size:.76rem;color:var(--c-gold-1);font-weight:700;">💰 重開起標價：</span>
+          <input type="number" class="form-input shelf-price-input" value="${item.startPrice || 100}" style="width:110px;height:28px;padding:2px 8px;font-size:.82rem;font-weight:800;color:var(--c-gold-1);font-family:var(--f-num);" />
+          <span style="font-size:.72rem;color:var(--c-text-3);">TWD</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(100px, 1fr));gap:6px;">
+          <button type="button" class="tbtn tbtn-gold tbtn-xs btn-shelf-do-relist" data-id="${item.id}" data-mode="reset24" data-hours="24">⚡ 24H 動態</button>
+          <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-shelf-do-relist" data-id="${item.id}" data-mode="fixed" data-hours="24">🕒 24H 固定</button>
+          <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-shelf-do-relist" data-id="${item.id}" data-mode="fixed" data-hours="72">📅 重開 3 天</button>
+          <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-shelf-do-relist" data-id="${item.id}" data-mode="fixed" data-hours="168">📅 重開 7 天</button>
+        </div>
+      </div>
+    `;
+
+    // 綁定編輯與刪除
+    card.querySelector('.btn-edit-item').addEventListener('click', () => openEditFormForItem(item.id));
+    card.querySelector('.btn-del-item').addEventListener('click', () => handleAdminDeleteItem(item.id));
+
+    // 綁定單品專屬快捷發布工具
+    card.querySelector('.btn-admin-copy-url').addEventListener('click', () => {
+      const url = getItemShareUrl(item, 'single');
+      navigator.clipboard.writeText(url).then(() => {
+        showToast(`📋 已複製【${item.name.substring(0, 12)}...】專屬單品連結！`);
+      }).catch(() => {
+        showToast('📋 連結：' + url);
+      });
+    });
+
+    card.querySelector('.btn-admin-qr-card').addEventListener('click', () => {
+      downloadItemQrCard(item);
+    });
+
+    card.querySelector('.btn-admin-preview-item').addEventListener('click', () => {
+      const url = getItemShareUrl(item, 'single');
+      window.open(url, '_blank');
+    });
+
+    const shelf = card.querySelector(`#admin-relist-shelf-${item.id}`);
+    card.querySelector('.btn-relist-toggle').addEventListener('click', () => {
+      shelf.style.display = (shelf.style.display === 'none') ? 'block' : 'none';
+    });
+
+    card.querySelectorAll('.btn-shelf-do-relist').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode || 'reset24';
+        const hours = Number(btn.dataset.hours || 24);
+        const priceInp = card.querySelector('.shelf-price-input');
+        const price = priceInp ? Number(priceInp.value) : item.startPrice;
+        restartAuctionItem(item.id, mode, hours, price);
+      });
+    });
+
+    container.appendChild(card);
+  });
+}
+
+/** 展開並滾動至特定商品的編輯面板 (單一頁面平滑滾動) */
+function openEditFormForItem(itemId) {
+  loadItemIntoEditForm(itemId);
+  const sec = el('admin-item-edit-section');
+  if (sec) {
+    sec.classList.remove('folded');
+    if (el('btn-toggle-edit-fold')) el('btn-toggle-edit-fold').textContent = '收合 ▲';
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function loadItemIntoEditForm(itemId) {
+  const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
+  if (!item) return;
+
+  AppState.editingItemId = item.id;
+  if (el('edit-item-name-preview')) el('edit-item-name-preview').textContent = item.name;
+  if (el('edit-item-seller-name')) el('edit-item-seller-name').value = item.sellerName || '建生工坊';
+  if (el('edit-item-seller-logo')) el('edit-item-seller-logo').value = item.sellerLogo || 'icon-192.png';
+  if (el('seller-logo-preview-img')) el('seller-logo-preview-img').src = item.sellerLogo || 'icon-192.png';
+  if (el('edit-item-name')) el('edit-item-name').value = item.name;
+  if (el('edit-item-subtitle')) el('edit-item-subtitle').value = item.subtitle || '';
+  if (el('edit-item-desc')) el('edit-item-desc').value = item.desc || '';
+  if (el('edit-item-start-price')) el('edit-item-start-price').value = item.startPrice;
+  if (el('edit-item-increment')) el('edit-item-increment').value = (item.increment !== undefined && item.increment !== null) ? item.increment : 10;
+  if (el('edit-item-video-url')) el('edit-item-video-url').value = item.videoUrl || '';
+
+  // 倒數時間剩餘天/時/分動態計算並完整帶入
+  const remainingMs = Math.max(0, (item.endTime || getServerNow()) - getServerNow());
+  const remSecs = Math.floor(remainingMs / 1000);
+  const remDays = Math.floor(remSecs / 86400);
+  const remHours = Math.floor((remSecs % 86400) / 3600);
+  const remMins = Math.floor((remSecs % 3600) / 60);
+  if (el('edit-item-days')) el('edit-item-days').value = remDays;
+  if (el('edit-item-hours')) el('edit-item-hours').value = remHours;
+  if (el('edit-item-mins')) el('edit-item-mins').value = remMins;
+
+  // 載入競標時間模式 (選項 A / 選項 B)
+  const isReset24 = item.timeMode === 'reset24';
+  if (el('mode-radio-reset24')) el('mode-radio-reset24').checked = isReset24;
+  if (el('mode-radio-fixed')) el('mode-radio-fixed').checked = !isReset24;
+  if (el('card-mode-reset24')) el('card-mode-reset24').classList.toggle('selected', isReset24);
+  if (el('card-mode-fixed')) el('card-mode-fixed').classList.toggle('selected', !isReset24);
+  if (el('panel-mode-reset24')) el('panel-mode-reset24').classList.toggle('active', isReset24);
+  if (el('panel-mode-fixed')) el('panel-mode-fixed').classList.toggle('active', !isReset24);
+
+  // 載入防最後一秒壓標設定
+  const antiEnable = el('edit-antisnipe-enable');
+  if (antiEnable) antiEnable.checked = item.antiSnipeEnabled !== false;
+  if (el('edit-antisnipe-mins')) el('edit-antisnipe-mins').value = item.antiSnipeMins || 3;
+  if (el('edit-antisnipe-ext')) el('edit-antisnipe-ext').value = item.antiSnipeExtMins || 3;
+  const antiRow = el('antisnipe-inputs-row');
+  if (antiRow) {
+    antiRow.style.opacity = (item.antiSnipeEnabled !== false) ? '1' : '0.4';
+    antiRow.style.pointerEvents = (item.antiSnipeEnabled !== false) ? 'auto' : 'none';
+  }
+
+  // 載入無人出標自動續拍設定
+  if (el('edit-item-auto-relist')) {
+    el('edit-item-auto-relist').checked = item.autoRelistIfNoBids !== false;
+  }
+
+  // 載入取貨方式設定 (自取/宅配/超商/自訂說明)
+  const opts = item.pickupOptions || { self: true, delivery: false, cvs: false };
+  if (el('edit-pickup-self')) el('edit-pickup-self').checked = opts.self !== false;
+  if (el('edit-pickup-delivery')) el('edit-pickup-delivery').checked = !!opts.delivery;
+  if (el('edit-pickup-cvs')) el('edit-pickup-cvs').checked = !!opts.cvs;
+  if (el('edit-item-pickup-custom')) el('edit-item-pickup-custom').value = item.pickupCustom || '';
+
+  // 載入額外備註欄
+  if (el('edit-item-extra-notes')) el('edit-item-extra-notes').value = item.extraNotes || '';
+
+  // 載入保固說明
+  if (el('edit-item-warranty-days')) el('edit-item-warranty-days').value = item.warrantyDays ?? 0;
+  if (el('edit-item-warranty-text')) el('edit-item-warranty-text').value = item.warrantyText || '原件現況出售';
+
+  // 載入當前商品圖片並渲染縮圖預覽列
+  AppState.currentEditImages = [...(item.images || [])];
+  renderEditThumbs();
+
+  if (el('edit-item-images')) {
+    el('edit-item-images').value = AppState.currentEditImages.join('\n');
+  }
+}
+
+function saveCurrentItemEdits() {
+  let item = AppState.items.find(i => i.id === AppState.editingItemId);
+  if (!item) {
+    item = AppState.items.find(i => i.id === AppState.activeItemId);
+  }
+  if (!item) {
+    item = getActiveItem();
+  }
+
+  // 若目前無品項，絕不使用預設名稱覆蓋，而是使用使用者當前輸入的內容建立
+  if (!item) {
+    const formName = el('edit-item-name')?.value.trim();
+    const newId = 'item-' + Date.now();
+    item = normalizeItem({
+      id: newId,
+      name: formName || '拍賣商品',
+      sellerName: el('edit-item-seller-name')?.value.trim() || '建生工坊',
+      sellerLogo: el('edit-item-seller-logo')?.value.trim() || 'icon-192.png',
+      startPrice: Number(el('edit-item-start-price')?.value) || 100,
+      increment: Number(el('edit-item-increment')?.value) || 10
+    }, newId);
+    AppState.items.push(item);
+    AppState.activeItemId = newId;
+    AppState.editingItemId = newId;
+  }
+
+  // 欄位安全更新，保留原始未修改之珍貴資料
+  const inSellerName = el('edit-item-seller-name')?.value.trim();
+  if (inSellerName) item.sellerName = inSellerName;
+  const inSellerLogo = el('edit-item-seller-logo')?.value.trim();
+  if (inSellerLogo) item.sellerLogo = inSellerLogo;
+
+  const inName = el('edit-item-name')?.value.trim();
+  if (inName) item.name = inName;
+  item.subtitle = el('edit-item-subtitle')?.value.trim() ?? item.subtitle;
+  item.desc = el('edit-item-desc')?.value.trim() ?? item.desc;
+
+  const inStartPrice = Number(el('edit-item-start-price')?.value);
+  if (!isNaN(inStartPrice) && inStartPrice >= 0) {
+    item.startPrice = inStartPrice;
+    if (!item.topBidder) item.currentBid = inStartPrice;
+  }
+
+  const inIncrement = Number(el('edit-item-increment')?.value);
+  if (!isNaN(inIncrement) && inIncrement > 0) {
+    item.increment = inIncrement;
+  }
+
+  item.videoUrl = el('edit-item-video-url')?.value.trim() ?? item.videoUrl;
+
+  // 整合拖曳圖片與備用手動網址輸入
+  const extraUrls = el('edit-item-images')?.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean) || [];
+  extraUrls.forEach(u => {
+    if (!AppState.currentEditImages.includes(u)) {
+      AppState.currentEditImages.push(u);
+    }
+  });
+
+  if (AppState.currentEditImages && AppState.currentEditImages.length > 0) {
+    item.images = [...AppState.currentEditImages];
+  }
+
+  // 取貨方式設定 (自取/寄送/超商/自訂說明)
+  item.pickupOptions = {
+    self: !!el('edit-pickup-self')?.checked,
+    delivery: !!el('edit-pickup-delivery')?.checked,
+    cvs: !!el('edit-pickup-cvs')?.checked
+  };
+  item.pickupCustom = el('edit-item-pickup-custom')?.value.trim() ?? '';
+
+  // 額外備註欄
+  item.extraNotes = el('edit-item-extra-notes')?.value.trim() ?? '';
+
+  // 保固天數與條款說明
+  item.warrantyDays = Number(el('edit-item-warranty-days')?.value) || 0;
+  item.warrantyText = el('edit-item-warranty-text')?.value.trim() || '原件現況出售';
+
+  // 競標時間模式與倒數計時計算
+  const chosenMode = document.querySelector('input[name="admin-time-mode"]:checked')?.value || 'fixed';
+  item.timeMode = chosenMode;
+
+  if (chosenMode === 'reset24') {
+    // 選項 B：24 小時動態重置模式（自動將結束時間設為當前時間 + 24 小時）
+    item.endTime = getServerNow() + 24 * 3600 * 1000;
+    item.status = 'live';
+  } else {
+    // 選項 A：固定期限模式
+    item.antiSnipeEnable = !!el('edit-antisnipe-enable')?.checked;
+    item.antiSnipeEnabled = item.antiSnipeEnable;
+    item.antiSnipeMins = Number(el('edit-antisnipe-mins')?.value) || 3;
+    item.antiSnipeExt = Number(el('edit-antisnipe-ext')?.value) || 3;
+    item.antiSnipeExtMins = item.antiSnipeExt;
+
+    const days = Number(el('edit-item-days')?.value) || 0;
+    const hours = Number(el('edit-item-hours')?.value) || 0;
+    const mins = Number(el('edit-item-mins')?.value) || 0;
+    const totalSecs = days * 86400 + hours * 3600 + mins * 60;
+    if (totalSecs > 0) {
+      item.endTime = getServerNow() + totalSecs * 1000;
+    }
+  }
+
+  // 無人出標自動續拍 24H 設定
+  item.autoRelistIfNoBids = el('edit-item-auto-relist') ? !!el('edit-item-auto-relist').checked : true;
+
+  renderAdminItemsList();
+  renderItemTabs();
+  renderActiveItemDisplay();
+  if (typeof updateAuctionTimerUI === 'function') {
+    updateAuctionTimerUI();
+  }
+  showToast(`💾 商品【${item.name}】設定（含取貨與額外備註）已安全更新並同步至雲端！`);
+  syncToFirebase();
+  syncToLocalServer();
+}
+
+function addNewItem() {
+  const newId = 'item-' + (getServerNow());
+  const newItem = {
+    id: newId,
+    name: `新增商品品項 #${AppState.items.length + 1}`,
+    subtitle: '請於下方編輯商品特色說明',
+    desc: '填寫詳細商品描述、尺寸與現況說明…',
+    images: ['icon-512.png'],
+    videoUrl: '',
+    sellerName: '建生工坊',
+    sellerLogo: 'icon-192.png',
+    startPrice: 500,
+    increment: 10,
+    currentPrice: 500,
+    currentBid: 500,
+    topBidder: '',
+    topBidderContact: null,
+    topBidTime: null,
+    bids: {},
+    bidHistory: [],
+    endTime: getServerNow() + 86400000,
+    status: 'active',
+    timeMode: 'fixed',
+    antiSnipeEnable: true,
+    antiSnipeEnabled: true,
+    antiSnipeMins: 3,
+    antiSnipeExt: 3,
+    antiSnipeExtMins: 3,
+    pickupDeadlineHours: 48,
+    pickupDeadline: null,
+    pickupOptions: { self: true, delivery: false, cvs: false },
+    pickupCustom: '實體門市面交・原件現況出售',
+    extraNotes: '',
+    warrantyDays: 0,
+    warrantyText: '原件現況出售',
+    qa: {},
+    winnerMsgs: []
+  };
+
+  AppState.items.push(newItem);
+  AppState.activeItemId = newId;
+  loadItemIntoEditForm(newId);
+  renderAdminItemsList();
+  renderItemTabs();
+  renderActiveItemDisplay();
+  if (typeof updateAuctionTimerUI === 'function') {
+    updateAuctionTimerUI();
+  }
+  showToast('➕ 已新增商品品項！請於右側表單填寫詳細資訊並上傳圖片。');
+  syncToFirebase();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   14. 倒數計時器排程迴圈 (Timer Loop & Cloud Time Offset)
+   ───────────────────────────────────────────────────────────── */
+
+// === 1. Firebase 雲端時間偏移量校正模組 ===
+let serverTimeOffset = 0;
+let timerIntervalId = null;
+
+function initServerTimeSync(db) {
+  if (!db) return;
+  const offsetRef = db.ref('.info/serverTimeOffset');
+  offsetRef.on('value', (snap) => {
+    serverTimeOffset = snap.val() || 0;
+    // 取得最新偏移量後立即更新一次倒數計時畫面
+    updateAuctionTimerUI();
+  });
+}
+
+// 取得對齊雲端伺服器的當前精準毫秒時間戳
+function getServerNow() {
+  return Date.now() + serverTimeOffset;
+}
+
+// 對齊專案內取得當前選中商品的函式
+function getActiveItemData() {
+  return getActiveItem();
+}
+
+function handleAuctionEndedState(currentItem) {
+  if (!currentItem) return;
+  const hasBids = hasItemBids(currentItem);
+
+  if (currentItem.status === 'active' || currentItem.status === 'live') {
+    currentItem.status = 'ended';
+    renderWinnerStatus();
+    renderItemTabs();
+    if (hasBids) {
+      showToast(`🏆 商品【${currentItem.name}】競標時間截止！圓滿結標！`);
+      triggerConfetti();
+    } else {
+      showToast(`⏳ 商品【${currentItem.name}】本檔期競標結束（尚無人出標）`);
+    }
+    syncToFirebase();
+    syncToLocalServer();
+  } else {
+    renderWinnerStatus();
+  }
+}
+
+// === 2. 精準倒數計時器渲染邏輯（每 250ms 校正刷新，防止掉幀與時間漂移） ===
+function startAuctionTimer() {
+  if (timerIntervalId) clearInterval(timerIntervalId);
+  updateAuctionTimerUI();
+  timerIntervalId = setInterval(updateAuctionTimerUI, 250);
+}
+
+function updateAuctionTimerUI() {
+  const currentItem = getActiveItemData(); // 請對應專案內取得當前選中商品的函式
+  if (!currentItem) return;
+
+  const daysEl = document.getElementById('t-days');
+  const hoursEl = document.getElementById('t-hours');
+  const minsEl = document.getElementById('t-mins');
+  const secsEl = document.getElementById('t-secs');
+  const statusChip = document.getElementById('timer-status-chip');
+  const statusText = document.getElementById('timer-status-text');
+  const antiSnipePill = document.getElementById('anti-snipe-pill');
+  const submitBidBtn = document.getElementById('btn-submit-bid');
+
+  const now = getServerNow();
+  const endTime = Number(currentItem.endTime || 0);
+  const diff = Math.max(0, endTime - now);
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const mins = Math.floor((diff / 1000 / 60) % 60);
+  const secs = Math.floor((diff / 1000) % 60);
+
+  if (daysEl) daysEl.textContent = String(days).padStart(2, '0');
+  if (hoursEl) hoursEl.textContent = String(hours).padStart(2, '0');
+  if (minsEl) minsEl.textContent = String(mins).padStart(2, '0');
+  if (secsEl) secsEl.textContent = String(secs).padStart(2, '0');
+
+  // 狀態顯示與防壓標提示切換
+  if (diff <= 0 || currentItem.status === 'ended' || currentItem.status === 'picked_up') {
+    const hasBids = hasItemBids(currentItem);
+
+    // 檢查是否符合「無人出標自動續拍 24H」
+    if (diff <= 0 && currentItem.status !== 'ended' && currentItem.status !== 'picked_up') {
+      if (!hasBids && currentItem.autoRelistIfNoBids !== false) {
+        console.log('🔄 商品【' + currentItem.name + '】競標時間到且無人出價，自動延長 24 小時續拍！');
+        currentItem.endTime = getServerNow() + 24 * 3600 * 1000;
+        currentItem.status = 'active';
+        SafeStorage.set('agy_items', AppState.items);
+        syncToFirebase();
+        syncToLocalServer();
+        showToast('🔄 商品競標時間到無人出標，已自動延長 24 小時繼續競標！');
+        updateAuctionTimerUI();
+        return;
+      }
+    }
+
+    if (statusChip) statusChip.className = 'timer-status-chip ended';
+    if (statusText) statusText.textContent = hasBids ? '競標已結束' : '本檔競標結束（無人出標）';
+    if (submitBidBtn) submitBidBtn.disabled = true;
+    // 觸發結標卡片 #winner-card 顯示邏輯
+    handleAuctionEndedState(currentItem);
+  } else {
+    if (statusChip) statusChip.className = 'timer-status-chip live';
+    if (statusText) {
+      statusText.textContent = currentItem.timeMode === 'reset24'
+        ? '24H 動態重置競標中'
+        : '競標進行中';
+    }
+    if (submitBidBtn && !submitBidBtn.dataset.submitting) {
+      submitBidBtn.disabled = false;
+    }
+    if (antiSnipePill) {
+      if (currentItem.timeMode === 'reset24') {
+        antiSnipePill.textContent = '⚡ 24H 動態重置：有人出價即重置 24 小時';
+        antiSnipePill.style.display = 'inline-flex';
+      } else if (currentItem.antiSnipeEnable) {
+        antiSnipePill.textContent = '🛡️ 防壓標保護機制生效中';
+        antiSnipePill.style.display = 'inline-flex';
+      } else {
+        antiSnipePill.style.display = 'none';
+      }
+    }
+  }
+}
+
+function startTimerLoop() {
+  startAuctionTimer();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   15. 買家身分彈窗與 LocalStorage 存取
+   ───────────────────────────────────────────────────────────── */
+function openBuyerProfileModal() {
+  el('inp-buyer-name').value = AppState.userProfile.name || '';
+  el('inp-buyer-phone').value = AppState.userProfile.phone || '';
+  el('inp-buyer-line').value = AppState.userProfile.line || '';
+  el('inp-buyer-ig').value = AppState.userProfile.ig || '';
+  el('inp-buyer-fb').value = AppState.userProfile.fb || '';
+  el('modal-buyer-profile').classList.add('show');
+}
+
+function closeBuyerProfileModal() {
+  el('modal-buyer-profile').classList.remove('show');
+}
+
+function saveBuyerProfile() {
+  const name = el('inp-buyer-name').value.trim();
+  const phone = el('inp-buyer-phone').value.trim();
+
+  if (!name) {
+    alert('請填寫買家稱呼 / 暱稱！');
+    return;
+  }
+
+  const phoneCheck = validatePhoneNumber(phone, name);
+  if (!phoneCheck.valid) {
+    alert(phoneCheck.message);
+    return;
+  }
+
+  AppState.userProfile = {
+    name: name,
+    phone: phoneCheck.phone,
+    line: el('inp-buyer-line').value.trim(),
+    ig: el('inp-buyer-ig').value.trim(),
+    fb: el('inp-buyer-fb').value.trim()
+  };
+
+  SafeStorage.set('agy_buyer_profile', AppState.userProfile);
+
+  if (el('user-profile-name')) {
+    el('user-profile-name').textContent = name;
+  }
+
+  closeBuyerProfileModal();
+  showToast(`✅ 買家身分「${name}」已驗證儲存！`);
+}
+
+function restoreSavedProfile() {
   try {
-    await navigator.clipboard.writeText(url);
-    showToast('📋 連結已複製！', 'success');
-  } catch {
-    aShareUrl.select(); document.execCommand('copy');
-    showToast('📋 已複製', 'success');
+    const saved = SafeStorage.get('agy_buyer_profile');
+    if (saved) {
+      const p = (typeof saved === 'object') ? saved : JSON.parse(saved);
+      AppState.userProfile = Object.assign({}, AppState.userProfile, p);
+      if (el('user-profile-name') && AppState.userProfile.name) {
+        el('user-profile-name').textContent = AppState.userProfile.name;
+      }
+    }
+    const savedCur = SafeStorage.get('agy_active_currency');
+    if (savedCur && CURRENCY_RATES[savedCur]) {
+      AppState.activeCurrency = savedCur;
+      if (el('currency-select')) el('currency-select').value = savedCur;
+    }
+  } catch (e) {}
+}
+
+/* ─────────────────────────────────────────────────────────────
+   16. 雲端同步與監聽 (Firebase Sync & Realtime Listeners - 舊資料保護與安全寫入)
+   ───────────────────────────────────────────────────────────── */
+function syncToFirebase() {
+  const db = FirebaseManager.getDb();
+  if (!db || !AppState.auctionId) return;
+
+  const ref = db.ref('auctions/' + AppState.auctionId);
+
+  // 採用合併更新 (update) 而非整筆覆蓋 (set)，防止其他欄位與舊資料流失
+  const payload = {
+    studioName: AppState.studioName,
+    items: AppState.items,
+    broadcasts: AppState.broadcasts,
+    lastUpdated: getServerNow()
+  };
+
+  // 向下相容支援：若當前有商品，將首項商品的舊版頂層欄位一併安全合併寫入
+  if (AppState.items && AppState.items.length > 0) {
+    const main = AppState.items[0];
+    payload.itemName = main.name;
+    payload.itemSubtitle = main.subtitle || '';
+    payload.itemDesc = main.desc || '';
+    payload.startPrice = main.startPrice;
+    payload.increment = main.increment;
+    payload.videoUrl = main.videoUrl || '';
+    payload.imageList = (main.images || []).map((src, i) => ({
+      src: src,
+      name: `img_${i + 1}`,
+      isCover: i === 0
+    }));
+
+    // 同步更新至 auction/items 節點以支援跨客戶端 Transaction 與防蓋標
+    AppState.items.forEach(it => {
+      if (it && it.id) {
+        db.ref(`auction/items/${it.id}`).update({
+          id: it.id,
+          name: it.name,
+          startPrice: Number(it.startPrice || 0),
+          increment: Number(it.increment || 10),
+          currentPrice: Number(it.currentPrice ?? it.currentBid ?? it.startPrice ?? 0),
+          endTime: Number(it.endTime || 0),
+          status: it.status || 'active',
+          timeMode: it.timeMode || 'fixed',
+          antiSnipeEnable: it.antiSnipeEnable !== false && it.antiSnipeEnabled !== false,
+          antiSnipeMins: Number(it.antiSnipeMins || 3),
+          antiSnipeExt: Number(it.antiSnipeExt || it.antiSnipeExtMins || 3)
+        }).catch(() => {});
+      }
+    });
   }
+
+  ref.update(payload).catch(err => {
+    console.warn('Firebase 安全合併更新失敗：', err);
+  });
+}
+
+function listenFirebase(auctionId) {
+  const db = FirebaseManager.getDb();
+  if (!db || !auctionId) return;
+
+  AppState.auctionId = auctionId;
+  SafeStorage.set('agy_last_auction_id', auctionId);
+  initServerTimeSync(db);
+
+  db.ref('auctions/' + auctionId).on('value', snap => {
+    if (!snap.exists()) {
+      console.log('Firebase 雲端拍賣節點不存在：', auctionId);
+      return;
+    }
+    const data = snap.val();
+    if (!data) return;
+
+    if (data.studioName) {
+      if (data.studioName === 'JianSheng Boutique') {
+        updateStudioName('建生工坊', true);
+      } else {
+        updateStudioName(data.studioName, false);
+      }
+    }
+    if (data.studioLogo) {
+      updateStudioLogo(data.studioLogo, false);
+    }
+    if (data.logoConfig) {
+      applyLogoConfig(data.logoConfig, false);
+    }
+    if (data.baseCurrency) AppState.baseCurrency = data.baseCurrency;
+
+    let incomingItems = [];
+
+    // 1. 判斷多商品結構 (items 陣列或物件)
+    if (data.items) {
+      const rawList = Array.isArray(data.items) ? data.items : Object.values(data.items);
+      incomingItems = rawList.map((it, idx) => normalizeItem(it, it.id || `item-${idx + 1}`));
+    }
+    // 2. 舊版單一商品頂層結構自動相容遷移 (itemName / startPrice / imageList 等舊格式)
+    else if (data.itemName || data.name || data.startPrice !== undefined || data.imageList || data.imgUrl || data.imageUrls || data.currentBid !== undefined) {
+      console.log('🔄 偵測到舊版 Firebase 拍賣資料結構，執行自動相容遷移…');
+      const legacyItem = normalizeItem(data, data.auctionId || 'item-legacy-1');
+      incomingItems = [legacyItem];
+    }
+
+    if (incomingItems.length > 0) {
+      // 比對即時出價超越警示 (Outbid Alert)
+      incomingItems.forEach(remoteItem => {
+        const localItem = AppState.items.find(i => i.id === remoteItem.id);
+        if (localItem && remoteItem.currentBid > localItem.currentBid) {
+          checkOutbidNotice(remoteItem.id, remoteItem.topBidder, remoteItem.currentBid);
+        }
+      });
+
+      // 替換為經過相容正規化處理之最新雲端商品資料
+      AppState.items = incomingItems;
+
+      // 依據網址 ?id= 參數鎖定商品
+      applyUrlRouteParams();
+
+      // 保持 activeItemId 與 editingItemId 有效指向
+      if (!AppState.items.some(i => i.id === AppState.activeItemId)) {
+        AppState.activeItemId = AppState.items[0].id;
+      }
+      if (!AppState.editingItemId || !AppState.items.some(i => i.id === AppState.editingItemId)) {
+        AppState.editingItemId = AppState.activeItemId;
+      }
+
+      // 同步更新編輯面板各項資料
+      loadItemIntoEditForm(AppState.editingItemId);
+
+      renderItemTabs();
+      renderActiveItemDisplay();
+      renderBidHistory();
+      renderQA();
+      renderWinnerStatus();
+      renderAdminItemsList();
+      updateShareUrl();
+    }
+
+    if (data.broadcasts && Array.isArray(data.broadcasts)) {
+      if (data.broadcasts.length > AppState.broadcasts.length) {
+        const latest = data.broadcasts[data.broadcasts.length - 1];
+        showTopBroadcastBanner(latest.msg);
+      }
+      AppState.broadcasts = data.broadcasts;
+      renderBroadcastHistory();
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   17. PWA 與彩帶動畫 (PWA Install & Confetti Animation)
+   ───────────────────────────────────────────────────────────── */
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  if (el('btn-pwa-install')) el('btn-pwa-install').style.display = 'inline-flex';
 });
 
-btnShareQr.addEventListener('click', doShare);
-btnShareNav.addEventListener('click', doShare);
-
-// ─────────────────────────────────────────────────────────
-//  PERIODIC REFRESH (relative times)
-// ─────────────────────────────────────────────────────────
-setInterval(() => {
-  if (S.auctionLive && S.topBidTime) {
-    aBidTime.textContent = relTime(S.topBidTime);
-    renderHistory();
+function handlePwaInstall() {
+  if (_deferredPrompt) {
+    _deferredPrompt.prompt();
+    _deferredPrompt.userChoice.then(() => { _deferredPrompt = null; });
+  } else {
+    alert('📱 欲將本拍賣系統加入手機主畫面：\n1. iPhone Safari：點擊瀏覽器下方「分享」按鈕 ➔ 選擇「加入主畫面」。\n2. Android Chrome：點擊右上角三點選單 ➔ 選擇「安裝應用程式」或「加到主畫面」。');
   }
-}, 30000);
+}
 
-// ─────────────────────────────────────────────────────────
-//  RESPONSIVE VIDEO PLACEMENT
-// ─────────────────────────────────────────────────────────
-let _lastMobile = window.innerWidth < 768;
-window.addEventListener('resize', () => {
-  const mobile = window.innerWidth < 768;
-  if (mobile !== _lastMobile) {
-    _lastMobile = mobile;
-    if (el('page-auction').classList.contains('active')) renderAuction();
+function triggerConfetti() {
+  const canvas = el('fx-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const pieces = [];
+  const colors = ['#f59e0b', '#fbbf24', '#a855f7', '#7c3aed', '#ec4899', '#22c55e'];
+  for (let i = 0; i < 90; i++) {
+    pieces.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      r: Math.random() * 8 + 4,
+      d: Math.random() * 80 + 10,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      tilt: Math.random() * 10 - 10,
+      tiltAngle: 0,
+      tiltAngleInc: Math.random() * 0.08 + 0.05
+    });
   }
-});
 
-// ─────────────────────────────────────────────────────────
-//  INIT
-// ─────────────────────────────────────────────────────────
-(async function init() {
+  let animFrame;
+  let start = Date.now();
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.tiltAngle += p.tiltAngleInc;
+      p.y += (Math.cos(p.d) + 3 + p.r / 2) / 1.5;
+      p.x += Math.sin(p.d);
+      ctx.beginPath();
+      ctx.lineWidth = p.r / 2;
+      ctx.strokeStyle = p.color;
+      ctx.moveTo(p.x + p.tilt + p.r / 4, p.y);
+      ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 4);
+      ctx.stroke();
+    });
+    if (Date.now() - start < 4500) {
+      animFrame = requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      cancelAnimationFrame(animFrame);
+    }
+  }
+  draw();
+}
 
-  // 1. Auto-init Firebase (runs regardless of page mode)
-  FirebaseModule.autoInit();
+/* ─────────────────────────────────────────────────────────────
+   18. 事件監聽綁定與初始化 (Event Listeners & Init)
+   ───────────────────────────────────────────────────────────── */
+function bindEvents() {
+  // 1. 貨幣切換
+  el('currency-select')?.addEventListener('change', e => {
+    AppState.activeCurrency = e.target.value;
+    SafeStorage.set('agy_active_currency', e.target.value);
+    renderActiveItemDisplay();
+    renderItemTabs();
+    renderBidHistory();
+    renderWinnerStatus();
+    showToast(`💱 幣別已切換為：${CURRENCY_RATES[e.target.value].name} (${e.target.value})`);
+  });
 
-  // 2. Wire Firebase Setup Modal events
-  FirebaseModule.wireSetupModal();
+  // 1-1. 空狀態重新整理頁面綁定
+  el('btn-empty-reload')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  // 2. 圖片輪播箭頭
+  el('btn-gallery-prev')?.addEventListener('click', () => {
+    const item = getActiveItem();
+    if (!item) return;
+    const imgs = item.images || [];
+    AppState.galleryIndex = (AppState.galleryIndex - 1 + imgs.length) % imgs.length;
+    renderActiveItemDisplay();
+  });
+  el('btn-gallery-next')?.addEventListener('click', () => {
+    const item = getActiveItem();
+    if (!item) return;
+    const imgs = item.images || [];
+    AppState.galleryIndex = (AppState.galleryIndex + 1) % imgs.length;
+    renderActiveItemDisplay();
+  });
+
+  // 3. 快速加價按鈕
+  el('quick-chips-row')?.querySelectorAll('.quick-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const addTwd = Number(btn.dataset.add || 100);
+      const inp = el('inp-bid-val');
+      if (inp) {
+        inp.value = Number(inp.value || 0) + addTwd;
+        if (el('btn-submit-text') && !isSubmittingBid) {
+          el('btn-submit-text').textContent = '立即出標';
+        }
+      }
+    });
+  });
+
+  // 4. 金額微調按鈕
+  el('btn-bid-minus')?.addEventListener('click', () => {
+    const item = getActiveItem();
+    const inp = el('inp-bid-val');
+    if (inp && item) {
+      inp.value = Math.max(item.startPrice, Number(inp.value || 0) - item.increment);
+      if (el('btn-submit-text') && !isSubmittingBid) {
+        el('btn-submit-text').textContent = '立即出標';
+      }
+    }
+  });
+  el('btn-bid-plus')?.addEventListener('click', () => {
+    const item = getActiveItem();
+    const inp = el('inp-bid-val');
+    if (inp && item) {
+      inp.value = Number(inp.value || 0) + item.increment;
+      if (el('btn-submit-text') && !isSubmittingBid) {
+        el('btn-submit-text').textContent = '立即出標';
+      }
+    }
+  });
+
+  // 出價輸入框純數字防呆過濾
+  const bidInputEl = document.getElementById('inp-bid-val');
+  if (bidInputEl) {
+    bidInputEl.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/[^\d]/g, '');
+      if (el('btn-submit-text') && !isSubmittingBid) {
+        el('btn-submit-text').textContent = '立即出標';
+      }
+    });
+  }
+
+  // 5. 立即出價按鈕
+  el('btn-submit-bid')?.addEventListener('click', handleBidSubmit);
+
+  // 6. 出價歷史清單折疊
+  el('history-toggle-bar')?.addEventListener('click', () => {
+    const list = el('history-list');
+    const arrow = el('history-arrow');
+    if (list) {
+      const isHidden = list.style.display === 'none';
+      list.style.display = isHidden ? 'flex' : 'none';
+      if (arrow) arrow.textContent = isHidden ? '▼' : '▲';
+    }
+  });
+
+  // 7. Q&A 提問送出
+  el('btn-send-question')?.addEventListener('click', submitQuestion);
+
+  // 8. 得標留言板送出
+  el('btn-send-winner-msg')?.addEventListener('click', () => {
+    const inp = el('winner-msg-input');
+    const text = inp ? inp.value.trim() : '';
+    if (!text) return;
+    if (!AppState.userProfile.name) {
+      openBuyerProfileModal();
+      return;
+    }
+    const item = getActiveItem();
+    if (!item) return;
+    if (!item.winnerMsgs) item.winnerMsgs = [];
+    item.winnerMsgs.push({
+      sender: AppState.userProfile.name,
+      isSeller: AppState.isAdmin,
+      text: text,
+      time: Date.now()
+    });
+    inp.value = '';
+    renderWinnerMessages(item);
+    syncToFirebase();
+  });
+
+  // 9. 管理者動作按鈕 (手動提前結標、確認已取貨、刪除品項)
+  el('btn-admin-end-early')?.addEventListener('click', handleAdminEndEarly);
+  el('btn-mark-picked-up')?.addEventListener('click', handleAdminMarkPickedUp);
+  el('btn-admin-delete-item')?.addEventListener('click', () => handleAdminDeleteItem());
+
+  // 9-1. 重新開啟競標快捷面板按鈕 (支援改價重開 + 多種時段)
+  document.querySelectorAll('.btn-relist-action').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const currentItem = getActiveItem();
+      if (!currentItem) return;
+      const mode = btn.dataset.mode || 'reset24';
+      const hours = Number(btn.dataset.hours || 24);
+      const priceInput = el('winner-relist-price');
+      const newPrice = priceInput ? Number(priceInput.value.trim()) : null;
+      restartAuctionItem(currentItem.id, mode, hours, newPrice);
+    });
+  });
+
+  // 10. 管理者廣播公告
+  el('btn-admin-broadcast')?.addEventListener('click', () => sendBroadcast());
+
+  // 11. 前後台模式切換
+  el('btn-switch-mode')?.addEventListener('click', () => {
+    const pageAuction = el('page-auction');
+    const pageAdmin = el('page-admin');
+    const btnText = el('switch-mode-text');
+    const isCurrentlyAdmin = pageAdmin?.classList.contains('active');
+
+    if (!isCurrentlyAdmin) {
+      AppState.isAdmin = true;
+      pageAuction?.classList.remove('active');
+      pageAdmin?.classList.add('active');
+      if (btnText) btnText.textContent = '前台';
+      renderAdminItemsList();
+      if (AppState.activeItemId) {
+        loadItemIntoEditForm(AppState.activeItemId);
+      }
+      showToast('🔧 已切換至【管理者後台控制中心】');
+    } else {
+      pageAdmin?.classList.remove('active');
+      pageAuction?.classList.add('active');
+      if (btnText) btnText.textContent = '後台';
+      renderItemTabs();
+      renderActiveItemDisplay();
+      renderQA();
+      renderWinnerStatus();
+      showToast('👁️ 已切換至【買家前台競標視角】');
+    }
+  });
+
+  // 12. 買家身分彈窗
+  el('btn-user-profile')?.addEventListener('click', openBuyerProfileModal);
+  el('btn-cancel-profile')?.addEventListener('click', closeBuyerProfileModal);
+  el('btn-save-profile')?.addEventListener('click', saveBuyerProfile);
+
+  // 13. 出價超越彈窗關閉並跳回出價
+  el('btn-outbid-rebid')?.addEventListener('click', () => {
+    el('modal-outbid-alert')?.classList.remove('show');
+    const item = getActiveItem();
+    const inp = el('inp-bid-val');
+    if (inp && item) {
+      inp.value = item.currentBid + item.increment;
+      inp.focus();
+    }
+  });
+
+  // 14. 後台編輯商品儲存與新增
+  el('btn-save-current-item')?.addEventListener('click', saveCurrentItemEdits);
+  el('btn-add-new-item')?.addEventListener('click', addNewItem);
+
+  // 15. 全面發布拍賣
+  el('btn-publish-all')?.addEventListener('click', () => {
+    const db = FirebaseManager.getDb();
+    if (!db) {
+      showToast('請先連線 Firebase 雲端資料庫！');
+      el('modal-fb-setup')?.classList.add('show');
+      return;
+    }
+    const newRef = db.ref('auctions').push();
+    AppState.auctionId = newRef.key;
+    SafeStorage.set('agy_last_auction_id', newRef.key);
+
+    newRef.set({
+      studioName: AppState.studioName,
+      baseCurrency: AppState.baseCurrency,
+      items: AppState.items,
+      broadcasts: AppState.broadcasts,
+      createdAt: Date.now()
+    }).then(() => {
+      showToast(`🚀 拍賣已全面正式發布至雲端！ID: ${AppState.auctionId}`);
+      updateShareUrl();
+      listenFirebase(AppState.auctionId);
+      el('btn-switch-mode')?.click();
+    });
+  });
+
+  // 16. 強制清除快取按鈕 (徹底杜絕舊版快取卡死問題)
+  el('btn-force-refresh')?.addEventListener('click', async () => {
+    showToast('🔄 正在清除全體快取並重新載入最新版本…');
+    if ('caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      } catch (e) {}
+    }
+    if ('serviceWorker' in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      } catch (e) {}
+    }
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 350);
+  });
+
+  // 17. PWA 安裝按鈕
+  el('btn-pwa-install')?.addEventListener('click', handlePwaInstall);
+
+  // 17. 複製分享連結 (同時支援導覽列更多選單與分享區塊，智慧單品/賣場雙模式)
+  const handleCopyShare = () => {
+    const item = getActiveItem();
+    const isSingle = el('share-mode-single') ? el('share-mode-single').checked : true;
+    const mode = isSingle ? 'single' : 'all';
+    const url = getItemShareUrl(item, mode);
+    navigator.clipboard.writeText(url).then(() => {
+      showToast(mode === 'single' ? '📋 單品專屬競標連結已成功複製到剪貼簿！' : '📋 賣場總覽分享連結已成功複製到剪貼簿！');
+      el('nav-more-dropdown')?.classList.remove('show');
+    }).catch(() => {
+      const inp = el('share-url-input');
+      if (inp) {
+        inp.select();
+        document.execCommand('copy');
+        showToast('📋 分享連結已複製！');
+      }
+    });
+  };
+  el('btn-copy-share')?.addEventListener('click', handleCopyShare);
+  el('btn-nav-copy-share')?.addEventListener('click', handleCopyShare);
+
+  // 下載此商品專屬帶品名 QR 圖卡
+  el('btn-download-qr-card')?.addEventListener('click', () => {
+    downloadItemQrCard(getActiveItem());
+  });
+
+  // 分享模式切換 (單品專屬 / 賣場總覽)
+  document.querySelectorAll('input[name="share-link-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateShareUrl();
+    });
+  });
+
+  // 後台：一鍵複製全部商品獨立網址清單
+  el('btn-copy-all-urls')?.addEventListener('click', copyAllItemsUrls);
+
+  // 18. Firebase 設定彈窗 (支援後台按鈕與導覽列選單)
+  const handleOpenFbConfig = () => {
+    el('modal-fb-setup')?.classList.add('show');
+    el('nav-more-dropdown')?.classList.remove('show');
+  };
+  el('btn-fb-config')?.addEventListener('click', handleOpenFbConfig);
+  el('btn-nav-fb-config')?.addEventListener('click', handleOpenFbConfig);
+  el('btn-fb-close')?.addEventListener('click', () => el('modal-fb-setup')?.classList.remove('show'));
+  el('btn-fb-save')?.addEventListener('click', () => {
+    const cfg = {
+      apiKey: el('fb-api-key')?.value.trim(),
+      databaseURL: el('fb-db-url')?.value.trim(),
+      projectId: el('fb-project-id')?.value.trim()
+    };
+    if (!cfg.apiKey || !cfg.databaseURL) {
+      alert('請填寫完整 Firebase 設定資訊！');
+      return;
+    }
+    SafeStorage.set('agy_fb_config', cfg);
+    el('modal-fb-setup')?.classList.remove('show');
+    showToast('💾 Firebase 設定已更新，重新連線中…');
+    location.reload();
+  });
+
+  // 19. 頂部導覽列更多功能選單 (⋯ 下拉開關與外部點擊關閉)
+  const btnNavMore = el('btn-nav-more');
+  const navMoreDropdown = el('nav-more-dropdown');
+  if (btnNavMore && navMoreDropdown) {
+    btnNavMore.addEventListener('click', e => {
+      e.stopPropagation();
+      navMoreDropdown.classList.toggle('show');
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#nav-more-wrap')) {
+        navMoreDropdown.classList.remove('show');
+      }
+    });
+  }
+
+  // 20. 後台商品編輯面板折疊/展開按鈕
+  el('btn-toggle-edit-fold')?.addEventListener('click', () => {
+    const editSec = el('admin-item-edit-section');
+    const toggleBtn = el('btn-toggle-edit-fold');
+    if (!editSec) return;
+    const isFolded = editSec.classList.toggle('folded');
+    if (toggleBtn) {
+      toggleBtn.textContent = isFolded ? '展開 ▼' : '收合 ▲';
+    }
+  });
+
+  // 21. 後台起標價與加價步進微調 (+/-) 與快捷預設值
+  const spInp = el('edit-item-start-price');
+  el('btn-admin-sp-minus')?.addEventListener('click', () => {
+    if (!spInp) return;
+    const cur = Number(spInp.value) || 0;
+    spInp.value = Math.max(0, cur - 50);
+  });
+  el('btn-admin-sp-plus')?.addEventListener('click', () => {
+    if (!spInp) return;
+    const cur = Number(spInp.value) || 0;
+    spInp.value = cur + 50;
+  });
+
+  const incInp = el('edit-item-increment');
+  el('btn-admin-inc-minus')?.addEventListener('click', () => {
+    if (!incInp) return;
+    const cur = Number(incInp.value) || 10;
+    incInp.value = Math.max(1, cur - 10);
+  });
+  el('btn-admin-inc-plus')?.addEventListener('click', () => {
+    if (!incInp) return;
+    const cur = Number(incInp.value) || 0;
+    incInp.value = cur + 10;
+  });
+
+  // 快捷加價預設值 (+10, +50, +100, +150, +200)
+  el('admin-inc-quick-chips')?.querySelectorAll('.admin-inc-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = Number(btn.dataset.inc || 10);
+      if (incInp) {
+        incInp.value = val;
+        showToast(`⚡ 每口加價單位已快速填入：${val}`);
+      }
+    });
+  });
+
+  // 22. 競標時間模式（二選一）切換事件
+  const radFixed = el('mode-radio-fixed');
+  const radReset24 = el('mode-radio-reset24');
+  const cardFixed = el('card-mode-fixed');
+  const cardReset24 = el('card-mode-reset24');
+  const panelFixed = el('panel-mode-fixed');
+  const panelReset24 = el('panel-mode-reset24');
+
+  function updateTimeModeUI(mode) {
+    const isReset = (mode === 'reset24');
+    if (radReset24) radReset24.checked = isReset;
+    if (radFixed) radFixed.checked = !isReset;
+    if (cardReset24) cardReset24.classList.toggle('selected', isReset);
+    if (cardFixed) cardFixed.classList.toggle('selected', !isReset);
+    if (panelReset24) panelReset24.classList.toggle('active', isReset);
+    if (panelFixed) panelFixed.classList.toggle('active', !isReset);
+  }
+
+  cardFixed?.addEventListener('click', () => updateTimeModeUI('fixed'));
+  cardReset24?.addEventListener('click', () => updateTimeModeUI('reset24'));
+  radFixed?.addEventListener('change', () => updateTimeModeUI('fixed'));
+  radReset24?.addEventListener('change', () => updateTimeModeUI('reset24'));
+
+  el('edit-antisnipe-enable')?.addEventListener('change', e => {
+    const row = el('antisnipe-inputs-row');
+    if (row) {
+      row.style.opacity = e.target.checked ? '1' : '0.4';
+      row.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+    }
+  });
+
+  // 24. 賣家/店鋪設定（名稱與全域 Logo 名片）
+  const cfgStudioName = el('cfg-studio-name');
+  if (cfgStudioName) {
+    // 即時打字響應頂端標題、分頁 Title 與後台標題
+    cfgStudioName.addEventListener('input', e => {
+      updateStudioName(e.target.value, false);
+    });
+    // 輸入框失焦或按 Enter 儲存並同步至 Firebase
+    cfgStudioName.addEventListener('change', e => {
+      const val = e.target.value.trim();
+      if (val) {
+        updateStudioName(val, true);
+        showToast(`💾 店鋪名稱已成功更新為【${val}】，並同步至雲端！`);
+      }
+    });
+  }
+
+  el('btn-save-studio-name')?.addEventListener('click', () => {
+    const val = el('cfg-studio-name')?.value.trim();
+    if (val) {
+      updateStudioName(val, true);
+      showToast(`💾 店鋪名稱已成功更新為【${val}】，並同步至雲端！`);
+    }
+  });
+
+  // 全域賣家 Logo / 名片貼圖上傳與網址
+  el('btn-upload-shop-logo')?.addEventListener('click', () => {
+    el('input-shop-logo-file')?.click();
+  });
+
+  el('input-shop-logo-file')?.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      updateStudioLogo(dataUrl, true);
+      showToast('📷 賣家 Logo / 名片貼圖已成功更新並同步至全站！');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  el('cfg-studio-logo')?.addEventListener('input', e => {
+    const url = e.target.value.trim() || 'icon-192.png';
+    if (el('shop-logo-preview-img')) el('shop-logo-preview-img').src = url;
+  });
+
+  el('cfg-studio-logo')?.addEventListener('change', e => {
+    const url = e.target.value.trim() || 'icon-192.png';
+    updateStudioLogo(url, true);
+    showToast('💾 賣家 Logo / 名片貼圖已更新並同步至全站！');
+  });
+
+  // 儲存賣家店鋪設定 (全域設定一鍵儲存)
+  el('btn-save-shop-settings')?.addEventListener('click', () => {
+    const sName = el('cfg-studio-name')?.value.trim() || '建生工坊';
+    const sLogo = el('cfg-studio-logo')?.value.trim() || 'icon-192.png';
+    const baseCur = el('cfg-base-currency')?.value || 'TWD';
+    const pickupH = Number(el('cfg-pickup-hours')?.value) || 48;
+
+    updateStudioName(sName, true);
+    updateStudioLogo(sLogo, true);
+    AppState.baseCurrency = baseCur;
+    SafeStorage.set('agy_base_currency', baseCur);
+    SafeStorage.set('agy_pickup_hours', pickupH);
+
+    const db = FirebaseManager.getDb();
+    if (db) {
+      db.ref('settings/shop').update({
+        studioName: sName,
+        studioLogo: sLogo,
+        baseCurrency: baseCur,
+        pickupHours: pickupH,
+        updatedAt: Date.now()
+      }).catch(() => {});
+    }
+    showToast('💾 賣家 / 店鋪設定已全面儲存並同步至全站！');
+  });
+
+  // 25. 賣家/店家 Logo 上傳與網址即時預覽（商品專屬自訂）
+  el('btn-upload-seller-logo')?.addEventListener('click', () => {
+    el('input-seller-logo-file')?.click();
+  });
+
+  el('input-seller-logo-file')?.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      if (el('edit-item-seller-logo')) el('edit-item-seller-logo').value = dataUrl;
+      if (el('seller-logo-preview-img')) el('seller-logo-preview-img').src = dataUrl;
+      showToast('📷 店家 Logo 已載入，請儲存商品以生效！');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  el('edit-item-seller-logo')?.addEventListener('input', e => {
+    const url = e.target.value.trim() || 'icon-192.png';
+    if (el('seller-logo-preview-img')) el('seller-logo-preview-img').src = url;
+  });
+
+  // 23. 圖片拖曳上傳功能綁定 (核心功能 2)
+  setupImageDropzone();
+}
+
+// GitHub Pages 官方正式全球公開網址
+const GITHUB_PAGES_BASE_URL = 'https://guesschen1981-cmd.github.io/chien-sheng-auction';
+
+/**
+ * 取得適用於手機掃描與對外分享的永久公開基準 URL
+ * 優先使用 GitHub Pages 正式全球網址，確保 QR Code 印出或發送後全世界手機隨掃即連！
+ */
+function getBaseUrl() {
+  // 1. 若有自訂獨立網域，優先採用
+  const customPublicUrl = SafeStorage.get('agy_public_url');
+  if (customPublicUrl && customPublicUrl.startsWith('http')) {
+    return customPublicUrl.replace(/\/+$/, '');
+  }
+
+  // 2. 官方正式全球 GitHub Pages 網址（即使在本機 localhost:8080 運作，分享與 QR 碼也一律優先產生此全球正式網址）
+  if (GITHUB_PAGES_BASE_URL) {
+    return GITHUB_PAGES_BASE_URL.replace(/\/+$/, '');
+  }
+
+  // 3. 若當前直接在線上伺服器瀏覽
+  if (location.protocol.startsWith('http') && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    return `${location.protocol}//${location.host}${location.pathname.substring(0, location.pathname.lastIndexOf('/'))}`;
+  }
+
+  // 4. 本機備用 LAN IP (保證本機測試時手機掃碼可連)
+  if (serverLanUrl) {
+    return serverLanUrl.replace(/\/+$/, '');
+  }
+
+  return location.origin || 'http://192.168.1.110:8080';
+}
+
+/**
+ * 取得指定商品專屬分享網址
+ * @param {Object} item 拍賣品項
+ * @param {'single'|'all'} mode 分享模式 ('single' = 單品鎖定, 'all' = 賣場總覽)
+ */
+function getItemShareUrl(item, mode = null) {
+  if (!item) item = getActiveItem();
+  if (!item) return `${getBaseUrl()}/index.html`;
+
+  if (!mode) {
+    const singleRadio = el('share-mode-single');
+    mode = (singleRadio && singleRadio.checked) ? 'single' : 'all';
+  }
+
+  const base = getBaseUrl();
+  const url = new URL(`${base}/index.html`);
+  url.searchParams.set('id', item.id);
+  if (mode === 'single') {
+    url.searchParams.set('mode', 'single');
+  }
+  return url.toString();
+}
+
+/**
+ * 更新分享卡片與 QR Code
+ */
+function updateShareUrl() {
+  const item = getActiveItem();
+  if (!item) return;
+
+  const isSingle = el('share-mode-single') ? el('share-mode-single').checked : true;
+  const mode = isSingle ? 'single' : 'all';
+  const url = getItemShareUrl(item, mode);
+
+  if (el('share-url-input')) {
+    el('share-url-input').value = url;
+  }
+
+  const badge = el('share-item-badge');
+  if (badge) {
+    badge.textContent = mode === 'single' ? '🎯 專屬單品獨立連結' : '🏬 全商品賣場總覽連結';
+  }
+
+  const qrBox = el('qr-container');
+  if (qrBox && typeof QRCode !== 'undefined') {
+    qrBox.innerHTML = '';
+    new QRCode(qrBox, {
+      text: url,
+      width: 130,
+      height: 130,
+      colorDark: '#09091e',
+      colorLight: '#ffffff',
+      correctLevel: (QRCode.CorrectLevel && QRCode.CorrectLevel.M) ? QRCode.CorrectLevel.M : 0
+    });
+  }
+}
+
+/**
+ * 使用 QRCode.js 在記憶體中產生 QR Code Image 物件
+ */
+function generateQrCodeImage(text, size = 320) {
+  return new Promise((resolve, reject) => {
+    try {
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '-9999px';
+      document.body.appendChild(container);
+
+      new QRCode(container, {
+        text: text,
+        width: size,
+        height: size,
+        colorDark: '#0a0a1e',
+        colorLight: '#ffffff',
+        correctLevel: (typeof QRCode !== 'undefined' && QRCode.CorrectLevel && QRCode.CorrectLevel.H !== undefined) ? QRCode.CorrectLevel.H : 2
+      });
+
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        attempts++;
+        const cvs = container.querySelector('canvas');
+        const img = container.querySelector('img');
+
+        if (cvs && cvs.width > 0) {
+          clearInterval(checkInterval);
+          const resImg = new Image();
+          resImg.onload = () => {
+            document.body.removeChild(container);
+            resolve(resImg);
+          };
+          resImg.onerror = (e) => {
+            document.body.removeChild(container);
+            reject(e);
+          };
+          resImg.src = cvs.toDataURL('image/png');
+          return;
+        }
+
+        if (img && img.src && img.src.startsWith('data:image')) {
+          clearInterval(checkInterval);
+          const resImg = new Image();
+          resImg.onload = () => {
+            document.body.removeChild(container);
+            resolve(resImg);
+          };
+          resImg.onerror = (e) => {
+            document.body.removeChild(container);
+            reject(e);
+          };
+          resImg.src = img.src;
+          return;
+        }
+
+        if (attempts > 30) {
+          clearInterval(checkInterval);
+          document.body.removeChild(container);
+          reject(new Error('QR Code 產生逾時'));
+        }
+      }, 100);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * 下載帶有完整品名標籤、價格與掃描提示的專屬 QR Code 圖卡
+ */
+async function downloadItemQrCard(item) {
+  if (!item) item = getActiveItem();
+  if (!item) {
+    showToast('⚠️ 未找到商品資料，無法生成 QR 圖卡');
+    return;
+  }
+
+  showToast('🎨 正在生成帶品名專屬 QR 圖卡...');
+  try {
+    const singleUrl = getItemShareUrl(item, 'single');
+    const qrImage = await generateQrCodeImage(singleUrl, 320);
+
+    const canvas = document.createElement('canvas');
+    const width = 600;
+    const height = 840;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+
+    // 1. 背景深色尊榮漸層
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, '#0e0e26');
+    bgGrad.addColorStop(0.5, '#121232');
+    bgGrad.addColorStop(1, '#070714');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. 金色微光外框
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(16, 16, width - 32, height - 32);
+
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(22, 22, width - 44, height - 44);
+
+    // 3. 上方拍賣名稱
+    const studio = AppState.studioName || '建生工坊';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
+    ctx.fillText(`🔨  ${studio}  🔨`, width / 2, 65);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '14px "Noto Sans TC", sans-serif';
+    ctx.fillText('掃描條碼・即刻鎖定本品項競價', width / 2, 95);
+
+    // 4. 中間 QR Code 白底卡片 (360x360)
+    const qrBoxSize = 360;
+    const qrBoxX = (width - qrBoxSize) / 2;
+    const qrBoxY = 118;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#ffffff';
+    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 20);
+    ctx.fill();
+    ctx.restore();
+
+    // 繪製 QR Code (留 20px 內縮白邊)
+    ctx.drawImage(qrImage, qrBoxX + 20, qrBoxY + 20, qrBoxSize - 40, qrBoxSize - 40);
+
+    // 5. 下方品名 (自動折行，大字醒目)
+    const textStartY = 524;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 21px "Noto Sans TC", sans-serif';
+    const maxTextWidth = 520;
+    const lines = wrapCanvasText(ctx, item.name, maxTextWidth, 2);
+    let curY = textStartY;
+    lines.forEach(line => {
+      ctx.fillText(line, width / 2, curY);
+      curY += 32;
+    });
+
+    // 6. 價格與狀態標籤膠囊 (Pill badge)
+    const isEnded = item.status === 'ended' || item.status === 'picked_up';
+    const curBid = (item.bids && item.bids.length) ? item.currentBid : item.startPrice;
+    const priceText = `${(item.bids && item.bids.length) ? '目前最高價' : '起標價'}：NT$ ${curBid.toLocaleString()} ｜ ${isEnded ? '已結標' : '🔥 競標倒數中'}`;
+
+    const pillY = Math.max(curY + 10, 600);
+    const pillWidth = 480;
+    const pillHeight = 44;
+    const pillX = (width - pillWidth) / 2;
+
+    ctx.fillStyle = 'rgba(212, 175, 55, 0.16)';
+    drawRoundRect(ctx, pillX, pillY, pillWidth, pillHeight, 22);
+    ctx.fill();
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 18px "Noto Sans TC", sans-serif';
+    ctx.fillText(priceText, width / 2, pillY + 28);
+
+    // 7. 底部掃碼提示與網址標示
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '14px "Noto Sans TC", sans-serif';
+    ctx.fillText('📱 請使用手機相機或 LINE 內建掃描器掃描參與競標', width / 2, 695);
+
+    ctx.fillStyle = 'rgba(212, 175, 55, 0.75)';
+    ctx.font = '12px monospace';
+    const displayUrl = singleUrl.length > 55 ? singleUrl.substring(0, 52) + '...' : singleUrl;
+    ctx.fillText(displayUrl, width / 2, 725);
+
+    // 8. 觸發自動下載
+    const cleanName = (item.name || '拍賣商品').replace(/[\\/:*?"<>|]/g, '_');
+    const fileName = `QR_${cleanName}.png`;
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast(`✅ 已成功下載【${item.name.substring(0, 15)}...】專屬 QR 圖卡！`);
+  } catch (err) {
+    console.error('Download QR card failed:', err);
+    showToast('❌ 生成 QR 圖卡失敗，請稍後再試');
+  }
+}
+
+/** 輔助繪製圓角矩形 */
+function drawRoundRect(ctx, x, y, width, height, radius) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+/** 輔助 Canvas 文字折行 */
+function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
+  const characters = Array.from(text || '');
+  const lines = [];
+  let currentLine = '';
+
+  for (let i = 0; i < characters.length; i++) {
+    const char = characters[i];
+    const testLine = currentLine + char;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = char;
+      if (lines.length === maxLines - 1) {
+        let remaining = characters.slice(i).join('');
+        while (ctx.measureText(remaining + '...').width > maxWidth && remaining.length > 0) {
+          remaining = remaining.slice(0, -1);
+        }
+        lines.push(remaining + '...');
+        return lines;
+      }
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine.length > 0 && lines.length < maxLines) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+/**
+ * 後台：一鍵複製全部商品獨立網址清單
+ */
+function copyAllItemsUrls() {
+  if (!AppState.items || AppState.items.length === 0) {
+    showToast('⚠️ 目前拍賣清單中無任何商品！');
+    return;
+  }
+
+  const studio = AppState.studioName || '建生工坊';
+  const lines = [
+    `✨【${studio}】精選拍賣商品清單 ✨`,
+    `📅 競標進行中，點擊專屬連結立即參與出標！\n`
+  ];
+
+  AppState.items.forEach((item, idx) => {
+    const num = String(idx + 1).padStart(2, '0');
+    const isEnded = item.status === 'ended' || item.status === 'picked_up';
+    const statusTag = isEnded ? '【已結標】' : '【競標中】';
+    const curBid = (item.bids && item.bids.length) ? item.currentBid : item.startPrice;
+    const priceLabel = (item.bids && item.bids.length) ? '最高出價' : '起標價';
+    const url = getItemShareUrl(item, 'single');
+
+    lines.push(`${num}. 【${item.name}】${statusTag}`);
+    lines.push(`💰 ${priceLabel}：NT$ ${curBid.toLocaleString()}`);
+    lines.push(`🔗 專屬競標網址：${url}\n`);
+  });
+
+  lines.push(`🏪 實體自取地點：請參考各商品得標說明頁`);
+  lines.push(`✦ 歡迎點擊上方專屬網址參與競標 ✦`);
+
+  const fullText = lines.join('\n');
+  navigator.clipboard.writeText(fullText).then(() => {
+    showToast(`📋 已成功複製全部 ${AppState.items.length} 件商品專屬網址清單！`);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = fullText;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast(`📋 已成功複製全部 ${AppState.items.length} 件商品專屬網址清單！`);
+  });
+}
+
+/**
+ * 套用單品獨立模式 UI 視覺呈現
+ * @param {boolean} isSingle 是否鎖定為單品模式
+ */
+function applySingleModeUI(isSingle) {
+  const tabsSec = el('item-tabs-section');
+  const banner = el('single-mode-banner');
+
+  if (isSingle && !AppState.isTabsManuallyExpanded) {
+    if (tabsSec) tabsSec.style.display = 'none';
+    if (banner) {
+      const totalCount = (AppState.items && AppState.items.length) ? AppState.items.length : 1;
+      const studio = AppState.studioName || '建生工坊';
+      banner.style.display = 'flex';
+      banner.innerHTML = `
+        <button type="button" class="single-mode-pill" id="btn-expand-all-tabs">
+          <span>🏬 查看賣場其他拍賣品（共 ${totalCount} 件）</span>
+          <span style="font-size:1.1rem;line-height:1;margin-left:8px;">›</span>
+        </button>
+      `;
+      const expandBtn = el('btn-expand-all-tabs');
+      if (expandBtn) {
+        expandBtn.addEventListener('click', () => {
+          showAllItemsTabs();
+        });
+      }
+    }
+  } else {
+    if (tabsSec && AppState.items && AppState.items.length > 0) {
+      tabsSec.style.display = 'block';
+    }
+    if (banner) banner.style.display = 'none';
+  }
+}
+
+/**
+ * 展開全部商品切換列
+ */
+function showAllItemsTabs() {
+  AppState.isTabsManuallyExpanded = true;
+  const tabsSec = el('item-tabs-section');
+  const banner = el('single-mode-banner');
+  if (tabsSec) {
+    tabsSec.style.display = 'block';
+    tabsSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (banner) {
+    banner.style.display = 'none';
+  }
+  showToast('🏬 已展開全賣場商品切換選單');
+}
+
+/**
+ * 根據網址參數 (?id=xxx&mode=single) 解析路由與鎖定商品
+ */
+function applyUrlRouteParams() {
+  if (!AppState.items || AppState.items.length === 0) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const targetId = params.get('id');
+  const mode = params.get('mode');
+
+  if (targetId) {
+    const matched = AppState.items.find(it => it.id === targetId);
+    if (matched) {
+      AppState.activeItemId = matched.id;
+      AppState.editingItemId = matched.id;
+    }
+  }
+
+  const currentItem = getActiveItem();
+  if (currentItem) {
+    const isEnded = currentItem.status === 'ended' || currentItem.status === 'picked_up';
+    const studio = AppState.studioName || '建生工坊';
+    const statusPrefix = isEnded ? '【已結標】' : '【競標中】';
+    document.title = `${statusPrefix} ${currentItem.name}｜${studio}`;
+    const pageTitle = el('page-title');
+    if (pageTitle) pageTitle.textContent = document.title;
+  }
+
+  if (mode === 'single') {
+    applySingleModeUI(true);
+  } else {
+    applySingleModeUI(false);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   18. 智慧同步與本機資料搬移橋接模組 (Local Server & file:// Bridge)
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * 跨協定自動資料同步機制：
+ * 若使用者於 file:/// 協定開啟且本機儲存有拍賣商品資料，自動將其 POST 給本機伺服器
+ */
+function checkAndBridgeFileToLocalServer() {
+  if (location.protocol !== 'file:') return;
+  try {
+    const dump = {};
+    let hasData = false;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      dump[k] = localStorage.getItem(k);
+      if (k.startsWith('agy_') || k.startsWith('auctionSect_')) {
+        hasData = true;
+      }
+    }
+    if (AppState.items && AppState.items.length > 0) {
+      dump['items'] = AppState.items;
+      dump['studioName'] = AppState.studioName;
+      hasData = true;
+    }
+    if (hasData) {
+      fetch('http://localhost:8080/__save_my_data__', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dump)
+      }).then(res => res.json()).then(result => {
+        showToast('✅ 已將您的個人拍賣資料同步至本機 .bat 伺服器！');
+        console.log('✅ 已成功將 file:// 資料推送到本機伺服器 my_auction_data.json');
+      }).catch(err => {
+        // 本機伺服器未啟動時靜默略過
+      });
+    }
+  } catch (e) {
+    console.warn('Bridge file to local server error:', e);
+  }
+}
+
+/**
+ * 本機伺服器拍賣資料自動載入：
+ * 當透過本機伺服器 (http://localhost:8080) 開啟時，自動從 my_auction_data.json 載入真實商品與圖片
+ */
+function checkAndLoadMyAuctionData() {
+  // 嘗試取得伺服器回報的 LAN IP (供手機掃碼 QR Code 使用)
+  fetch('./__server_info__')
+    .then(r => r.json())
+    .then(inf => {
+      if (inf && inf.lan_url) {
+        serverLanUrl = inf.lan_url;
+        updateShareUrl();
+      }
+    })
+    .catch(() => {});
+
+  // 相對路徑載入 my_auction_data.json，支援本機伺服器與 GitHub Pages 全球託管
+  let targetUrl = './my_auction_data.json?t=' + Date.now();
+  if (location.protocol === 'file:') {
+    targetUrl = 'http://localhost:8080/my_auction_data.json?t=' + Date.now();
+  }
+
+  fetch(targetUrl)
+    .then(res => {
+      if (!res.ok) throw new Error('my_auction_data.json not found');
+      return res.json();
+    })
+    .then(data => {
+      if (!data) return;
+      let hasUpdate = false;
+
+      if (data.studioName) {
+        AppState.studioName = data.studioName;
+        SafeStorage.set('agy_studio_name', data.studioName);
+        updateStudioName(data.studioName, false);
+      }
+      if (data.studioLogo) {
+        SafeStorage.set('agy_studio_logo', data.studioLogo);
+        updateStudioLogo(data.studioLogo, false);
+      }
+      if (data.logoConfig) {
+        SafeStorage.set('agy_studio_logo_cfg', data.logoConfig);
+        applyLogoConfig(data.logoConfig, false);
+      }
+      if (data.baseCurrency) {
+        AppState.baseCurrency = data.baseCurrency;
+        SafeStorage.set('agy_base_currency', data.baseCurrency);
+      }
+      if (data.agy_last_auction_id) {
+        AppState.auctionId = data.agy_last_auction_id;
+        SafeStorage.set('agy_last_auction_id', data.agy_last_auction_id);
+      }
+
+      if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+        // 過濾假範例商品
+        const filtered = data.items.filter(it => {
+          const n = String(it.name || '');
+          return !n.includes('樟木箱') && !n.includes('茶盤') && !n.includes('官帽椅');
+        });
+        if (filtered.length > 0) {
+          const normalized = filtered.map((it, idx) => {
+            const item = normalizeItem(it, it.id || `item-${idx + 1}`);
+            if (item.timeMode === 'reset24' && (item.status === 'live' || item.status === 'active')) {
+              if (item.endTime <= getServerNow()) {
+                item.endTime = getServerNow() + 24 * 3600 * 1000;
+              }
+            }
+            return item;
+          });
+          AppState.items = normalized;
+          applyUrlRouteParams();
+          SafeStorage.set('agy_items', normalized);
+          hasUpdate = true;
+        }
+      }
+
+      if (hasUpdate) {
+        console.log('✅ 已成功從 my_auction_data.json 載入商品資料！商品數量:', AppState.items.length, '首項圖片數:', AppState.items[0]?.images?.length);
+        applyUrlRouteParams();
+        if (AppState.activeItemId) {
+          loadItemIntoEditForm(AppState.activeItemId);
+        }
+        renderItemTabs();
+        renderActiveItemDisplay();
+        renderBidHistory();
+        renderQA();
+        renderWinnerStatus();
+        renderAdminItemsList();
+        updateAuctionTimerUI();
+        updateShareUrl();
+        if (AppState.auctionId && typeof listenFirebase === 'function') {
+          listenFirebase(AppState.auctionId);
+        }
+      }
+    })
+    .catch(err => {
+      console.log('載入 my_auction_data.json：', err.message);
+    });
+}
+
+/**
+ * 同步拍賣全域資料至本機伺服器 my_auction_data.json
+ */
+function syncToLocalServer() {
+  const payload = {
+    studioName: AppState.studioName,
+    baseCurrency: AppState.baseCurrency,
+    studioLogo: SafeStorage.get('agy_studio_logo') || 'icon-192.png',
+    logoConfig: SafeStorage.get('agy_studio_logo_cfg') || getLogoConfig(),
+    items: AppState.items,
+    agy_studio_name: AppState.studioName,
+    agy_active_currency: AppState.activeCurrency,
+    agy_last_auction_id: AppState.auctionId
+  };
+
+  fetch('http://localhost:8080/__save_my_data__', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(res => res.json()).then(data => {
+    console.log('✅ 本機伺服器 my_auction_data.json 已同步更新');
+  }).catch(err => {
+    // 伺服器未啟動或連線失敗時略過
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   19. 系統啟動初始化入口 (Init on DOM Ready)
+   ───────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  restoreSavedProfile();
+  restoreSavedLegacyLocalStorage(); // 舊版本機設定與歷史資料還原保護
+
+  // 嚴格確保系統預設為「建生工坊」
+  let cachedStudioName = SafeStorage.get('agy_studio_name');
+  if (!cachedStudioName || cachedStudioName === 'JianSheng Boutique') {
+    cachedStudioName = '建生工坊';
+    SafeStorage.set('agy_studio_name', '建生工坊');
+  }
+  updateStudioName(cachedStudioName, true);
+
+  let cachedStudioLogo = SafeStorage.get('agy_studio_logo') || 'icon-192.png';
+  updateStudioLogo(cachedStudioLogo, false);
+
+  setupLogoFitModal();
+  setupLogoDragAndDrop();
+  applyLogoConfig(getLogoConfig(), false);
+
+  FirebaseManager.init();
+  bindEvents();
+  startAuctionTimer();
 
   const p = new URLSearchParams(location.search);
-  const cloudId = p.get('id');           // Cloud Auction ID (new format)
-  const legacyAuction = p.get('auction'); // Legacy local mode
+  const cloudId = p.get('id') || SafeStorage.get('agy_last_auction_id');
 
-  // ── BUYER MODE: Load cloud auction by ?id= ────────────
   if (cloudId) {
-    // Step 1: 立刻隱藏 admin 頁面，切至 auction 並顯示載入遮罩
-    const adminEl = el('page-admin');
-    if (adminEl) { adminEl.classList.remove('active'); adminEl.style.display = 'none'; }
-
-    switchPage('auction');
-    showBuyerLoading(true);   // 顯示 "☁️ 正在連線至雲端拍賣…" 遮罩
-
-    // Step 2: 確保 Firebase 已連線（最多等 1.5s）
-    if (!FirebaseModule.isReady()) {
-      await new Promise(r => setTimeout(r, 1500));
-    }
-
-    if (!FirebaseModule.isReady()) {
-      // 連線失敗：在 auction 頁面內顯示錯誤，不跳回 admin
-      showBuyerLoading(false);
-      const dashboard = el('page-auction')?.querySelector('.auction-dashboard');
-      if (dashboard) {
-        dashboard.innerHTML = `
-          <div style="grid-column:1/-1;text-align:center;padding:80px 24px;">
-            <div style="font-size:3rem;margin-bottom:16px;">☁️</div>
-            <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:8px;color:var(--c-text-1)">
-              無法連線至雲端資料庫
-            </h2>
-            <p style="color:var(--c-text-2);font-size:.88rem;line-height:1.7;max-width:340px;margin:0 auto 24px;">
-              請確認 Firebase 設定已完成，或聯繫主辦方取得正確連結。<br>
-              Auction ID：<code style="color:var(--c-purple-1)">${cloudId}</code>
-            </p>
-            <button class="tbtn tbtn-ghost" onclick="location.href=location.pathname">
-              ⟵ 返回首頁
-            </button>
-          </div>`;
-      }
-      showToast('⚠️ 無法連線至雲端，請確認 Firebase 設定', 'error', 8000);
-      return;
-    }
-
-    // Step 3: 從 Firebase 載入拍賣資料
-    const data = await FirebaseModule.loadAuction(cloudId);
-    if (!data) {
-      showBuyerLoading(false);
-      const dashboard = el('page-auction')?.querySelector('.auction-dashboard');
-      if (dashboard) {
-        dashboard.innerHTML = `
-          <div style="grid-column:1/-1;text-align:center;padding:80px 24px;">
-            <div style="font-size:3rem;margin-bottom:16px;">🔍</div>
-            <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:8px;color:var(--c-text-1)">
-              找不到此拍賣
-            </h2>
-            <p style="color:var(--c-text-2);font-size:.88rem;line-height:1.7;max-width:340px;margin:0 auto 24px;">
-              拍賣 ID 無效、已結束或已被主辦方刪除。<br>
-              <code style="color:var(--c-purple-1)">${cloudId}</code>
-            </p>
-            <button class="tbtn tbtn-ghost" onclick="location.href=location.pathname">
-              ⟵ 返回首頁
-            </button>
-          </div>`;
-      }
-      showToast('❌ 找不到拍賣 ID: ' + cloudId, 'error', 8000);
-      return;
-    }
-
-    // Step 4: 填入 S 狀態物件
-    S.auctionId   = cloudId;
-    S.studioName  = data.studioName  || '';
-    S.logoUrl     = data.logoUrl     || '';
-    S.itemName    = data.itemName    || '拍賣商品';
-    S.itemSubtitle= data.itemSubtitle|| '';
-    S.itemDesc    = data.itemDesc    || '';
-    S.itemQty     = data.itemQty     || 1;
-    S.videoUrl    = data.videoUrl    || '';
-    S.startPrice  = data.startPrice  || 0;
-    S.increment   = data.increment   || 50;
-    S.pickups     = Array.isArray(data.pickups) ? data.pickups : [];
-    S.customTerms = data.customTerms || '';
-    S.timerMode   = data.timerMode   || 'fixed';
-    S.antiSnipe   = !!data.antiSnipe;
-    S.bufferMins  = data.bufferMins  || 3;
-    S.extendMins  = data.extendMins  || 3;
-    S.currentBid  = data.currentBid  || data.startPrice || 0;
-    S.topBidder   = data.topBidder   || '';
-    S.topBidTime  = data.topBidTime  || null;
-    S.bidHistory  = Array.isArray(data.bidHistory) ? data.bidHistory : [];
-    S.auctionLive = !data.auctionDone;
-    S.auctionDone = !!data.auctionDone;
-    S.totalSecs   = data.totalSecs   || 86400;
-    S.shareUrl    = location.href;
-
-    if (Array.isArray(data.imageList) && data.imageList.length) {
-      S.images = data.imageList;
-    }
-    if (data.endAt) {
-      S.endTime = new Date(data.endAt);
-    }
-
-    // Step 5: 渲染頁面，渲染完成後才移除 loading 遮罩
-    renderAuction();
-
-    // 等一個 rAF 確保 DOM 已繪製再移除 loading
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        showBuyerLoading(false);  // 移除遮罩，展示完整已渲染頁面
-        generateQR();
-        if (S.auctionLive && S.endTime) startTimer();
-
-        // 顯示 Firebase 狀態列
-        const fbBar = el('fb-status-bar');
-        if (fbBar) fbBar.style.display = 'flex';
-
-        showToast(`📲 已連線至拍賣：${S.itemName}`, 'success', 4000);
-        if (data.auctionDone) endAuction();
-      });
-    });
-
-    return; // Done — buyer mode
+    AppState.auctionId = cloudId;
+    listenFirebase(cloudId);
   }
 
-  // ── LEGACY: ?auction=1 local share URL ────────────────
-  if (legacyAuction === '1') {
-    S.itemName   = p.get('title')  || '拍賣商品';
-    S.studioName = p.get('studio') || '建生工坊';
-    S.shareUrl   = location.href;
-    renderAuction();
-    generateQR();
-    switchPage('auction');
-    showToast('📲 歡迎！請聯繫主辦方取得更多資訊。', 'info', 5000);
-    return;
+  AppState.isAdmin = !p.get('id');
+
+  // 初始化網址路由與單品模式鎖定
+  applyUrlRouteParams();
+
+  if (AppState.activeItemId) {
+    loadItemIntoEditForm(AppState.activeItemId);
   }
+  renderItemTabs();
+  renderActiveItemDisplay();
+  renderBidHistory();
+  renderQA();
+  renderWinnerStatus();
+  updateAuctionTimerUI();
+  updateShareUrl();
 
-  // ── ADMIN MODE ─────────────────────────────────────────
-  S.shareUrl = buildShareUrl();
-  aShareUrl.value = S.shareUrl;
-  switchPage('admin');
-})();
-
-
+  // 智慧載入本機拍賣資料與同步橋接
+  checkAndLoadMyAuctionData();
+  checkAndBridgeFileToLocalServer();
+});

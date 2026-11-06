@@ -1,0 +1,16 @@
+# 封存壓縮檔與大型執行檔
+*.rar
+*.zip
+*.7z
+*.tar.gz
+*.exe
+cloudflared.exe
+
+# 暫存與快取檔案
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
