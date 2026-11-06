@@ -57,8 +57,7 @@ class AuctionServerHandler(SimpleHTTPRequestHandler):
                 post_body = self.rfile.read(content_length).decode('utf-8')
                 incoming_data = json.loads(post_body)
 
-                # 若接收到的是整個 localStorage 的 dump，進行結構整理
-                # 檢測是否有 items 或 auctionSect_B
+                # 讀取現有既有檔案資料
                 final_data = {}
                 if os.path.exists(DATA_FILE):
                     try:
@@ -67,49 +66,65 @@ class AuctionServerHandler(SimpleHTTPRequestHandler):
                     except Exception:
                         final_data = {}
 
+                existing_items = final_data.get('items', [])
+                force_delete_all = incoming_data.get('forceDeleteAll') is True if isinstance(incoming_data, dict) else False
+
                 # 處理傳入資料
                 if isinstance(incoming_data, dict):
-                    # 若為拍賣主資料結構
+                    extracted_items = None
                     if 'items' in incoming_data:
-                        final_data.update(incoming_data)
+                        extracted_items = incoming_data['items']
                     else:
-                        # 可能是 localStorage dump
-                        # 檢查是否有 agy_items 或 items
-                        for key in ['agy_items', 'items', 'auctionItems']:
+                        for key in ['agy_items', 'auctionItems']:
                             if key in incoming_data:
                                 val = incoming_data[key]
                                 if isinstance(val, str):
                                     try: val = json.loads(val)
                                     except: pass
-                                if isinstance(val, list) and len(val) > 0:
-                                    final_data['items'] = val
+                                if isinstance(val, list):
+                                    extracted_items = val
                                     break
 
-                        # 檢查工作室名稱與設定
-                        for key in ['agy_studio_name', 'studioName']:
-                            if key in incoming_data and incoming_data[key]:
-                                final_data['studioName'] = incoming_data[key]
-                                final_data['agy_studio_name'] = incoming_data[key]
+                    # 嚴格防清空防覆蓋機制：
+                    # 若傳來的商品清單是空的（或未包含有效商品），且原本 my_auction_data.json 內有商品資料，
+                    # 且非明確 forceDeleteAll 標記，則拒絕覆蓋 items！
+                    if (extracted_items is None or len(extracted_items) == 0) and (existing_items and len(existing_items) > 0) and not force_delete_all:
+                        print("[GUARD] 偵測到傳入之商品清單為空，啟動防清空保護：保留既有 Acer 筆電商品資料，拒絕覆蓋！")
+                        final_data['items'] = existing_items
+                    elif extracted_items is not None and len(extracted_items) > 0:
+                        # 檢查傳入的 items：如果傳入的商品圖片為空但既有商品有 28 張實拍照，進行圖片保護
+                        for new_it in extracted_items:
+                            if not new_it.get('images') or len(new_it.get('images', [])) == 0:
+                                matched_orig = next((orig for orig in existing_items if orig.get('id') == new_it.get('id')), None)
+                                if matched_orig and matched_orig.get('images') and len(matched_orig['images']) > 0:
+                                    print(f"[GUARD] 自動恢復商品【{new_it.get('name', '')[:20]}】的既有 {len(matched_orig['images'])} 張實拍照，防止圖片被洗空！")
+                                    new_it['images'] = matched_orig['images']
+                        final_data['items'] = extracted_items
 
-                        for key in ['agy_studio_logo', 'studioLogo']:
-                            if key in incoming_data and incoming_data[key]:
-                                final_data['studioLogo'] = incoming_data[key]
+                    # 檢查工作室名稱與設定
+                    for key in ['agy_studio_name', 'studioName']:
+                        if key in incoming_data and incoming_data[key]:
+                            final_data['studioName'] = incoming_data[key]
+                            final_data['agy_studio_name'] = incoming_data[key]
 
-                        for key in ['agy_studio_logo_cfg', 'logoConfig']:
-                            if key in incoming_data and incoming_data[key]:
-                                val = incoming_data[key]
-                                if isinstance(val, str):
-                                    try: val = json.loads(val)
-                                    except: pass
-                                final_data['logoConfig'] = val
+                    for key in ['agy_studio_logo', 'studioLogo']:
+                        if key in incoming_data and incoming_data[key]:
+                            final_data['studioLogo'] = incoming_data[key]
 
-                        for key in ['agy_last_auction_id', 'auctionId']:
-                            if key in incoming_data and incoming_data[key]:
-                                final_data['agy_last_auction_id'] = incoming_data[key]
+                    for key in ['agy_studio_logo_cfg', 'logoConfig']:
+                        if key in incoming_data and incoming_data[key]:
+                            val = incoming_data[key]
+                            if isinstance(val, str):
+                                try: val = json.loads(val)
+                                except: pass
+                            final_data['logoConfig'] = val
 
-                        # 若上述未取得 items，但傳入即是單純資料物件
-                        if 'items' not in final_data and ('name' in incoming_data or 'itemName' in incoming_data):
-                            final_data['items'] = [incoming_data]
+                    for key in ['agy_last_auction_id', 'auctionId']:
+                        if key in incoming_data and incoming_data[key]:
+                            final_data['agy_last_auction_id'] = incoming_data[key]
+
+                    if 'baseCurrency' in incoming_data and incoming_data['baseCurrency']:
+                        final_data['baseCurrency'] = incoming_data['baseCurrency']
 
                 # 寫回 my_auction_data.json
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:

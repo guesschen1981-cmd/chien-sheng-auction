@@ -112,6 +112,8 @@ const AppState = {
 
 // 伺服器回報之區域網路 IP (局域網網址，保證手機掃描 QR Code 正常連線)
 let serverLanUrl = 'http://192.168.1.110:8080';
+// 初始資料載入完成旗標（防「先存後讀」覆蓋漏洞）
+let isInitialDataLoaded = false;
 
 /* ─────────────────────────────────────────────────────────────
    3. 輔助函式 (Helper Utilities)
@@ -4219,6 +4221,10 @@ function applyUrlRouteParams() {
  */
 function checkAndBridgeFileToLocalServer() {
   if (location.protocol !== 'file:') return;
+  if (!isInitialDataLoaded) {
+    console.warn('🛑 初始資料尚未載入完畢，阻擋 checkAndBridgeFileToLocalServer() 避免覆蓋！');
+    return;
+  }
   try {
     const dump = {};
     let hasData = false;
@@ -4255,7 +4261,12 @@ function checkAndBridgeFileToLocalServer() {
  * 本機伺服器拍賣資料自動載入：
  * 當透過本機伺服器 (http://localhost:8080) 開啟時，自動從 my_auction_data.json 載入真實商品與圖片
  */
-function checkAndLoadMyAuctionData() {
+/**
+ * 本機伺服器與 GitHub Pages 拍賣資料非同步安全載入：
+ * 採用 async/await 載入 my_auction_data.json，設定 isInitialDataLoaded = true，
+ * 嚴格阻擋載入前的 premature POST /__save_my_data__，徹底解決先存後讀的覆蓋漏洞。
+ */
+async function checkAndLoadMyAuctionData() {
   // 嘗試取得伺服器回報的 LAN IP (供手機掃碼 QR Code 使用)
   fetch('./__server_info__')
     .then(r => r.json())
@@ -4273,15 +4284,11 @@ function checkAndLoadMyAuctionData() {
     targetUrl = 'http://localhost:8080/my_auction_data.json?t=' + Date.now();
   }
 
-  fetch(targetUrl)
-    .then(res => {
-      if (!res.ok) throw new Error('my_auction_data.json not found');
-      return res.json();
-    })
-    .then(data => {
-      if (!data) return;
-      let hasUpdate = false;
-
+  try {
+    const res = await fetch(targetUrl);
+    if (!res.ok) throw new Error('my_auction_data.json not found (HTTP ' + res.status + ')');
+    const data = await res.json();
+    if (data) {
       if (data.studioName) {
         AppState.studioName = data.studioName;
         SafeStorage.set('agy_studio_name', data.studioName);
@@ -4321,40 +4328,48 @@ function checkAndLoadMyAuctionData() {
             return item;
           });
           AppState.items = normalized;
-          applyUrlRouteParams();
           SafeStorage.set('agy_items', normalized);
-          hasUpdate = true;
         }
       }
-
-      if (hasUpdate) {
-        console.log('✅ 已成功從 my_auction_data.json 載入商品資料！商品數量:', AppState.items.length, '首項圖片數:', AppState.items[0]?.images?.length);
-        applyUrlRouteParams();
-        if (AppState.activeItemId) {
-          loadItemIntoEditForm(AppState.activeItemId);
-        }
-        renderItemTabs();
-        renderActiveItemDisplay();
-        renderBidHistory();
-        renderQA();
-        renderWinnerStatus();
-        renderAdminItemsList();
-        updateAuctionTimerUI();
-        updateShareUrl();
-        if (AppState.auctionId && typeof listenFirebase === 'function') {
-          listenFirebase(AppState.auctionId);
-        }
-      }
-    })
-    .catch(err => {
-      console.log('載入 my_auction_data.json：', err.message);
-    });
+      console.log('✅ 已成功從 my_auction_data.json 載入商品資料！商品數量:', AppState.items.length, '首項圖片數:', AppState.items[0]?.images?.length);
+    }
+  } catch (err) {
+    console.warn('載入 my_auction_data.json 提示：', err.message);
+  } finally {
+    // ★ 核心關鍵：標記初始資料讀取完成，才允許後續的使用者操作存檔
+    isInitialDataLoaded = true;
+    applyUrlRouteParams();
+    if (AppState.activeItemId) {
+      loadItemIntoEditForm(AppState.activeItemId);
+    }
+    renderItemTabs();
+    renderActiveItemDisplay();
+    renderBidHistory();
+    renderQA();
+    renderWinnerStatus();
+    renderAdminItemsList();
+    updateAuctionTimerUI();
+    updateShareUrl();
+    if (AppState.auctionId && typeof listenFirebase === 'function') {
+      listenFirebase(AppState.auctionId);
+    }
+  }
 }
 
 /**
  * 同步拍賣全域資料至本機伺服器 my_auction_data.json
+ * 加入 isInitialDataLoaded 門禁保護與空商品防呆，絕不覆蓋有效商品
  */
-function syncToLocalServer() {
+function syncToLocalServer(force = false) {
+  if (!isInitialDataLoaded && !force) {
+    console.warn('🛑 初始資料尚未載入完成，已阻止 premature syncToLocalServer()，防止覆蓋檔案！');
+    return;
+  }
+  if (!AppState.items || AppState.items.length === 0) {
+    console.warn('🛑 商品清單為空，阻止同步空資料至本機伺服器！');
+    return;
+  }
+
   const payload = {
     studioName: AppState.studioName,
     baseCurrency: AppState.baseCurrency,
@@ -4373,14 +4388,14 @@ function syncToLocalServer() {
   }).then(res => res.json()).then(data => {
     console.log('✅ 本機伺服器 my_auction_data.json 已同步更新');
   }).catch(err => {
-    // 伺服器未啟動或連線失敗時略過
+    // 伺服器未啟動或連線失敗時靜默略過
   });
 }
 
 /* ─────────────────────────────────────────────────────────────
    19. 系統啟動初始化入口 (Init on DOM Ready)
    ───────────────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   restoreSavedProfile();
   restoreSavedLegacyLocalStorage(); // 舊版本機設定與歷史資料還原保護
 
@@ -4401,6 +4416,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   FirebaseManager.init();
   bindEvents();
+
+  // ★ 核心防禦：先完成 await checkAndLoadMyAuctionData() 載入真實商品並渲染完畢！
+  await checkAndLoadMyAuctionData();
+
+  // 待初始真實資料讀取完畢後，才正式啟動倒數計時定時器，杜絕未載入前觸發逾時結標存檔
   startAuctionTimer();
 
   const p = new URLSearchParams(location.search);
@@ -4413,21 +4433,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   AppState.isAdmin = !p.get('id');
 
-  // 初始化網址路由與單品模式鎖定
-  applyUrlRouteParams();
-
-  if (AppState.activeItemId) {
-    loadItemIntoEditForm(AppState.activeItemId);
-  }
-  renderItemTabs();
-  renderActiveItemDisplay();
-  renderBidHistory();
-  renderQA();
-  renderWinnerStatus();
-  updateAuctionTimerUI();
-  updateShareUrl();
-
-  // 智慧載入本機拍賣資料與同步橋接
-  checkAndLoadMyAuctionData();
+  // 若為 file:// 協定，在初始資料完全載入後才執行橋接防護
   checkAndBridgeFileToLocalServer();
 });
