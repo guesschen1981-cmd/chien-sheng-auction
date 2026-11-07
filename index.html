@@ -34,7 +34,7 @@
   <meta http-equiv="Expires" content="0" />
 
   <!-- 主樣式表 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <link rel="stylesheet" href="style.css?v=6.6&t=20261107_viewmode" />
+  <link rel="stylesheet" href="style.css?v=6.7&t=20261107_backup_offer" />
 </head>
 
 <body>
@@ -175,6 +175,64 @@
         <span class="item-tab-badge badge-live" style="font-size:.85rem;padding:4px 12px;" id="winner-name-tag">得標者：—</span>
       </div>
 
+      <!-- ── 🎁 次高價買家專屬「遞補購買意願確認卡」（含賣家提供之遞補優惠價、邀請留言與買家回覆備註欄） ── -->
+      <div class="backup-offer-confirm-card" id="backup-offer-confirm-card" style="display:none;">
+        <div class="backup-card-hd">
+          <div class="backup-card-title">
+            <span>🎁</span>
+            <span id="backup-card-heading">賣家專屬遞補購買邀請確認卡</span>
+          </div>
+          <span class="item-tab-badge badge-live" id="backup-card-status-badge">⏳ 待確認意願</span>
+        </div>
+
+        <div class="backup-card-candidate-row" id="backup-card-buyer-info">
+          👤 受邀候選買家：<strong id="backup-card-buyer-name">—</strong>（<span id="backup-card-rank-label">第 2 順位</span>）
+        </div>
+
+        <!-- 價格對比與「遞補優惠價」醒目展示框 -->
+        <div class="backup-price-showcase">
+          <div class="backup-orig-price-col">
+            <span class="backup-price-lbl">您當初最高出價</span>
+            <span class="backup-orig-price-val" id="backup-card-orig-price">NT$ 0</span>
+          </div>
+          <div class="backup-price-arrow">➔</div>
+          <div class="backup-offer-price-col">
+            <span class="backup-price-lbl">💰 賣家提供遞補優惠價</span>
+            <span class="backup-offer-price-val" id="backup-card-offer-price">NT$ 0</span>
+            <span class="backup-discount-pill" id="backup-card-discount-tag" style="display:none;">🎉 已折減優惠</span>
+          </div>
+        </div>
+
+        <!-- 賣家邀請留言 -->
+        <div class="backup-seller-msg-box">
+          <div class="backup-seller-msg-hd">💌 賣家專屬邀請留言：</div>
+          <div class="backup-seller-msg-body" id="backup-card-seller-msg"></div>
+        </div>
+
+        <!-- 買家回覆備註欄 -->
+        <div class="backup-buyer-reply-box" id="backup-buyer-reply-box">
+          <label class="form-label" for="inp-backup-buyer-note" style="font-size:.78rem;color:var(--c-gold-1);">
+            📝 您的回覆備註（可填寫預計自取時間、交割方式或留言給賣家）：
+          </label>
+          <textarea id="inp-backup-buyer-note" class="form-input" rows="2" maxlength="250"
+            style="height:64px;padding:8px 10px;font-size:.84rem;resize:vertical;"
+            placeholder="例：謝謝老闆提供遞補優惠價！我願意購買，預計本週六下午 3 點前往自取。"></textarea>
+        </div>
+
+        <!-- 同意 / 婉拒操作按鈕列 -->
+        <div class="backup-card-actions" id="backup-card-action-btns">
+          <button type="button" class="tbtn tbtn-gold tbtn-sm backup-accept-btn" id="btn-accept-backup-offer">
+            ✅ 我願意依此遞補優惠價購買
+          </button>
+          <button type="button" class="tbtn tbtn-ghost tbtn-sm backup-decline-btn" id="btn-decline-backup-offer">
+            ❌ 婉拒此次遞補邀請
+          </button>
+        </div>
+
+        <!-- 已回覆後之狀態顯示 -->
+        <div class="backup-responded-summary" id="backup-responded-summary" style="display:none;"></div>
+      </div>
+
         <!-- 取貨期限警示 (核心功能 7) -->
         <div class="winner-deadline-alert" id="winner-deadline-alert">
           ⏳ <strong>取貨提醒：</strong>請於 <span id="winner-deadline-time">48 小時內</span> 完成取貨手續。
@@ -200,6 +258,111 @@
           <button class="tbtn tbtn-success tbtn-sm" id="btn-mark-picked-up" style="width:100%;">
             ✅ 確認客人已完成取貨（歸檔結案）
           </button>
+        </div>
+      </div>
+
+      <!-- ── 🛡️ 後台「棄標黑名單封鎖 ＋ 第 2、第 3 順位遞補詢問＆遞補優惠價控制台」（僅限最高權限管理者顯示） ── -->
+      <div class="winner-backup-panel" id="winner-backup-panel" style="display:none;">
+        <div class="backup-panel-hd">
+          <div style="font-weight:900;color:var(--c-gold-1);font-size:.92rem;display:flex;align-items:center;gap:6px;">
+            <span>🔄</span> 棄標處理 ＆ 第 2、第 3 順位遞補優惠控制台
+          </div>
+          <span class="item-tab-badge badge-live" style="font-size:.7rem;">彈性遞補成交</span>
+        </div>
+
+        <p style="font-size:.78rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.5;">
+          若原得標買家棄標或未依期取貨，可一鍵將其列入封鎖黑名單，並向第 2、第 3 順位次高價買家發送<strong>「自訂遞補優惠價」</strong>專屬確認邀請：
+        </p>
+
+        <!-- 1. 判定當前得標者棄標並封鎖 -->
+        <div class="backup-default-action-bar">
+          <button type="button" class="tbtn tbtn-danger tbtn-xs" id="btn-mark-winner-default" style="width:100%;justify-content:center;padding:8px 12px;font-weight:800;">
+            🚫 判定當前得標者棄標（列入黑名單並啟動順位遞補）
+          </button>
+        </div>
+
+        <!-- 2. 次高價候選買家順位清單 (自動依出價排序：第 2 順位、第 3 順位...) -->
+        <div style="margin-top:12px;">
+          <div style="font-size:.78rem;font-weight:800;color:#fff;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+            <span>📋 點選要詢問的次高價候選買家（自動帶入其原最高出價）：</span>
+            <span style="font-size:.7rem;color:var(--c-gold-1);">點擊買家自動帶入下方表單</span>
+          </div>
+          <div id="backup-candidates-list" class="backup-candidates-list"></div>
+        </div>
+
+        <!-- 3. 遞補邀請表單（含「💰 遞補優惠調整價」自訂欄位） -->
+        <div class="backup-offer-form-box">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(135px, 1fr));gap:8px;margin-bottom:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:.74rem;">遞補順位</label>
+              <input type="text" id="inp-backup-target-rank" class="form-input" value="第 2 順位" style="height:34px;font-size:.82rem;font-weight:700;color:var(--c-gold-1);" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:.74rem;">受邀買家稱呼 *</label>
+              <input type="text" id="inp-backup-target-name" class="form-input" placeholder="買家稱呼" style="height:34px;font-size:.82rem;" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:.74rem;">受邀買家電話 *</label>
+              <input type="tel" id="inp-backup-target-phone" class="form-input" placeholder="09xxxxxxxx" style="height:34px;font-size:.82rem;" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:.74rem;">買家 Line ID</label>
+              <input type="text" id="inp-backup-target-line" class="form-input" placeholder="選填" style="height:34px;font-size:.82rem;" />
+            </div>
+          </div>
+
+          <!-- ★ 核心功能：原出價對照 ＋「💰 遞補優惠調整價」自訂調整欄位 -->
+          <div class="backup-price-adjust-panel">
+            <div class="backup-price-adjust-row">
+              <div class="backup-orig-bid-box">
+                <label class="form-label" style="font-size:.74rem;color:var(--c-text-3);margin-bottom:3px;">
+                  📊 該買家當初最高出價 (TWD)
+                </label>
+                <input type="number" id="inp-backup-orig-bid" class="form-input" value="10000" style="height:40px;font-family:var(--f-num);font-weight:700;font-size:.95rem;color:var(--c-text-2);background:rgba(255,255,255,0.03);" />
+              </div>
+
+              <div class="backup-custom-offer-box">
+                <label class="form-label" for="inp-backup-offer-price" style="font-size:.78rem;color:var(--c-gold-1);font-weight:900;margin-bottom:3px;">
+                  💰 遞補優惠調整價 (TWD) <span style="font-size:.68rem;color:#6ee7b7;font-weight:700;">（正式成交價以此為準）</span>
+                </label>
+                <input type="number" id="inp-backup-offer-price" class="form-input backup-offer-price-input" value="10000" min="1" step="10" placeholder="輸入遞補優惠價" />
+              </div>
+            </div>
+
+            <!-- 快捷折價微調按鈕列 -->
+            <div class="backup-price-quick-btns">
+              <span style="font-size:.72rem;color:var(--c-text-3);">快速調價：</span>
+              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-reset">🔄 帶入原出價</button>
+              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-trim">✂️ 去百位尾數</button>
+              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus100">➖ 折減 100</button>
+              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus500">➖ 折減 500</button>
+            </div>
+          </div>
+
+          <!-- 賣家自訂邀請話術與快捷範本 -->
+          <div class="form-group" style="margin-top:10px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
+              <label class="form-label" for="inp-backup-seller-msg" style="margin-bottom:0;font-size:.78rem;color:var(--c-gold-1);">
+                💌 賣家遞補邀請話術（自動連動上方「遞補優惠價」）：
+              </label>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="standard" style="font-size:.68rem;padding:2px 6px;">💬 標準遞補</button>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="discount" style="font-size:.68rem;padding:2px 6px;">🎁 折價優惠</button>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="selfpickup" style="font-size:.68rem;padding:2px 6px;">🏠 自取特惠</button>
+              </div>
+            </div>
+            <textarea id="inp-backup-seller-msg" class="form-input" rows="3" maxlength="350"
+              style="height:76px;padding:8px 10px;font-size:.82rem;line-height:1.45;resize:vertical;"
+              placeholder="輸入要發送給次高價買家的邀請留言..."></textarea>
+          </div>
+
+          <!-- 一鍵複製邀請文案與專屬連結按鈕 -->
+          <button type="button" class="tbtn tbtn-gold tbtn-sm" id="btn-copy-backup-invite" style="width:100%;min-height:42px;font-size:.86rem;font-weight:900;white-space:normal;line-height:1.35;padding:8px 12px;">
+            📋 複製邀請文案與專屬連結（同步送出遞補優惠邀請卡）
+          </button>
+
+          <!-- 目前已發送之遞補邀請即時狀態追蹤區 -->
+          <div id="admin-backup-offer-status-box" class="admin-backup-offer-status-box" style="display:none;"></div>
         </div>
       </div>
 
@@ -859,6 +1022,43 @@
                 <input type="text" id="edit-item-pickup-custom" class="form-input"
                   placeholder="例：自取自搬・透天1~3樓，或高雄小港門市現場檢驗面交" />
               </div>
+
+              <!-- ⏳ 得標後取貨保留期限設定（保留天數 / 指定星期幾） -->
+              <div class="form-group" style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.1);">
+                <label class="form-label" style="color:var(--c-gold-1);">
+                  ⏳ 得標後取貨保留期限規則（支援指定保留天數或指定星期幾前取貨）
+                </label>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px;margin-top:6px;">
+                  <div>
+                    <label class="form-label" style="font-size:.74rem;">保留期限計算方式</label>
+                    <select id="edit-pickup-deadline-mode" class="form-input" style="height:36px;font-size:.82rem;">
+                      <option value="hours">⏱️ 依保留小時/天數計算</option>
+                      <option value="weekday">📅 指定星期幾前完成取貨</option>
+                      <option value="custom">✏️ 自訂取貨期限文字</option>
+                    </select>
+                  </div>
+                  <div id="pickup-deadline-hours-box">
+                    <label class="form-label" style="font-size:.74rem;">得標保留小時數（例：48=2天、72=3天）</label>
+                    <input type="number" id="edit-item-pickup-hours" class="form-input" value="48" min="1" max="720" style="height:36px;font-size:.84rem;" />
+                  </div>
+                  <div id="pickup-deadline-weekday-box" style="display:none;">
+                    <label class="form-label" style="font-size:.74rem;">指定星期幾前完成取貨</label>
+                    <select id="edit-pickup-weekday" class="form-input" style="height:36px;font-size:.82rem;">
+                      <option value="6">📅 本週六 21:00 前</option>
+                      <option value="0">📅 本週日 21:00 前</option>
+                      <option value="1">📅 下週一 21:00 前</option>
+                      <option value="2">📅 星期二 21:00 前</option>
+                      <option value="3">📅 星期三 21:00 前</option>
+                      <option value="4">📅 星期四 21:00 前</option>
+                      <option value="5">📅 星期五 21:00 前</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="pickup-deadline-custom-box" style="margin-top:8px;">
+                  <input type="text" id="edit-pickup-deadline-custom" class="form-input"
+                    placeholder="選填補充說明（例：得標後保留 3 天，或約定本週日晚上 9 點前自取）" style="font-size:.8rem;height:36px;" />
+                </div>
+              </div>
             </div>
           </details>
 
@@ -1005,16 +1205,30 @@
 
 
   <!-- ════════════════════════════════════════════════════════
-     MODAL: 買家多元身分登入與嚴格電話驗證 (核心功能 3 & 4)
+     MODAL: 買家多元身分登入、7/10/15天資料保留與最高出價防棄標鎖定 (核心功能 3 & 4)
 ════════════════════════════════════════════════════════ -->
   <div class="modal-backdrop" id="modal-buyer-profile" role="dialog" aria-modal="true">
     <div class="modal-sheet">
       <div class="modal-title">
-        <span>👤</span> 買家身分與多元聯絡資料
+        <span>👤</span> 買家身分與資料保留設定
       </div>
-      <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:14px;line-height:1.5;">
-        為維護拍賣公平與得標交割效率，腳本將自動執行嚴格防偽檢驗。請填寫真實有效之聯絡電話與社群帳號：
+      <p style="font-size:.8rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.45;">
+        為維護拍賣公平與得標交割效率，腳本將自動執行嚴格防偽檢驗。輸入曾註冊之手機號碼可自動從雲端帶入您的聯絡資料：
       </p>
+
+      <!-- 🔒 最高出價者防棄標鎖定 / 🟢 解鎖狀態即時提示橫幅 -->
+      <div id="buyer-lock-status-banner" class="buyer-lock-banner unlocked" style="display:none;">
+        <span id="buyer-lock-status-text">🟢 目前無領先標案鎖定，您可自由修改資料或隨時登出。</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">聯絡手機號碼 <em>*</em> <span
+            style="font-size:.72rem;color:var(--c-gold-1);">（輸入號碼可自動比對雲端記憶）</span></label>
+        <input type="tel" id="inp-buyer-phone" class="form-input" placeholder="例：0912345679" maxlength="15" />
+        <div id="buyer-cloud-match-hint" style="display:none;font-size:.74rem;color:#34d399;margin-top:4px;font-weight:700;">
+          ✨ 已從雲端保留記憶自動帶入您的買家資料！
+        </div>
+      </div>
 
       <div class="form-group">
         <label class="form-label">買家稱呼 / 暱稱 <em>*</em></label>
@@ -1022,31 +1236,61 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">聯絡手機號碼 <em>*</em> <span
-            style="font-size:.72rem;color:var(--c-gold-1);">（防偽機制：攔截重複虛假號碼）</span></label>
-        <input type="tel" id="inp-buyer-phone" class="form-input" placeholder="例：0912345679" maxlength="15" />
-      </div>
-
-      <div class="form-group">
         <label class="form-label">Line ID <span
-            style="font-size:.72rem;color:var(--c-text-3);">（得標後一鍵快速聯繫）</span></label>
+            style="font-size:.72rem;color:var(--c-text-3);">（得標或遞補通知一鍵快速聯繫）</span></label>
         <input type="text" id="inp-buyer-line" class="form-input" placeholder="例：xiaoming_chen" />
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Instagram 帳號 <span style="font-size:.72rem;color:var(--c-text-3);">（選填）</span></label>
-        <input type="text" id="inp-buyer-ig" class="form-input" placeholder="例：ming_antique" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="form-group">
+          <label class="form-label">Instagram 帳號 <span style="font-size:.7rem;color:var(--c-text-3);">（選填）</span></label>
+          <input type="text" id="inp-buyer-ig" class="form-input" placeholder="例：ming_antique" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Facebook 帳號 <span style="font-size:.7rem;color:var(--c-text-3);">（選填）</span></label>
+          <input type="text" id="inp-buyer-fb" class="form-input" placeholder="例：fb.com/ming" />
+        </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Facebook 帳號 / Messenger 連結 <span
-            style="font-size:.72rem;color:var(--c-text-3);">（選填）</span></label>
-        <input type="text" id="inp-buyer-fb" class="form-input" placeholder="例：facebook.com/ming.chen" />
+      <!-- 📅 買家自選資料保留天數（7 天 / 10 天 / 15 天） -->
+      <div class="form-group buyer-retention-group">
+        <label class="form-label" style="color:var(--c-gold-1);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+          <span>📅 資料保留期限（自選天數，期間內免重複輸入）</span>
+          <span style="font-size:.7rem;color:var(--c-text-3);">可隨時點開變更</span>
+        </label>
+        <div class="buyer-retention-options" id="buyer-retention-options">
+          <label class="retention-option-card selected" id="ret-card-7">
+            <input type="radio" name="buyer-retention-days" id="retention-radio-7" value="7" checked />
+            <span class="ret-days-num">保留 7 天</span>
+            <span class="ret-days-sub">推薦預設</span>
+          </label>
+          <label class="retention-option-card" id="ret-card-10">
+            <input type="radio" name="buyer-retention-days" id="retention-radio-10" value="10" />
+            <span class="ret-days-num">保留 10 天</span>
+            <span class="ret-days-sub">常客便利</span>
+          </label>
+          <label class="retention-option-card" id="ret-card-15">
+            <input type="radio" name="buyer-retention-days" id="retention-radio-15" value="15" />
+            <span class="ret-days-num">保留 15 天</span>
+            <span class="ret-days-sub">半月長效</span>
+          </label>
+        </div>
+        <div class="buyer-retention-expiry-preview" id="buyer-retention-expiry-preview">
+          ⏳ 預計保留到期時間：<strong id="buyer-retention-expiry-text">—</strong>
+        </div>
       </div>
 
-      <div style="display:flex;gap:10px;margin-top:16px;">
-        <button class="tbtn tbtn-ghost" id="btn-cancel-profile" style="flex:1;">取消</button>
-        <button class="tbtn tbtn-gold" id="btn-save-profile" style="flex:1.5;">✅ 驗證並儲存身分</button>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button type="button" class="tbtn tbtn-ghost" id="btn-cancel-profile" style="flex:1;">取消</button>
+        <button type="button" class="tbtn tbtn-gold" id="btn-save-profile" style="flex:1.6;">✅ 驗證並儲存身分</button>
+      </div>
+
+      <!-- 🚪 隨時登出按鈕（受最高出價者防棄標鎖定機制保護） -->
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
+        <button type="button" class="tbtn tbtn-danger tbtn-sm" id="btn-logout-profile" style="width:100%;justify-content:center;padding:9px 12px;font-weight:800;">
+          🚪 立即登出（清除本機保留資料）
+        </button>
       </div>
     </div>
   </div>
@@ -1254,7 +1498,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
 <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-<script src="app.js?v=6.6&t=20261107_viewmode"></script>
+<script src="app.js?v=6.7&t=20261107_backup_offer"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1267,7 +1511,7 @@
       });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=18').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=19').then(reg => {
         if (reg.waiting) {
           reg.waiting.postMessage({ action: 'skipWaiting' });
         }

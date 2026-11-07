@@ -115,12 +115,16 @@ const AppState = {
     phone: '',
     line: '',
     ig: '',
-    fb: ''
+    fb: '',
+    retentionDays: 7,
+    retentionExpiresAt: null
   },
   prevTopBidders: {}, // 記錄每個品項的前任最高出價者，用於出價超越警示
   galleryIndex: 0,
   currentEditImages: [], // 編輯中的圖片陣列 (支援拖曳上傳預覽)
-  registeredBuyers: [] // 雲端即時同步之買家註冊名冊
+  registeredBuyers: [], // 雲端即時同步之買家註冊名冊
+  blacklist: {},        // 棄標封鎖黑名單 (key: 純數字手機號碼)
+  activeBackupTemplate: 'discount' // 後台遞補邀請話術當前選用範本
 };
 
 // === 捲軸記憶與抗跳動保護模組 ===
@@ -454,13 +458,19 @@ function normalizeItem(raw, fallbackId) {
     antiSnipeExtMins: Number(raw.antiSnipeExt || raw.antiSnipeExtMins || 3),
     pickupDeadlineHours: pickupDeadlineHours,
     pickupDeadline: raw.pickupDeadline || null,
+    pickupDeadlineMode: raw.pickupDeadlineMode || 'hours',
+    pickupDeadlineWeekday: raw.pickupDeadlineWeekday !== undefined ? Number(raw.pickupDeadlineWeekday) : 6,
+    pickupDeadlineCustomText: raw.pickupDeadlineCustomText || '',
     pickupOptions: pickupOptions,
     pickupCustom: pickupCustom,
     extraNotes: extraNotes,
     warrantyDays: warrantyDays,
     warrantyText: warrantyText,
     qa: qa,
-    winnerMsgs: winnerMsgs
+    winnerMsgs: winnerMsgs,
+    backupOffer: (raw.backupOffer && typeof raw.backupOffer === 'object') ? raw.backupOffer : null,
+    finalDealPrice: raw.finalDealPrice ? Number(raw.finalDealPrice) : null,
+    defaultedBidders: Array.isArray(raw.defaultedBidders) ? raw.defaultedBidders : (raw.defaultedBidders ? Object.values(raw.defaultedBidders) : [])
   };
 }
 
@@ -667,6 +677,14 @@ function validatePhoneNumber(rawPhone, userName) {
       SafeStorage.set('agy_registered_users', boundPhones);
     }
   } catch (e) {}
+
+  // 檢查是否已被列入棄標封鎖黑名單
+  if (typeof isBuyerBlacklisted === 'function' && isBuyerBlacklisted(clean)) {
+    return {
+      valid: false,
+      message: '🚫 此聯絡電話因歷史棄標紀錄已被系統列入封鎖黑名單，腳本已攔截並禁止參與競標！'
+    };
+  }
 
   return { valid: true, phone: clean };
 }
@@ -1376,6 +1394,14 @@ const FirebaseManager = (function () {
         updateBuyerRoster();
       }
     });
+
+    _db.ref('settings/blacklist').on('value', snap => {
+      if (snap.exists()) {
+        AppState.blacklist = snap.val() || {};
+        SafeStorage.set('agy_blacklist', AppState.blacklist);
+        try { renderAdminBuyersRoster(); } catch (e) {}
+      }
+    });
   }
 
   // 即時監聽 Firebase 店鋪設定節點
@@ -1563,6 +1589,43 @@ function handleIncomingAuctionData(data) {
             ig: b.bidderIg || b.ig || '',
             fb: b.bidderFb || b.fb || ''
           })).sort((a, b) => b.amount - a.amount);
+          changed = true;
+        }
+        if (rItem.backupOffer !== undefined) {
+          if (JSON.stringify(local.backupOffer || null) !== JSON.stringify(rItem.backupOffer || null)) {
+            local.backupOffer = rItem.backupOffer;
+            changed = true;
+          }
+        }
+        if (rItem.finalDealPrice !== undefined && rItem.finalDealPrice !== local.finalDealPrice) {
+          local.finalDealPrice = Number(rItem.finalDealPrice);
+          local.currentPrice = Number(rItem.finalDealPrice);
+          local.currentBid = Number(rItem.finalDealPrice);
+          if (rItem.topBidder) {
+            local.topBidder = rItem.topBidder?.name || rItem.topBidder;
+            if (typeof rItem.topBidder === 'object') local.topBidderContact = rItem.topBidder;
+          }
+          if (rItem.topBidderContact) local.topBidderContact = rItem.topBidderContact;
+          changed = true;
+        }
+        if (rItem.winnerMsgs && JSON.stringify(local.winnerMsgs || []) !== JSON.stringify(rItem.winnerMsgs)) {
+          local.winnerMsgs = Array.isArray(rItem.winnerMsgs) ? rItem.winnerMsgs : Object.values(rItem.winnerMsgs);
+          changed = true;
+        }
+        if (rItem.backupOffer !== undefined && JSON.stringify(local.backupOffer || null) !== JSON.stringify(rItem.backupOffer || null)) {
+          local.backupOffer = rItem.backupOffer;
+          changed = true;
+        }
+        if (rItem.finalDealPrice !== undefined && rItem.finalDealPrice !== local.finalDealPrice) {
+          local.finalDealPrice = Number(rItem.finalDealPrice);
+          local.currentPrice = Number(rItem.finalDealPrice);
+          local.currentBid = Number(rItem.finalDealPrice);
+          local.topBidder = rItem.topBidder;
+          local.topBidderContact = rItem.topBidderContact;
+          changed = true;
+        }
+        if (rItem.winnerMsgs && JSON.stringify(local.winnerMsgs || []) !== JSON.stringify(rItem.winnerMsgs)) {
+          local.winnerMsgs = rItem.winnerMsgs;
           changed = true;
         }
         if (rItem.qa) {
@@ -2076,14 +2139,15 @@ function renderWinnerStatus() {
       el('winner-headline').textContent = (AppState.userProfile.name && AppState.userProfile.name === winnerName)
         ? '🎉 競價成功！恭喜您得標！'
         : '🎉 拍賣圓滿結標！';
+      const dealAmount = item.finalDealPrice || item.currentPrice || item.currentBid || item.startPrice;
+      const isBackupAccepted = item.backupOffer && item.backupOffer.status === 'accepted';
       el('winner-subline').textContent = `得標商品：${item.name}`;
-      el('winner-name-tag').textContent = `得標買家：${maskBuyerName(winnerName)}`;
-      el('winner-amount-tag').textContent = `結標金額：${formatMoney(item.currentPrice ?? item.currentBid, AppState.activeCurrency)}`;
+      el('winner-name-tag').textContent = `${isBackupAccepted ? '遞補得標買家' : '得標買家'}：${maskBuyerName(winnerName)}`;
+      el('winner-amount-tag').textContent = `${isBackupAccepted ? '💰 遞補優惠成交價' : '結標金額'}：${formatMoney(dealAmount, AppState.activeCurrency)}`;
 
       if (deadlineAlert) {
         deadlineAlert.style.display = 'block';
-        const deadlineHours = item.pickupDeadlineHours || 48;
-        el('winner-deadline-time').textContent = `${deadlineHours} 小時內（預計至 ${new Date(item.endTime + deadlineHours * 3600000).toLocaleString('zh-TW', { hour12: false })} 止）`;
+        el('winner-deadline-time').textContent = formatPickupDeadlineDisplay(item);
       }
 
       if (AppState.isAdmin) {
@@ -2097,6 +2161,12 @@ function renderWinnerStatus() {
 
       if (chatSection) chatSection.style.display = 'block';
       renderWinnerMessages(item);
+
+      // 渲染買家端「🎁 專屬遞補購買意願確認卡」（含賣家提供之遞補優惠價）
+      renderBackupOfferConfirmCard(item);
+
+      // 渲染管理員後台「🔄 棄標處理與次高價順位遞補優惠控制台」
+      renderAdminBackupPanel(item);
 
       // 若管理員檢視已結標卡片，底部也提供重開競標控制台
       if (relistPanel) {
@@ -2122,6 +2192,9 @@ function renderWinnerStatus() {
       if (adminContacts) adminContacts.style.display = 'none';
       if (adminActions) adminActions.style.display = 'none';
       if (chatSection) chatSection.style.display = 'none';
+      if (el('backup-offer-confirm-card')) el('backup-offer-confirm-card').style.display = 'none';
+      if (el('winner-backup-panel')) el('winner-backup-panel').style.display = AppState.isAdmin ? 'block' : 'none';
+      if (AppState.isAdmin) renderAdminBackupPanel(item);
 
       // 僅限最高權限管理者顯示「重新開啟競標控制面板」
       if (relistPanel) {
@@ -2328,6 +2401,15 @@ function renderQA() {
       if (confirm('確定要刪除這筆留言提問嗎？')) {
         deleteQuestion(item.id, qKey);
       }
+    });
+  });
+
+  container.querySelectorAll('.btn-toggle-blacklist').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const phoneNum = btn.dataset.phone;
+      const bName = btn.dataset.name || '買家';
+      toggleBuyerBlacklist(phoneNum, bName);
     });
   });
 }
@@ -2602,15 +2684,31 @@ function renderAdminBuyersRoster() {
       ? `<a href="${escapeHtml(b.fb.startsWith('http') ? b.fb : 'https://' + b.fb)}" target="_blank" rel="noopener" class="buyer-contact-badge badge-fb" style="text-decoration:none;">FB 連結 ↗</a>`
       : '';
 
+    const retDays = Number(b.retentionDays || 7);
+    const expStr = b.retentionExpiresAt
+      ? new Date(Number(b.retentionExpiresAt)).toLocaleDateString('zh-TW')
+      : `${retDays}天內有效`;
+    const lockCheck = checkBuyerHighBidderLock(b.phone, b.name);
+    const lockChipHtml = lockCheck.locked
+      ? `<span class="buyer-status-chip chip-locked" title="目前領先商品：${escapeHtml(lockCheck.itemName)}">🔒 最高出價鎖定中（${escapeHtml(lockCheck.itemName.slice(0, 10))}…）</span>`
+      : `<span class="buyer-status-chip chip-unlocked">🟢 可自由登出</span>`;
+    const isBlocked = isBuyerBlacklisted(b.phone);
+    const blacklistChipHtml = isBlocked
+      ? `<span class="buyer-status-chip chip-blacklisted">🚫 黑名單已封鎖</span>`
+      : '';
+
     card.innerHTML = `
-      <div class="admin-buyer-header">
-        <div class="admin-buyer-name">
+      <div class="admin-buyer-header" style="flex-wrap:wrap;gap:6px;">
+        <div class="admin-buyer-name" style="flex-wrap:wrap;gap:6px;">
           <span style="font-family:monospace;font-size:.78rem;background:rgba(255,215,0,0.15);color:var(--c-gold-1);padding:1px 6px;border-radius:4px;">#${String(idx + 1).padStart(2, '0')}</span>
           <span>👤 ${escapeHtml(b.name || '訪客買家')}</span>
+          <span class="buyer-status-chip chip-retention">📅 保留 ${retDays} 天（至 ${expStr}）</span>
+          ${lockChipHtml}
+          ${blacklistChipHtml}
         </div>
         <div class="admin-buyer-time">🕒 最後更新/上線：${timeStr}</div>
       </div>
-      <div class="admin-buyer-contacts">
+      <div class="admin-buyer-contacts" style="flex-wrap:wrap;gap:6px;">
         <a href="tel:${escapeHtml(b.phone || '')}" class="buyer-phone-link" title="點擊直接撥打手機">
           📞 <strong>${escapeHtml(b.phone || '無電話')}</strong>（撥號）
         </a>
@@ -2618,6 +2716,7 @@ function renderAdminBuyersRoster() {
         ${lineBadge}
         ${igBadge}
         ${fbBadge}
+        ${b.phone ? `<button type="button" class="tbtn ${isBlocked ? 'tbtn-success' : 'tbtn-danger'} tbtn-xs btn-toggle-blacklist" data-phone="${escapeHtml(b.phone)}" data-name="${escapeHtml(b.name || '')}" style="margin-left:auto;padding:2px 8px;font-size:.7rem;">${isBlocked ? '✅ 解除黑名單' : '🚫 列入黑名單'}</button>` : ''}
       </div>
     `;
 
@@ -3652,12 +3751,21 @@ function loadItemIntoEditForm(itemId) {
     el('edit-item-auto-relist').checked = item.autoRelistIfNoBids !== false;
   }
 
-  // 載入取貨方式設定 (自取/宅配/超商/自訂說明)
+  // 載入取貨方式設定 (自取/宅配/超商/自訂說明) 與得標保留期限規則
   const opts = item.pickupOptions || { self: true, delivery: false, cvs: false };
   if (el('edit-pickup-self')) el('edit-pickup-self').checked = opts.self !== false;
   if (el('edit-pickup-delivery')) el('edit-pickup-delivery').checked = !!opts.delivery;
   if (el('edit-pickup-cvs')) el('edit-pickup-cvs').checked = !!opts.cvs;
   if (el('edit-item-pickup-custom')) el('edit-item-pickup-custom').value = item.pickupCustom || '';
+  if (el('edit-pickup-deadline-mode')) {
+    el('edit-pickup-deadline-mode').value = item.pickupDeadlineMode || 'hours';
+    const isWeekday = (item.pickupDeadlineMode === 'weekday');
+    if (el('pickup-deadline-hours-box')) el('pickup-deadline-hours-box').style.display = isWeekday ? 'none' : 'block';
+    if (el('pickup-deadline-weekday-box')) el('pickup-deadline-weekday-box').style.display = isWeekday ? 'block' : 'none';
+  }
+  if (el('edit-item-pickup-hours')) el('edit-item-pickup-hours').value = item.pickupDeadlineHours || 48;
+  if (el('edit-pickup-weekday')) el('edit-pickup-weekday').value = item.pickupDeadlineWeekday !== undefined ? item.pickupDeadlineWeekday : 6;
+  if (el('edit-pickup-deadline-custom')) el('edit-pickup-deadline-custom').value = item.pickupDeadlineCustomText || '';
 
   // 載入額外備註欄
   if (el('edit-item-extra-notes')) el('edit-item-extra-notes').value = item.extraNotes || '';
@@ -3738,13 +3846,17 @@ function saveCurrentItemEdits() {
     item.images = [...AppState.currentEditImages];
   }
 
-  // 取貨方式設定 (自取/寄送/超商/自訂說明)
+  // 取貨方式設定 (自取/寄送/超商/自訂說明) 與得標保留期限規則
   item.pickupOptions = {
     self: !!el('edit-pickup-self')?.checked,
     delivery: !!el('edit-pickup-delivery')?.checked,
     cvs: !!el('edit-pickup-cvs')?.checked
   };
   item.pickupCustom = el('edit-item-pickup-custom')?.value.trim() ?? '';
+  item.pickupDeadlineMode = el('edit-pickup-deadline-mode')?.value || 'hours';
+  item.pickupDeadlineHours = Number(el('edit-item-pickup-hours')?.value) || 48;
+  item.pickupDeadlineWeekday = Number(el('edit-pickup-weekday')?.value ?? 6);
+  item.pickupDeadlineCustomText = el('edit-pickup-deadline-custom')?.value.trim() || '';
 
   // 額外備註欄
   item.extraNotes = el('edit-item-extra-notes')?.value.trim() ?? '';
@@ -3981,27 +4093,258 @@ function startTimerLoop() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   15. 買家身分彈窗與 LocalStorage 存取
+   15. 買家 7/10/15 天資料保留、最高出價者防棄標鎖定、黑名單與後台「遞補優惠價」彈性成交腳本
    ───────────────────────────────────────────────────────────── */
+
+/**
+ * 檢查指定手機號碼是否位於棄標黑名單
+ */
+function isBuyerBlacklisted(rawPhone) {
+  if (!rawPhone) return false;
+  const key = String(rawPhone).replace(/[^0-9]/g, '');
+  if (!key) return false;
+  return !!(AppState.blacklist && AppState.blacklist[key]);
+}
+
+/**
+ * 管理員切換買家黑名單封鎖狀態
+ */
+function toggleBuyerBlacklist(rawPhone, buyerName = '買家') {
+  if (!requireAdminAuth()) return;
+  const key = String(rawPhone || '').replace(/[^0-9]/g, '');
+  if (!key) return;
+
+  if (!AppState.blacklist) AppState.blacklist = {};
+  const currentlyBlocked = !!AppState.blacklist[key];
+
+  if (currentlyBlocked) {
+    delete AppState.blacklist[key];
+    showToast(`✅ 已解除買家「${buyerName} (${rawPhone})」的黑名單封鎖！`);
+  } else {
+    if (!confirm(`🚫 確定要將買家「${buyerName} (${rawPhone})」列入棄標封鎖黑名單嗎？\n列入後該門號將無法參與任何商品競標！`)) {
+      return;
+    }
+    AppState.blacklist[key] = {
+      name: buyerName,
+      phone: rawPhone,
+      blockedAt: getServerNow()
+    };
+    showToast(`🚫 已將買家「${buyerName} (${rawPhone})」列入棄標封鎖黑名單！`);
+  }
+
+  SafeStorage.set('agy_blacklist', AppState.blacklist);
+  const db = FirebaseManager.getDb();
+  if (db) {
+    if (currentlyBlocked) {
+      db.ref('settings/blacklist/' + key).remove().catch(() => {});
+    } else {
+      db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => {});
+    }
+  }
+  renderAdminBuyersRoster();
+  syncToLocalServer();
+}
+
+/**
+ * 核心規則：檢查買家目前是否在任一競標中商品為「最高出價領先者」或「已得標但尚未完成取貨」
+ * @param {string} phone 買家電話
+ * @param {string} name 買家稱呼
+ * @returns {{locked: boolean, itemName?: string, itemId?: string, status?: string, amount?: number}}
+ */
+function checkBuyerHighBidderLock(phone, name) {
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  const cleanName = String(name || '').trim();
+  if (!cleanPhone && !cleanName) return { locked: false };
+
+  const items = AppState.items || [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it || it.status === 'picked_up') continue;
+    if (!hasItemBids(it)) continue;
+
+    const topName = getBidderName(it.topBidder).trim();
+    const topPhone = String(
+      (it.topBidderContact && it.topBidderContact.phone) ||
+      (typeof it.topBidder === 'object' && it.topBidder ? it.topBidder.phone : '') ||
+      ''
+    ).replace(/[^0-9]/g, '');
+
+    const matchByPhone = cleanPhone && topPhone && cleanPhone === topPhone;
+    const matchByName = cleanName && topName && cleanName === topName;
+
+    if (matchByPhone || matchByName) {
+      return {
+        locked: true,
+        itemName: it.name,
+        itemId: it.id,
+        status: it.status,
+        amount: Number(it.finalDealPrice || it.currentPrice || it.currentBid || it.startPrice || 0)
+      };
+    }
+  }
+  return { locked: false };
+}
+
+/**
+ * 更新買家保留天數選擇器 UI 與預計到期時間顯示
+ */
+function updateBuyerRetentionUI(days, existingExpiresAt = null) {
+  const d = [7, 10, 15].includes(Number(days)) ? Number(days) : 7;
+  [7, 10, 15].forEach(val => {
+    const rad = el(`retention-radio-${val}`);
+    const card = el(`ret-card-${val}`);
+    if (rad) rad.checked = (val === d);
+    if (card) card.classList.toggle('selected', val === d);
+  });
+
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+  const targetTs = existingExpiresAt || (now + d * 86400000);
+  const expEl = el('buyer-retention-expiry-text');
+  if (expEl) {
+    const dt = new Date(targetTs);
+    expEl.textContent = `${dt.toLocaleString('zh-TW', { hour12: false })}（保留 ${d} 天）`;
+  }
+}
+
+/**
+ * 當買家輸入手機號碼時，自動與本機/雲端買家名冊比對：
+ * 若尚在保留期限內，自動帶入已儲存的稱呼、Line ID、IG、FB 與保留天數
+ */
+function lookupCloudBuyerByPhone(rawPhone) {
+  const clean = String(rawPhone || '').replace(/[^0-9]/g, '');
+  const hint = el('buyer-cloud-match-hint');
+  if (hint) hint.style.display = 'none';
+  if (clean.length < 9) return;
+
+  if (isBuyerBlacklisted(clean)) {
+    if (hint) {
+      hint.style.display = 'block';
+      hint.style.color = '#f87171';
+      hint.textContent = '🚫 此門號因歷史棄標紀錄已被列入系統封鎖黑名單！';
+    }
+    return;
+  }
+
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+  const applyMatchedBuyer = (b) => {
+    if (!b || !b.name) return false;
+    if (b.retentionExpiresAt && Number(b.retentionExpiresAt) < now) {
+      // 若已過期且非最高出價鎖定者則不自動帶入
+      const lockInfo = checkBuyerHighBidderLock(b.phone, b.name);
+      if (!lockInfo.locked) return false;
+    }
+    const nameInp = el('inp-buyer-name');
+    const lineInp = el('inp-buyer-line');
+    const igInp = el('inp-buyer-ig');
+    const fbInp = el('inp-buyer-fb');
+    if (nameInp && !nameInp.value.trim()) nameInp.value = b.name || '';
+    if (lineInp && !lineInp.value.trim()) lineInp.value = b.line || '';
+    if (igInp && !igInp.value.trim()) igInp.value = b.ig || '';
+    if (fbInp && !fbInp.value.trim()) fbInp.value = b.fb || '';
+    if (b.retentionDays) {
+      updateBuyerRetentionUI(b.retentionDays, b.retentionExpiresAt);
+    }
+    if (hint) {
+      hint.style.display = 'block';
+      hint.style.color = '#34d399';
+      hint.textContent = `✨ 已從雲端保留記憶自動帶入【${b.name}】的聯絡資料！`;
+    }
+    return true;
+  };
+
+  const localMatch = (AppState.registeredBuyers || []).find(
+    b => String(b.phone || '').replace(/[^0-9]/g, '') === clean
+  );
+  if (localMatch && applyMatchedBuyer(localMatch)) return;
+
+  const db = FirebaseManager.getDb();
+  if (db) {
+    db.ref('buyers/' + clean).once('value').then(snap => {
+      if (snap.exists()) {
+        applyMatchedBuyer(snap.val());
+      }
+    }).catch(() => {});
+  }
+}
+
+/**
+ * 同步買家防棄標鎖定橫幅與電話欄位唯讀保護狀態
+ */
+function refreshBuyerLockModalUI() {
+  const banner = el('buyer-lock-status-banner');
+  const bannerTxt = el('buyer-lock-status-text');
+  const phoneInp = el('inp-buyer-phone');
+  const logoutBtn = el('btn-logout-profile');
+
+  const hasLoggedBuyer = !!(AppState.userProfile.phone || AppState.userProfile.name);
+  const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
+
+  if (banner && bannerTxt) {
+    banner.style.display = 'block';
+    if (lockInfo.locked) {
+      banner.className = 'buyer-lock-banner locked';
+      bannerTxt.textContent = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！`;
+    } else if (hasLoggedBuyer) {
+      banner.className = 'buyer-lock-banner unlocked';
+      bannerTxt.textContent = '🟢 目前無領先標案鎖定，您可隨時變更保留天數、修改聯絡資料或點擊下方「立即登出」。';
+    } else {
+      banner.className = 'buyer-lock-banner unlocked';
+      bannerTxt.textContent = '👋 歡迎參與競標！請填寫聯絡資料並選擇資料保留天數（7 / 10 / 15 天）。';
+    }
+  }
+
+  if (phoneInp) {
+    if (lockInfo.locked) {
+      phoneInp.readOnly = true;
+      phoneInp.style.opacity = '0.78';
+      phoneInp.title = `您目前是【${lockInfo.itemName}】最高出價領先者，防棄標保護期間禁止竄改聯絡電話`;
+    } else {
+      phoneInp.readOnly = false;
+      phoneInp.style.opacity = '1';
+      phoneInp.title = '';
+    }
+  }
+
+  if (logoutBtn) {
+    logoutBtn.style.opacity = lockInfo.locked ? '0.65' : '1';
+  }
+}
+
 function openBuyerProfileModal() {
-  el('inp-buyer-name').value = AppState.userProfile.name || '';
-  el('inp-buyer-phone').value = AppState.userProfile.phone || '';
-  el('inp-buyer-line').value = AppState.userProfile.line || '';
-  el('inp-buyer-ig').value = AppState.userProfile.ig || '';
-  el('inp-buyer-fb').value = AppState.userProfile.fb || '';
-  el('modal-buyer-profile').classList.add('show');
+  if (el('inp-buyer-name')) el('inp-buyer-name').value = AppState.userProfile.name || '';
+  if (el('inp-buyer-phone')) el('inp-buyer-phone').value = AppState.userProfile.phone || '';
+  if (el('inp-buyer-line')) el('inp-buyer-line').value = AppState.userProfile.line || '';
+  if (el('inp-buyer-ig')) el('inp-buyer-ig').value = AppState.userProfile.ig || '';
+  if (el('inp-buyer-fb')) el('inp-buyer-fb').value = AppState.userProfile.fb || '';
+  if (el('buyer-cloud-match-hint')) el('buyer-cloud-match-hint').style.display = 'none';
+
+  const savedDays = Number(AppState.userProfile.retentionDays || 7);
+  updateBuyerRetentionUI(savedDays, AppState.userProfile.retentionExpiresAt);
+  refreshBuyerLockModalUI();
+
+  el('modal-buyer-profile')?.classList.add('show');
 }
 
 function closeBuyerProfileModal() {
-  el('modal-buyer-profile').classList.remove('show');
+  el('modal-buyer-profile')?.classList.remove('show');
 }
 
 function saveBuyerProfile() {
-  const name = el('inp-buyer-name').value.trim();
-  const phone = el('inp-buyer-phone').value.trim();
+  const name = el('inp-buyer-name')?.value.trim() || '';
+  const phone = el('inp-buyer-phone')?.value.trim() || '';
 
   if (!name) {
     alert('請填寫買家稱呼 / 暱稱！');
+    return;
+  }
+
+  // 防棄標鎖定檢查：若目前為最高出價領先者，禁止更改或刪除原綁定之手機號碼
+  const currentLock = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
+  const oldCleanPhone = String(AppState.userProfile.phone || '').replace(/[^0-9]/g, '');
+  const newCleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  if (currentLock.locked && oldCleanPhone && oldCleanPhone !== newCleanPhone) {
+    alert(`🔒 防棄標保護生效中：您目前是【${currentLock.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出或更改聯絡電話！`);
+    if (el('inp-buyer-phone')) el('inp-buyer-phone').value = AppState.userProfile.phone;
     return;
   }
 
@@ -4011,12 +4354,19 @@ function saveBuyerProfile() {
     return;
   }
 
+  const chosenDaysRadio = document.querySelector('input[name="buyer-retention-days"]:checked');
+  const retentionDays = [7, 10, 15].includes(Number(chosenDaysRadio?.value)) ? Number(chosenDaysRadio.value) : 7;
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+  const retentionExpiresAt = now + retentionDays * 86400000;
+
   AppState.userProfile = {
     name: name,
     phone: phoneCheck.phone,
-    line: el('inp-buyer-line').value.trim(),
-    ig: el('inp-buyer-ig').value.trim(),
-    fb: el('inp-buyer-fb').value.trim()
+    line: el('inp-buyer-line')?.value.trim() || '',
+    ig: el('inp-buyer-ig')?.value.trim() || '',
+    fb: el('inp-buyer-fb')?.value.trim() || '',
+    retentionDays: retentionDays,
+    retentionExpiresAt: retentionExpiresAt
   };
 
   SafeStorage.set('agy_buyer_profile', AppState.userProfile);
@@ -4025,33 +4375,138 @@ function saveBuyerProfile() {
     el('user-profile-name').textContent = name;
   }
 
-  // 100% 即時寫入雲端 buyers（買家註冊名冊）節點
+  // 即時寫入雲端 buyers（買家註冊名冊）節點，同步保留天數與到期時間戳記
+  const key = phoneCheck.phone.replace(/[^0-9]/g, '');
+  const buyerData = {
+    name: name,
+    phone: phoneCheck.phone,
+    line: AppState.userProfile.line || '',
+    ig: AppState.userProfile.ig || '',
+    fb: AppState.userProfile.fb || '',
+    retentionDays: retentionDays,
+    retentionExpiresAt: retentionExpiresAt,
+    updatedAt: now,
+    createdAt: now
+  };
+
+  const existingIdx = (AppState.registeredBuyers || []).findIndex(
+    b => String(b.phone || '').replace(/[^0-9]/g, '') === key
+  );
+  if (existingIdx >= 0) {
+    AppState.registeredBuyers[existingIdx] = Object.assign({}, AppState.registeredBuyers[existingIdx], buyerData);
+  } else {
+    AppState.registeredBuyers.unshift(buyerData);
+  }
+  renderAdminBuyersRoster();
+
   const db = FirebaseManager.getDb();
   if (db) {
-    const key = phoneCheck.phone.replace(/[^0-9]/g, '');
-    const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
-    const buyerData = {
-      name: name,
-      phone: phoneCheck.phone,
-      line: AppState.userProfile.line || '',
-      ig: AppState.userProfile.ig || '',
-      fb: AppState.userProfile.fb || '',
-      updatedAt: now,
-      createdAt: now
-    };
     db.ref('settings/buyers/' + key).update(buyerData).catch(() => {});
     db.ref('buyers/' + key).update(buyerData).catch(() => {});
   }
+  syncToLocalServer();
 
   closeBuyerProfileModal();
-  showToast(`✅ 買家身分「${name}」已驗證儲存並同步至雲端名冊！`);
+  showToast(`✅ 買家身分「${name}」已儲存（資料保留 ${retentionDays} 天）並同步至雲端名冊！`);
+}
+
+/**
+ * 買家點擊「🚪 立即登出（清除本機保留資料）」
+ * 嚴格檢查全站最高出價者防棄標鎖定規則
+ */
+function handleBuyerLogout() {
+  const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
+  if (lockInfo.locked) {
+    const lockMsg = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！`;
+    refreshBuyerLockModalUI();
+    alert(lockMsg);
+    showToast(lockMsg, 4200);
+    return;
+  }
+
+  if (!AppState.userProfile.name && !AppState.userProfile.phone) {
+    closeBuyerProfileModal();
+    showToast('您目前尚未登入買家資料');
+    return;
+  }
+
+  SafeStorage.remove('agy_buyer_profile');
+  AppState.userProfile = {
+    name: '',
+    phone: '',
+    line: '',
+    ig: '',
+    fb: '',
+    retentionDays: 7,
+    retentionExpiresAt: null
+  };
+
+  if (el('user-profile-name')) {
+    el('user-profile-name').textContent = '登入';
+  }
+  if (el('inp-buyer-name')) el('inp-buyer-name').value = '';
+  if (el('inp-buyer-phone')) el('inp-buyer-phone').value = '';
+  if (el('inp-buyer-line')) el('inp-buyer-line').value = '';
+  if (el('inp-buyer-ig')) el('inp-buyer-ig').value = '';
+  if (el('inp-buyer-fb')) el('inp-buyer-fb').value = '';
+
+  closeBuyerProfileModal();
+  renderWinnerStatus();
+  showToast('🚪 已成功登出並清除本機買家保留資料！');
+}
+
+/**
+ * 啟動與商品資料載入後之買家保留期限與防棄標自動延長檢查：
+ * 若買家的資料保留天數到期，但當下仍處於「最高出價領先者」狀態，
+ * 腳本自動延長保留其登入鎖定狀態，直到被人超標或結標取貨完成為止！
+ */
+function enforceBuyerRetentionAndLock() {
+  try {
+    const savedBlack = SafeStorage.get('agy_blacklist');
+    if (savedBlack && typeof savedBlack === 'object') {
+      AppState.blacklist = Object.assign({}, savedBlack, AppState.blacklist || {});
+    }
+
+    const p = AppState.userProfile;
+    if (!p || (!p.name && !p.phone)) return;
+
+    const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+    const lockInfo = checkBuyerHighBidderLock(p.phone, p.name);
+
+    if (p.retentionExpiresAt && now > Number(p.retentionExpiresAt)) {
+      if (lockInfo.locked) {
+        // 自動延長保留期限 7 天，維持最高出價領先者鎖定狀態
+        const extDays = Number(p.retentionDays || 7);
+        p.retentionExpiresAt = now + extDays * 86400000;
+        SafeStorage.set('agy_buyer_profile', p);
+        console.log(`🔒 買家【${p.name}】仍為【${lockInfo.itemName}】最高出價領先者，腳本已自動延長保留鎖定狀態！`);
+      } else {
+        // 已到期且無領先標案鎖定，自動清除過期資料
+        SafeStorage.remove('agy_buyer_profile');
+        AppState.userProfile = { name: '', phone: '', line: '', ig: '', fb: '', retentionDays: 7, retentionExpiresAt: null };
+        if (el('user-profile-name')) el('user-profile-name').textContent = '登入';
+        return;
+      }
+    }
+
+    if (el('user-profile-name') && p.name) {
+      el('user-profile-name').textContent = p.name;
+    }
+  } catch (e) {}
 }
 
 function restoreSavedProfile() {
   try {
+    const savedBlack = SafeStorage.get('agy_blacklist');
+    if (savedBlack && typeof savedBlack === 'object') {
+      AppState.blacklist = savedBlack;
+    }
+
     const saved = SafeStorage.get('agy_buyer_profile');
     if (saved) {
       const p = (typeof saved === 'object') ? saved : JSON.parse(saved);
+      if (!p.retentionDays) p.retentionDays = 7;
+      if (!p.retentionExpiresAt) p.retentionExpiresAt = Date.now() + p.retentionDays * 86400000;
       AppState.userProfile = Object.assign({}, AppState.userProfile, p);
       if (el('user-profile-name') && AppState.userProfile.name) {
         el('user-profile-name').textContent = AppState.userProfile.name;
@@ -4063,6 +4518,597 @@ function restoreSavedProfile() {
       if (el('currency-select')) el('currency-select').value = savedCur;
     }
   } catch (e) {}
+}
+
+/* ─────────────────────────────────────────────────────────────
+   15.5 得標取貨期限格式化 ＆ 棄標後第 2、第 3 順位「遞補優惠價」彈性成交模組
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * 格式化顯示得標後取貨保留期限（支援依保留小時數、指定星期幾、或自訂文字）
+ */
+function formatPickupDeadlineDisplay(item) {
+  if (!item) return '48 小時內';
+  const mode = item.pickupDeadlineMode || 'hours';
+  const customNote = item.pickupDeadlineCustomText ? `（${item.pickupDeadlineCustomText}）` : '';
+
+  if (mode === 'custom' && item.pickupDeadlineCustomText) {
+    return item.pickupDeadlineCustomText;
+  }
+
+  if (mode === 'weekday') {
+    const weekNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+    const targetDay = Number(item.pickupDeadlineWeekday ?? 6);
+    const baseTs = Number(item.endTime || Date.now());
+    const d = new Date(baseTs);
+    let diffDays = (targetDay - d.getDay() + 7) % 7;
+    if (diffDays === 0) diffDays = 7;
+    const deadlineDate = new Date(baseTs + diffDays * 86400000);
+    deadlineDate.setHours(21, 0, 0, 0);
+    return `指定 ${weekNames[targetDay]} 21:00 前（預計至 ${deadlineDate.toLocaleDateString('zh-TW')} 21:00 止）${customNote}`;
+  }
+
+  const deadlineHours = Number(item.pickupDeadlineHours || 48);
+  const daysPart = (deadlineHours >= 24 && deadlineHours % 24 === 0)
+    ? `${deadlineHours / 24} 天（${deadlineHours} 小時）內`
+    : `${deadlineHours} 小時內`;
+  const endTs = Number(item.endTime || Date.now()) + deadlineHours * 3600000;
+  return `${daysPart}（預計至 ${new Date(endTs).toLocaleString('zh-TW', { hour12: false })} 止）${customNote}`;
+}
+
+/**
+ * 從商品出價紀錄中整理依最高出價金額排序的候選買家清單（第 1 順位、第 2 順位、第 3 順位...）
+ */
+function getSortedUniqueBidders(item) {
+  if (!item) return [];
+  const map = new Map();
+
+  const addRecord = (name, phone, line, ig, fb, amount, time) => {
+    const cleanName = String(name || '').trim() || '買家';
+    const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+    const key = cleanPhone || cleanName;
+    if (!key) return;
+
+    // 嘗試從已註冊買家名冊補齊完整聯絡資訊
+    const rosterMatch = (AppState.registeredBuyers || []).find(
+      rb => (cleanPhone && String(rb.phone || '').replace(/[^0-9]/g, '') === cleanPhone) || (rb.name === cleanName)
+    );
+
+    const finalPhone = phone || (rosterMatch ? rosterMatch.phone : '');
+    const finalLine = line || (rosterMatch ? rosterMatch.line : '');
+    const finalIg = ig || (rosterMatch ? rosterMatch.ig : '');
+    const finalFb = fb || (rosterMatch ? rosterMatch.fb : '');
+    const numAmt = Number(amount || 0);
+
+    if (!map.has(key) || numAmt > map.get(key).amount) {
+      map.set(key, {
+        name: cleanName,
+        phone: finalPhone,
+        line: finalLine,
+        ig: finalIg,
+        fb: finalFb,
+        amount: numAmt,
+        time: time || Date.now()
+      });
+    }
+  };
+
+  if (item.topBidder) {
+    const tName = getBidderName(item.topBidder);
+    const tContact = item.topBidderContact || (typeof item.topBidder === 'object' ? item.topBidder : {});
+    addRecord(tName, tContact?.phone, tContact?.line, tContact?.ig, tContact?.fb, item.currentPrice ?? item.currentBid, item.topBidTime);
+  }
+
+  if (item.bids && typeof item.bids === 'object') {
+    Object.values(item.bids).forEach(b => {
+      if (!b) return;
+      addRecord(b.bidderName || b.user, b.bidderPhone || b.phone, b.bidderLine || b.line, b.bidderIg || b.ig, b.bidderFb || b.fb, b.amount, b.timestamp || b.time);
+    });
+  }
+
+  if (Array.isArray(item.bidHistory)) {
+    item.bidHistory.forEach(bh => {
+      if (!bh) return;
+      addRecord(bh.user || bh.bidderName, bh.phone || bh.bidderPhone, bh.line, bh.ig, bh.fb, bh.amount, bh.time);
+    });
+  }
+
+  const list = Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  return list.map((entry, idx) => Object.assign({}, entry, { rank: idx + 1 }));
+}
+
+/**
+ * 根據所選範本與最新「💰 遞補優惠調整價」動態生成賣家遞補邀請話術
+ */
+function generateBackupInviteMessage(tplType, itemName, buyerName, rankText, origBid, offerPrice) {
+  const cleanBuyer = buyerName || '買家';
+  const cleanItem = itemName || '拍賣商品';
+  const cleanRank = rankText || '第 2 順位';
+  const origStr = Number(origBid || 0).toLocaleString();
+  const offerStr = Number(offerPrice || origBid || 0).toLocaleString();
+  const diff = Number(origBid || 0) - Number(offerPrice || 0);
+
+  if (tplType === 'standard') {
+    return `您好 ${cleanBuyer}！感謝您參與【${cleanItem}】競標。因前順位買家放棄得標資格，您為本商品【${cleanRank}】候選得標人（您當初最高出價為 NT$ ${origStr}），請問您是否願意依優惠價 NT$ ${offerStr} 遞補購買呢？`;
+  }
+  if (tplType === 'selfpickup') {
+    return `您好 ${cleanBuyer}！感謝您參與【${cleanItem}】競標。目前開放【${cleanRank}】遞補購買，若您方便現場自取交割，賣家特別提供您自取專屬優惠，請問您是否願意依優惠價 NT$ ${offerStr}（您原出價 NT$ ${origStr}）遞補購買呢？`;
+  }
+  // 預設 discount (專屬折價優惠邀請)
+  const saveHint = diff > 0 ? `（特別為您折讓優惠 NT$ ${diff.toLocaleString()}）` : '';
+  return `您好 ${cleanBuyer}！感謝您支持【${cleanItem}】競標。因前順位買家未完成取貨，您為【${cleanRank}】候選買家（原最高出價 NT$ ${origStr}），賣家特別提供遞補專屬優惠${saveHint}，請問您是否願意依優惠價 NT$ ${offerStr} 遞補購買呢？`;
+}
+
+/**
+ * 當管理員修改「💰 遞補優惠調整價」或點選候選買家時，即時同步更新邀請話術內之價格
+ */
+function syncBackupSellerMsgWithOfferPrice(forceRegenerate = false) {
+  const item = getActiveItem();
+  if (!item) return;
+
+  const rankText = el('inp-backup-target-rank')?.value.trim() || '第 2 順位';
+  const buyerName = el('inp-backup-target-name')?.value.trim() || '買家';
+  const origBid = Number(el('inp-backup-orig-bid')?.value || item.currentBid || item.startPrice || 10000);
+  const offerPrice = Number(el('inp-backup-offer-price')?.value || origBid);
+  const msgInp = el('inp-backup-seller-msg');
+  if (!msgInp) return;
+
+  if (forceRegenerate || !msgInp.value.trim()) {
+    msgInp.value = generateBackupInviteMessage(
+      AppState.activeBackupTemplate || 'discount',
+      item.name,
+      buyerName,
+      rankText,
+      origBid,
+      offerPrice
+    );
+  } else {
+    // 智慧將現有話術中的「優惠價 NT$ X,XXX」即時替換為最新設定之遞補優惠價
+    const formattedOffer = offerPrice.toLocaleString();
+    if (/優惠價\s*NT\$\s*[\d,]+/.test(msgInp.value)) {
+      msgInp.value = msgInp.value.replace(/優惠價\s*NT\$\s*[\d,]+/g, `優惠價 NT$ ${formattedOffer}`);
+    } else {
+      msgInp.value = generateBackupInviteMessage(
+        AppState.activeBackupTemplate || 'discount',
+        item.name,
+        buyerName,
+        rankText,
+        origBid,
+        offerPrice
+      );
+    }
+  }
+}
+
+/**
+ * 渲染管理員後台「🔄 棄標處理與次高價順位遞補優惠控制台 (#winner-backup-panel)」
+ */
+function renderAdminBackupPanel(item) {
+  const panel = el('winner-backup-panel');
+  if (!panel) return;
+
+  if (!AppState.isAdmin || !item || (item.status !== 'ended' && item.status !== 'picked_up')) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  const listBox = el('backup-candidates-list');
+  const candidates = getSortedUniqueBidders(item);
+
+  // 若出價紀錄中僅有 1 位或尚無次高價買家，亦將已註冊買家名冊列入候選參考，方便管理員隨時點選測試或發送遞補邀請
+  const backupCandidates = candidates.filter(c => c.rank >= 2);
+  if (backupCandidates.length === 0 && AppState.registeredBuyers && AppState.registeredBuyers.length > 0) {
+    AppState.registeredBuyers.forEach((rb, idx) => {
+      if (rb && rb.name && rb.name !== getBidderName(item.topBidder)) {
+        backupCandidates.push({
+          rank: idx + 2,
+          name: rb.name,
+          phone: rb.phone || '',
+          line: rb.line || '',
+          amount: Number(item.currentPrice || item.currentBid || item.startPrice || 10000)
+        });
+      }
+    });
+  }
+
+  if (listBox) {
+    listBox.innerHTML = '';
+    if (backupCandidates.length === 0) {
+      listBox.innerHTML = `
+        <div style="font-size:.76rem;color:var(--c-text-3);padding:8px 10px;background:rgba(255,255,255,0.02);border-radius:8px;">
+          💡 目前出價紀錄尚無第 2 順位買家，您可直接於下方表單手動填入候選買家與「💰 遞補優惠調整價」產生專屬邀請連結！
+        </div>
+      `;
+    } else {
+      backupCandidates.forEach((cand, idx) => {
+        const row = document.createElement('div');
+        row.className = `backup-candidate-item ${idx === 0 ? 'active' : ''}`;
+        const blockedTag = isBuyerBlacklisted(cand.phone)
+          ? '<span class="buyer-status-chip chip-blacklisted">🚫 黑名單</span>'
+          : '';
+        row.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="item-tab-badge badge-live" style="font-size:.72rem;">第 ${cand.rank} 順位</span>
+            <strong style="color:#fff;font-size:.84rem;">👤 ${escapeHtml(cand.name)}</strong>
+            <span style="font-size:.76rem;color:var(--c-gold-1);font-family:var(--f-num);font-weight:800;">原最高出價：NT$ ${Number(cand.amount || 0).toLocaleString()}</span>
+            ${cand.phone ? `<span style="font-size:.74rem;color:var(--c-text-2);">📞 ${escapeHtml(cand.phone)}</span>` : ''}
+            ${cand.line ? `<span style="font-size:.72rem;color:#34d399;">Line: ${escapeHtml(cand.line)}</span>` : ''}
+            ${blockedTag}
+          </div>
+          <button type="button" class="tbtn tbtn-gold tbtn-xs">🎯 選取並帶入原出價</button>
+        `;
+        row.addEventListener('click', () => {
+          listBox.querySelectorAll('.backup-candidate-item').forEach(elItem => elItem.classList.remove('active'));
+          row.classList.add('active');
+          if (el('inp-backup-target-rank')) el('inp-backup-target-rank').value = `第 ${cand.rank} 順位`;
+          if (el('inp-backup-target-name')) el('inp-backup-target-name').value = cand.name || '';
+          if (el('inp-backup-target-phone')) el('inp-backup-target-phone').value = cand.phone || '';
+          if (el('inp-backup-target-line')) el('inp-backup-target-line').value = cand.line || '';
+          if (el('inp-backup-orig-bid')) el('inp-backup-orig-bid').value = cand.amount || item.startPrice || 10000;
+          // ★ 自動預先帶入該買家當初的最高出價金額至「遞補優惠調整價」欄位
+          if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = cand.amount || item.startPrice || 10000;
+          syncBackupSellerMsgWithOfferPrice(true);
+          showToast(`🎯 已帶入【第 ${cand.rank} 順位：${cand.name}】原出價 NT$ ${Number(cand.amount).toLocaleString()}，可於右側調整遞補優惠價！`);
+        });
+        listBox.appendChild(row);
+      });
+    }
+  }
+
+  // 初次渲染或表單尚未填入時，預先帶入已存在的 backupOffer 或第一位次高價候選買家
+  const nameInp = el('inp-backup-target-name');
+  if (nameInp && !nameInp.dataset.initializedForItem || nameInp?.dataset.initializedForItem !== item.id) {
+    nameInp.dataset.initializedForItem = item.id;
+    if (item.backupOffer) {
+      if (el('inp-backup-target-rank')) el('inp-backup-target-rank').value = item.backupOffer.rankLabel || '第 2 順位';
+      if (el('inp-backup-target-name')) el('inp-backup-target-name').value = item.backupOffer.buyerName || '';
+      if (el('inp-backup-target-phone')) el('inp-backup-target-phone').value = item.backupOffer.buyerPhone || '';
+      if (el('inp-backup-target-line')) el('inp-backup-target-line').value = item.backupOffer.buyerLine || '';
+      if (el('inp-backup-orig-bid')) el('inp-backup-orig-bid').value = item.backupOffer.originalBid || item.currentBid || item.startPrice || 10000;
+      if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = item.backupOffer.offerPrice || item.backupOffer.originalBid || item.currentBid || item.startPrice || 10000;
+      if (el('inp-backup-seller-msg')) el('inp-backup-seller-msg').value = item.backupOffer.sellerMessage || '';
+    } else if (backupCandidates.length > 0) {
+      const firstCand = backupCandidates[0];
+      if (el('inp-backup-target-rank')) el('inp-backup-target-rank').value = `第 ${firstCand.rank} 順位`;
+      if (el('inp-backup-target-name')) el('inp-backup-target-name').value = firstCand.name || '';
+      if (el('inp-backup-target-phone')) el('inp-backup-target-phone').value = firstCand.phone || '';
+      if (el('inp-backup-target-line')) el('inp-backup-target-line').value = firstCand.line || '';
+      if (el('inp-backup-orig-bid')) el('inp-backup-orig-bid').value = firstCand.amount || item.startPrice || 10000;
+      if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = firstCand.amount || item.startPrice || 10000;
+      syncBackupSellerMsgWithOfferPrice(true);
+    } else {
+      const baseAmt = Number(item.currentPrice || item.currentBid || item.startPrice || 10000);
+      if (el('inp-backup-orig-bid')) el('inp-backup-orig-bid').value = baseAmt;
+      if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = baseAmt;
+      syncBackupSellerMsgWithOfferPrice(true);
+    }
+  }
+
+  // 顯示目前已發送之遞補邀請即時狀態
+  const statusBox = el('admin-backup-offer-status-box');
+  if (statusBox) {
+    if (item.backupOffer) {
+      const bo = item.backupOffer;
+      statusBox.style.display = 'block';
+      let statusLabel = '⏳ 等待買家確認意願中';
+      let statusColor = '#fbbf24';
+      if (bo.status === 'accepted') {
+        statusLabel = `✅ 買家【${bo.buyerName}】已同意依遞補優惠價 NT$ ${Number(bo.offerPrice).toLocaleString()} 正式成交！`;
+        statusColor = '#34d399';
+      } else if (bo.status === 'declined') {
+        statusLabel = `❌ 買家【${bo.buyerName}】已婉拒此次遞補，請點選下一順位買家發送邀請。`;
+        statusColor = '#f87171';
+      }
+      statusBox.innerHTML = `
+        <div style="font-weight:800;color:${statusColor};margin-bottom:4px;">${statusLabel}</div>
+        <div style="font-size:.76rem;color:var(--c-text-2);">
+          受邀對象：<strong>${escapeHtml(bo.buyerName || '—')}</strong>（${escapeHtml(bo.rankLabel || '第 2 順位')}）｜
+          原出價：NT$ ${Number(bo.originalBid || 0).toLocaleString()} ➔
+          <strong style="color:var(--c-gold-1);">遞補優惠價：NT$ ${Number(bo.offerPrice || 0).toLocaleString()}</strong>
+        </div>
+        ${bo.buyerReplyNote ? `<div style="margin-top:4px;padding:6px 8px;background:rgba(0,0,0,0.35);border-radius:6px;color:#fff;font-size:.78rem;">💬 買家回覆備註：${escapeHtml(bo.buyerReplyNote)}</div>` : ''}
+      `;
+    } else {
+      statusBox.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * 渲染買家端「🎁 賣家專屬遞補購買意願確認卡 (#backup-offer-confirm-card)」
+ */
+function renderBackupOfferConfirmCard(item) {
+  const card = el('backup-offer-confirm-card');
+  if (!card) return;
+
+  if (!item || !item.backupOffer) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const bo = item.backupOffer;
+  const params = new URLSearchParams(window.location.search);
+  const urlOfferId = params.get('offer');
+  const myCleanPhone = String(AppState.userProfile.phone || '').replace(/[^0-9]/g, '');
+  const targetCleanPhone = String(bo.buyerPhone || '').replace(/[^0-9]/g, '');
+  const isMatchedBuyer =
+    (urlOfferId && (urlOfferId === bo.offerId || urlOfferId === '1' || urlOfferId === 'true')) ||
+    (myCleanPhone && targetCleanPhone && myCleanPhone === targetCleanPhone) ||
+    (AppState.userProfile.name && bo.buyerName && AppState.userProfile.name.trim() === bo.buyerName.trim()) ||
+    AppState.isAdmin;
+
+  if (!isMatchedBuyer) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+  if (el('backup-card-buyer-name')) el('backup-card-buyer-name').textContent = bo.buyerName || '受邀買家';
+  if (el('backup-card-rank-label')) el('backup-card-rank-label').textContent = bo.rankLabel || '第 2 順位';
+
+  const origBid = Number(bo.originalBid || item.currentBid || item.startPrice || 0);
+  const offerPrice = Number(bo.offerPrice || origBid);
+  if (el('backup-card-orig-price')) {
+    el('backup-card-orig-price').textContent = formatMoney(origBid, AppState.activeCurrency);
+  }
+  if (el('backup-card-offer-price')) {
+    el('backup-card-offer-price').textContent = formatMoney(offerPrice, AppState.activeCurrency);
+  }
+
+  const discountTag = el('backup-card-discount-tag');
+  if (discountTag) {
+    if (offerPrice < origBid) {
+      discountTag.style.display = 'inline-block';
+      discountTag.textContent = `🎉 賣家已為您折減優惠 NT$ ${(origBid - offerPrice).toLocaleString()}`;
+    } else {
+      discountTag.style.display = 'none';
+    }
+  }
+
+  if (el('backup-card-seller-msg')) {
+    el('backup-card-seller-msg').textContent = bo.sellerMessage || `您好！請問您是否願意依遞補優惠價 NT$ ${offerPrice.toLocaleString()} 遞補購買本商品呢？`;
+  }
+
+  const acceptBtn = el('btn-accept-backup-offer');
+  if (acceptBtn) {
+    acceptBtn.textContent = `✅ 我願意依遞補優惠價 NT$ ${offerPrice.toLocaleString()} 購買`;
+  }
+
+  const statusBadge = el('backup-card-status-badge');
+  const actionBtns = el('backup-card-action-btns');
+  const replyBox = el('backup-buyer-reply-box');
+  const summaryBox = el('backup-responded-summary');
+
+  if (bo.status === 'accepted') {
+    if (statusBadge) {
+      statusBadge.className = 'item-tab-badge badge-picked';
+      statusBadge.textContent = '✅ 已同意遞補成交';
+    }
+    if (actionBtns) actionBtns.style.display = 'none';
+    if (replyBox) replyBox.style.display = 'none';
+    if (summaryBox) {
+      summaryBox.style.display = 'block';
+      summaryBox.innerHTML = `🎉 <strong>恭喜您已確認遞補得標！</strong><br>正式成交價已鎖定為遞補優惠價 <strong>NT$ ${offerPrice.toLocaleString()}</strong>。${bo.buyerReplyNote ? `<br>您的回覆備註：「${escapeHtml(bo.buyerReplyNote)}」` : ''}`;
+    }
+  } else if (bo.status === 'declined') {
+    if (statusBadge) {
+      statusBadge.className = 'item-tab-badge badge-ended';
+      statusBadge.textContent = '❌ 已婉拒遞補';
+    }
+    if (actionBtns) actionBtns.style.display = 'none';
+    if (replyBox) replyBox.style.display = 'none';
+    if (summaryBox) {
+      summaryBox.style.display = 'block';
+      summaryBox.innerHTML = `您已婉拒本次遞補邀請，系統將通知賣家依序詢問下一順位買家。${bo.buyerReplyNote ? `<br>您的回覆備註：「${escapeHtml(bo.buyerReplyNote)}」` : ''}`;
+    }
+  } else {
+    if (statusBadge) {
+      statusBadge.className = 'item-tab-badge badge-live';
+      statusBadge.textContent = '⏳ 待確認意願';
+    }
+    if (actionBtns) actionBtns.style.display = 'flex';
+    if (replyBox) replyBox.style.display = 'block';
+    if (summaryBox) summaryBox.style.display = 'none';
+  }
+}
+
+/**
+ * 後台管理員點擊「🚫 判定當前得標者棄標（列入黑名單並啟動順位遞補）」
+ */
+function handleMarkWinnerDefaultAndBlacklist() {
+  if (!requireAdminAuth()) return;
+  const item = getActiveItem();
+  if (!item) return;
+
+  const winnerName = getBidderName(item.topBidder) || '原得標買家';
+  const winnerContact = item.topBidderContact || (typeof item.topBidder === 'object' ? item.topBidder : {});
+  const winnerPhone = winnerContact?.phone || '';
+
+  if (!confirm(`🚫 確定要判定【${winnerName} ${winnerPhone ? '(' + winnerPhone + ')' : ''}】棄標嗎？\n\n執行後：\n1. 該買家門號將自動列入封鎖黑名單\n2. 自動為您帶入下一順位次高價買家與原出價，供您設定「💰 遞補優惠調整價」發送遞補邀請！`)) {
+    return;
+  }
+
+  if (winnerPhone) {
+    const key = String(winnerPhone).replace(/[^0-9]/g, '');
+    if (key) {
+      if (!AppState.blacklist) AppState.blacklist = {};
+      AppState.blacklist[key] = {
+        name: winnerName,
+        phone: winnerPhone,
+        reason: `商品【${item.name}】得標後棄標`,
+        blockedAt: getServerNow()
+      };
+      SafeStorage.set('agy_blacklist', AppState.blacklist);
+      const db = FirebaseManager.getDb();
+      if (db) {
+        db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => {});
+      }
+    }
+  }
+
+  if (!Array.isArray(item.defaultedBidders)) item.defaultedBidders = [];
+  item.defaultedBidders.push({
+    name: winnerName,
+    phone: winnerPhone,
+    amount: item.currentPrice ?? item.currentBid,
+    time: getServerNow()
+  });
+
+  renderAdminBuyersRoster();
+  renderAdminBackupPanel(item);
+  syncToFirebase();
+  syncToLocalServer();
+  showToast(`🚫 已將棄標買家【${winnerName}】列入黑名單！請於下方確認「遞補優惠調整價」並複製遞補邀請連結。`, 4200);
+}
+
+/**
+ * 後台管理員點擊「📋 複製邀請文案與專屬連結（同步送出遞補優惠邀請卡）」
+ */
+function handleCopyAndSendBackupInvite() {
+  if (!requireAdminAuth()) return;
+  const item = getActiveItem();
+  if (!item) return;
+
+  const rankLabel = el('inp-backup-target-rank')?.value.trim() || '第 2 順位';
+  const buyerName = el('inp-backup-target-name')?.value.trim() || '候選買家';
+  const buyerPhone = el('inp-backup-target-phone')?.value.trim() || '';
+  const buyerLine = el('inp-backup-target-line')?.value.trim() || '';
+  const origBid = Number(el('inp-backup-orig-bid')?.value || item.currentBid || item.startPrice || 10000);
+  const offerPrice = Number(el('inp-backup-offer-price')?.value || origBid);
+
+  if (offerPrice <= 0) {
+    alert('請輸入有效的「遞補優惠調整價」金額！');
+    return;
+  }
+
+  // 確保邀請話術內的價格與最新的「遞補優惠調整價」一致
+  syncBackupSellerMsgWithOfferPrice(false);
+  const sellerMsg = el('inp-backup-seller-msg')?.value.trim() ||
+    generateBackupInviteMessage(AppState.activeBackupTemplate || 'discount', item.name, buyerName, rankLabel, origBid, offerPrice);
+
+  const offerId = 'offer_' + Date.now();
+  item.backupOffer = {
+    offerId: offerId,
+    rankLabel: rankLabel,
+    buyerName: buyerName,
+    buyerPhone: buyerPhone,
+    buyerLine: buyerLine,
+    originalBid: origBid,
+    offerPrice: offerPrice, // ★ 後續買家同意後的正式成交價以此「遞補優惠價」為準
+    sellerMessage: sellerMsg,
+    status: 'pending',
+    buyerReplyNote: '',
+    createdAt: getServerNow(),
+    respondedAt: null
+  };
+
+  SafeStorage.set('agy_items', AppState.items);
+  syncToFirebase();
+  syncToLocalServer();
+
+  const base = getBaseUrl();
+  const confirmUrl = `${base}/index.html?id=${encodeURIComponent(item.id)}&mode=single&offer=${encodeURIComponent(offerId)}`;
+  const studio = AppState.studioName || '建生工坊';
+  const diff = origBid - offerPrice;
+  const discountLine = diff > 0
+    ? `💰 賣家專屬遞補優惠價：NT$ ${offerPrice.toLocaleString()}（較您原出價 NT$ ${origBid.toLocaleString()} 再省 NT$ ${diff.toLocaleString()}！）`
+    : `💰 遞補優惠成交價：NT$ ${offerPrice.toLocaleString()}`;
+
+  const fullInviteText = [
+    `🎉【${studio}】拍賣次高價遞補購買專屬邀請 🎉`,
+    `📦 拍賣商品：${item.name}`,
+    `👤 受邀買家：${buyerName}（${rankLabel}）`,
+    discountLine,
+    `💌 賣家邀請留言：`,
+    sellerMsg,
+    ``,
+    `👇 請點擊下方專屬確認連結，查看遞補優惠價並點選「同意遞補購買」或填寫回覆備註：`,
+    confirmUrl
+  ].join('\n');
+
+  navigator.clipboard.writeText(fullInviteText).then(() => {
+    showToast(`📋 已成功複製【${buyerName}】專屬遞補邀請文案（遞補優惠價 NT$ ${offerPrice.toLocaleString()}）與連結！`, 4200);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = fullInviteText;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast(`📋 已成功複製遞補邀請文案（遞補優惠價 NT$ ${offerPrice.toLocaleString()}）！`, 4200);
+  });
+
+  renderWinnerStatus();
+}
+
+/**
+ * 買家於專屬確認卡點擊「✅ 我願意依此遞補優惠價購買」或「❌ 婉拒此次遞補邀請」
+ */
+function handleBuyerRespondBackupOffer(isAccept) {
+  const item = getActiveItem();
+  if (!item || !item.backupOffer) return;
+
+  const bo = item.backupOffer;
+  const replyNote = el('inp-backup-buyer-note')?.value.trim() || '';
+  const offerPrice = Number(bo.offerPrice || bo.originalBid || item.currentBid || item.startPrice);
+  const now = getServerNow();
+
+  if (isAccept) {
+    bo.status = 'accepted';
+    bo.buyerReplyNote = replyNote;
+    bo.respondedAt = now;
+
+    // ★ 核心機制：正式成交價與得標買家立即以管理員設定的「遞補優惠價 (offerPrice)」為準！
+    item.finalDealPrice = offerPrice;
+    item.currentPrice = offerPrice;
+    item.currentBid = offerPrice;
+    item.topBidder = bo.buyerName || AppState.userProfile.name || '遞補得標買家';
+    item.topBidderContact = {
+      name: bo.buyerName || AppState.userProfile.name || '遞補得標買家',
+      phone: bo.buyerPhone || AppState.userProfile.phone || '',
+      line: bo.buyerLine || AppState.userProfile.line || '',
+      ig: AppState.userProfile.ig || '',
+      fb: AppState.userProfile.fb || ''
+    };
+    item.endTime = now; // 重新起算得標取貨期限
+
+    if (!Array.isArray(item.winnerMsgs)) item.winnerMsgs = [];
+    item.winnerMsgs.push({
+      sender: item.topBidder,
+      isSeller: false,
+      text: `🎉 【已確認同意遞補購買】我願意依賣家提供的遞補優惠價 NT$ ${offerPrice.toLocaleString()} 購買！${replyNote ? '（備註：' + replyNote + '）' : ''}`,
+      time: now
+    });
+
+    triggerConfetti();
+    showToast(`🎉 恭喜您已確認依遞補優惠價 NT$ ${offerPrice.toLocaleString()} 正式得標！`, 4500);
+  } else {
+    if (!confirm('確定要婉拒此次遞補購買邀請嗎？婉拒後賣家將依序詢問下一順位買家。')) {
+      return;
+    }
+    bo.status = 'declined';
+    bo.buyerReplyNote = replyNote;
+    bo.respondedAt = now;
+    showToast('已送出婉拒回覆，感謝您的參與！');
+  }
+
+  SafeStorage.set('agy_items', AppState.items);
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`auction/items/${item.id}`).update({
+      currentPrice: item.currentPrice,
+      finalDealPrice: item.finalDealPrice || null,
+      topBidder: item.topBidderContact || item.topBidder,
+      backupOffer: item.backupOffer,
+      winnerMsgs: item.winnerMsgs || []
+    }).catch(() => {});
+  }
+  syncToFirebase();
+  syncToLocalServer();
+  renderWinnerStatus();
+  renderActiveItemDisplay();
+  renderItemTabs();
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -4113,7 +5159,14 @@ function syncToFirebase() {
           antiSnipeMins: Number(it.antiSnipeMins || 3),
           antiSnipeExt: Number(it.antiSnipeExt || it.antiSnipeExtMins || 3),
           qa: it.qa || {},
-          bids: it.bids || {}
+          bids: it.bids || {},
+          backupOffer: it.backupOffer || null,
+          finalDealPrice: it.finalDealPrice || null,
+          winnerMsgs: it.winnerMsgs || [],
+          pickupDeadlineHours: Number(it.pickupDeadlineHours || 48),
+          pickupDeadlineMode: it.pickupDeadlineMode || 'hours',
+          pickupDeadlineWeekday: Number(it.pickupDeadlineWeekday ?? 6),
+          pickupDeadlineCustomText: it.pickupDeadlineCustomText || ''
         }).catch(() => {});
       }
     });
@@ -4473,10 +5526,96 @@ function bindEvents() {
   el('btn-nav-admin-logout')?.addEventListener('click', handleAdminLogout);
   el('btn-admin-to-front')?.addEventListener('click', switchToAuctionPage);
 
-  // 12. 買家身分彈窗
+  // 12. 買家身分彈窗、自選 7/10/15 天保留期限、門號雲端自動帶入與防棄標登出檢驗
   el('btn-user-profile')?.addEventListener('click', openBuyerProfileModal);
   el('btn-cancel-profile')?.addEventListener('click', closeBuyerProfileModal);
   el('btn-save-profile')?.addEventListener('click', saveBuyerProfile);
+  el('btn-logout-profile')?.addEventListener('click', handleBuyerLogout);
+
+  // 點選 7 / 10 / 15 天保留期限即時更新預計到期時間
+  document.querySelectorAll('input[name="buyer-retention-days"]').forEach(rad => {
+    rad.addEventListener('change', e => {
+      updateBuyerRetentionUI(Number(e.target.value), null);
+    });
+  });
+  [7, 10, 15].forEach(d => {
+    el(`ret-card-${d}`)?.addEventListener('click', () => {
+      updateBuyerRetentionUI(d, null);
+    });
+  });
+
+  // 買家輸入手機號碼時，即時比對雲端保留名冊並檢查是否處於防棄標鎖定
+  el('inp-buyer-phone')?.addEventListener('input', e => {
+    lookupCloudBuyerByPhone(e.target.value);
+  });
+  el('inp-buyer-phone')?.addEventListener('click', () => {
+    const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
+    if (lockInfo.locked) {
+      showToast(`🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】最高出價領先者，無法更改聯絡電話！`);
+    }
+  });
+
+  // 12-1. 後台得標取貨保留期限模式切換（依保留小時/天數 vs 指定星期幾）
+  el('edit-pickup-deadline-mode')?.addEventListener('change', e => {
+    const isWeekday = (e.target.value === 'weekday');
+    if (el('pickup-deadline-hours-box')) el('pickup-deadline-hours-box').style.display = isWeekday ? 'none' : 'block';
+    if (el('pickup-deadline-weekday-box')) el('pickup-deadline-weekday-box').style.display = isWeekday ? 'block' : 'none';
+  });
+
+  // 12-2. 後台「棄標處理 ＆ 第 2、第 3 順位遞補優惠調整價」與買家意願確認卡事件綁定
+  el('btn-mark-winner-default')?.addEventListener('click', handleMarkWinnerDefaultAndBlacklist);
+
+  // 當管理員修改「💰 遞補優惠調整價」或受邀買家資訊時，即時連動更新邀請話術內之價格
+  ['inp-backup-offer-price', 'inp-backup-orig-bid', 'inp-backup-target-name', 'inp-backup-target-rank'].forEach(idStr => {
+    el(idStr)?.addEventListener('input', () => {
+      syncBackupSellerMsgWithOfferPrice(false);
+    });
+  });
+
+  // 遞補優惠價快捷微調按鈕
+  el('btn-offer-price-reset')?.addEventListener('click', () => {
+    const orig = Number(el('inp-backup-orig-bid')?.value || 10000);
+    if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = orig;
+    syncBackupSellerMsgWithOfferPrice(false);
+    showToast(`🔄 遞補優惠價已恢復為買家原出價：NT$ ${orig.toLocaleString()}`);
+  });
+  el('btn-offer-price-trim')?.addEventListener('click', () => {
+    const cur = Number(el('inp-backup-offer-price')?.value || el('inp-backup-orig-bid')?.value || 10000);
+    const trimmed = cur >= 1000 ? Math.floor(cur / 100) * 100 : Math.floor(cur / 10) * 10;
+    if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = Math.max(1, trimmed);
+    syncBackupSellerMsgWithOfferPrice(false);
+    showToast(`✂️ 已去尾數調整遞補優惠價為：NT$ ${Math.max(1, trimmed).toLocaleString()}`);
+  });
+  el('btn-offer-price-minus100')?.addEventListener('click', () => {
+    const cur = Number(el('inp-backup-offer-price')?.value || el('inp-backup-orig-bid')?.value || 10000);
+    const nextVal = Math.max(1, cur - 100);
+    if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = nextVal;
+    syncBackupSellerMsgWithOfferPrice(false);
+    showToast(`➖ 遞補優惠價已折減 100 元：NT$ ${nextVal.toLocaleString()}`);
+  });
+  el('btn-offer-price-minus500')?.addEventListener('click', () => {
+    const cur = Number(el('inp-backup-offer-price')?.value || el('inp-backup-orig-bid')?.value || 10000);
+    const nextVal = Math.max(1, cur - 500);
+    if (el('inp-backup-offer-price')) el('inp-backup-offer-price').value = nextVal;
+    syncBackupSellerMsgWithOfferPrice(false);
+    showToast(`➖ 遞補優惠價已折減 500 元：NT$ ${nextVal.toLocaleString()}`);
+  });
+
+  // 賣家遞補邀請話術快捷範本切換
+  document.querySelectorAll('.btn-backup-msg-tpl').forEach(btn => {
+    btn.addEventListener('click', () => {
+      AppState.activeBackupTemplate = btn.dataset.tpl || 'discount';
+      syncBackupSellerMsgWithOfferPrice(true);
+      showToast('💌 已套用遞補邀請話術範本並自動帶入最新「遞補優惠價」！');
+    });
+  });
+
+  // 複製邀請文案與專屬連結
+  el('btn-copy-backup-invite')?.addEventListener('click', handleCopyAndSendBackupInvite);
+
+  // 買家端確認同意或婉拒遞補優惠價購買
+  el('btn-accept-backup-offer')?.addEventListener('click', () => handleBuyerRespondBackupOffer(true));
+  el('btn-decline-backup-offer')?.addEventListener('click', () => handleBuyerRespondBackupOffer(false));
 
   // 13. 出價超越彈窗關閉並跳回出價
   el('btn-outbid-rebid')?.addEventListener('click', () => {
@@ -5453,6 +6592,7 @@ async function checkAndLoadMyAuctionData() {
   } finally {
     // ★ 核心關鍵：標記初始資料讀取完成，才允許後續的使用者操作存檔
     isInitialDataLoaded = true;
+    try { enforceBuyerRetentionAndLock(); } catch (e) { console.error('enforceBuyerRetentionAndLock 錯誤:', e); }
     try { applyUrlRouteParams(); } catch (e) { console.error('applyUrlRouteParams 錯誤:', e); }
     try {
       if (AppState.activeItemId) {

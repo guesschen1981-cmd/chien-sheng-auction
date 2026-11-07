@@ -2841,3 +2841,398 @@ body.view-mode-desktop .admin-col-side {
   gap: 16px !important;
   min-width: 0 !important;
 }
+
+
+
+/* ═════════════════════════════════════════════════════════════
+   19. 買家資料保留(7/10/15天)、防棄標鎖定與後台「遞補優惠價」彈性成交系統 (v6.7)
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── 19.1 買家身分設定彈窗：防棄標鎖定橫幅與 7/10/15 天保留期限選擇器 ── */
+.buyer-lock-banner {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+
+.buyer-lock-banner.locked {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.2);
+}
+
+.buyer-lock-banner.unlocked {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #a7f3d0;
+}
+
+.buyer-retention-group {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 215, 0, 0.04);
+  border: 1px solid rgba(255, 215, 0, 0.22);
+  border-radius: 12px;
+}
+
+.buyer-retention-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.retention-option-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: center;
+  position: relative;
+}
+
+.retention-option-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.retention-option-card.selected {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: var(--c-gold-1);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.28);
+}
+
+.ret-days-num {
+  font-size: .84rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.retention-option-card.selected .ret-days-num {
+  color: var(--c-gold-1);
+}
+
+.ret-days-sub {
+  font-size: .68rem;
+  color: var(--c-text-3);
+  margin-top: 2px;
+}
+
+.buyer-retention-expiry-preview {
+  margin-top: 8px;
+  font-size: .74rem;
+  color: var(--c-text-2);
+  text-align: center;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+.buyer-retention-expiry-preview strong {
+  color: var(--c-gold-1);
+  font-family: var(--f-num), monospace;
+}
+
+/* ── 19.2 買家端「🎁 賣家專屬遞補購買意願確認卡 (#backup-offer-confirm-card)」 ── */
+.backup-offer-confirm-card {
+  margin-top: 14px;
+  padding: 16px;
+  background: linear-gradient(145deg, rgba(30, 27, 75, 0.92), rgba(15, 23, 42, 0.96));
+  border: 2px solid var(--c-gold-1);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.25);
+}
+
+.backup-card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.22);
+}
+
+.backup-card-title {
+  font-size: .98rem;
+  font-weight: 900;
+  color: var(--c-gold-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backup-card-candidate-row {
+  margin-top: 10px;
+  font-size: .84rem;
+  color: var(--c-text-1);
+}
+
+.backup-price-showcase {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 10px;
+  text-align: center;
+}
+
+.backup-orig-price-col,
+.backup-offer-price-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.backup-price-lbl {
+  font-size: .74rem;
+  color: var(--c-text-2);
+  font-weight: 700;
+}
+
+.backup-orig-price-val {
+  font-family: var(--f-num);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--c-text-3);
+  text-decoration: line-through;
+}
+
+.backup-price-arrow {
+  font-size: 1.2rem;
+  color: var(--c-gold-1);
+  font-weight: 900;
+}
+
+.backup-offer-price-val {
+  font-family: var(--f-num);
+  font-size: 1.55rem;
+  font-weight: 900;
+  color: var(--c-gold-1);
+  text-shadow: 0 0 16px rgba(255, 215, 0, 0.4);
+}
+
+.backup-discount-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.backup-seller-msg-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--c-gold-1);
+  border-radius: 8px;
+}
+
+.backup-seller-msg-hd {
+  font-size: .75rem;
+  font-weight: 800;
+  color: var(--c-gold-1);
+  margin-bottom: 4px;
+}
+
+.backup-seller-msg-body {
+  font-size: .84rem;
+  color: #fff;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.backup-buyer-reply-box {
+  margin-top: 12px;
+}
+
+.backup-card-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-accept-btn {
+  flex: 1.6 1 200px;
+  min-height: 42px !important;
+  font-weight: 900 !important;
+  white-space: normal !important;
+  height: auto !important;
+  padding: 8px 12px !important;
+}
+
+.backup-decline-btn {
+  flex: 1 1 130px;
+  min-height: 42px !important;
+  color: #fca5a5 !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  white-space: normal !important;
+  height: auto !important;
+  padding: 8px 12px !important;
+}
+
+.backup-responded-summary {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  font-size: .82rem;
+  color: #d1fae5;
+  line-height: 1.5;
+}
+
+/* ── 19.3 後台「棄標處理與次高價順位遞補優惠控制台 (#winner-backup-panel)」 ── */
+.winner-backup-panel {
+  margin-top: 14px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 14px;
+}
+
+.backup-panel-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.backup-candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.backup-candidate-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.backup-candidate-item:hover,
+.backup-candidate-item.active {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: var(--c-gold-1);
+}
+
+.backup-offer-form-box {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 215, 0, 0.22);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.backup-price-adjust-panel {
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.backup-price-adjust-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.backup-offer-price-input {
+  height: 42px !important;
+  font-family: var(--f-num) !important;
+  font-size: 1.18rem !important;
+  font-weight: 900 !important;
+  color: var(--c-gold-1) !important;
+  border-color: var(--c-gold-1) !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+.backup-price-quick-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.admin-backup-offer-status-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(30, 58, 138, 0.35);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  font-size: .8rem;
+  color: #e0f2fe;
+  line-height: 1.5;
+}
+
+/* 後台買家名冊：保留天數與鎖定狀態標籤 */
+.buyer-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.buyer-status-chip.chip-retention {
+  background: rgba(96, 165, 250, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+.buyer-status-chip.chip-locked {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #fde68a;
+}
+
+.buyer-status-chip.chip-unlocked {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.buyer-status-chip.chip-blacklisted {
+  background: rgba(239, 68, 68, 0.22);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}

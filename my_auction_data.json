@@ -153,6 +153,9 @@
       "antiSnipeExtMins": 3,
       "pickupDeadlineHours": 72,
       "pickupDeadline": null,
+      "pickupDeadlineMode": "hours",
+      "pickupDeadlineWeekday": 6,
+      "pickupDeadlineCustomText": "",
       "pickupOptions": {
         "self": true,
         "delivery": false,
@@ -176,7 +179,10 @@
           "user": "小建"
         }
       },
-      "winnerMsgs": []
+      "winnerMsgs": [],
+      "backupOffer": null,
+      "finalDealPrice": null,
+      "defaultedBidders": []
     }
   ],
   "agy_studio_name": "建生工坊 - 利用 AI 協助打造了一款全新的「多商品線上拍賣網頁」，  為了確保系統在正式上線前流暢穩定，想邀請各位朋友抽空幫忙進行壓力測試！",
