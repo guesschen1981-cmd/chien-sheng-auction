@@ -107,8 +107,50 @@ const AppState = {
   },
   prevTopBidders: {}, // 記錄每個品項的前任最高出價者，用於出價超越警示
   galleryIndex: 0,
-  currentEditImages: [] // 編輯中的圖片陣列 (支援拖曳上傳預覽)
+  currentEditImages: [], // 編輯中的圖片陣列 (支援拖曳上傳預覽)
+  registeredBuyers: [] // 雲端即時同步之買家註冊名冊
 };
+
+// === 捲軸記憶與抗跳動保護模組 ===
+if ('scrollRestoration' in history) {
+  history.scrollRestoration = 'manual';
+}
+
+let scrollSaveTimer = null;
+window.addEventListener('scroll', () => {
+  if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+  scrollSaveTimer = setTimeout(() => {
+    try {
+      sessionStorage.setItem('auction_scroll_y', String(window.scrollY));
+      sessionStorage.setItem('auction_active_page', AppState.isAdmin ? 'admin' : 'auction');
+    } catch (e) {}
+  }, 100);
+}, { passive: true });
+
+window.addEventListener('beforeunload', () => {
+  try {
+    sessionStorage.setItem('auction_scroll_y', String(window.scrollY));
+    sessionStorage.setItem('auction_active_page', AppState.isAdmin ? 'admin' : 'auction');
+  } catch (e) {}
+});
+
+function restoreScrollPosition() {
+  try {
+    const savedY = sessionStorage.getItem('auction_scroll_y');
+    if (savedY !== null && !isNaN(Number(savedY))) {
+      const targetY = Number(savedY);
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, behavior: 'instant' });
+      });
+      setTimeout(() => {
+        window.scrollTo({ top: targetY, behavior: 'instant' });
+      }, 60);
+      setTimeout(() => {
+        window.scrollTo({ top: targetY, behavior: 'instant' });
+      }, 250);
+    }
+  } catch (e) {}
+}
 
 // 伺服器回報之區域網路 IP (局域網網址，保證手機掃描 QR Code 正常連線)
 let serverLanUrl = 'http://192.168.1.110:8080';
@@ -1139,7 +1181,12 @@ const FirebaseManager = (function () {
     let cfg = DEFAULT_CONFIG;
     try {
       const stored = SafeStorage.get('agy_fb_config');
-      if (stored) cfg = typeof stored === 'object' ? stored : JSON.parse(stored);
+      if (stored) {
+        const parsed = typeof stored === 'object' ? stored : JSON.parse(stored);
+        if (parsed && parsed.databaseURL && parsed.databaseURL.startsWith('http')) {
+          cfg = parsed;
+        }
+      }
     } catch (e) {}
 
     try {
@@ -1151,10 +1198,30 @@ const FirebaseManager = (function () {
         }
         listenShopSettings();
         listenAuctionItems();
+        listenBuyers();
       }
     } catch (e) {
       console.warn('Firebase init fallback:', e);
     }
+  }
+
+  // 👥 即時監聽買家註冊名冊節點（手機與電腦端雙向同步）
+  function listenBuyers() {
+    if (!_db) return;
+    _db.ref('buyers').on('value', snap => {
+      const val = snap.val() || {};
+      const buyers = Object.values(val);
+      buyers.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+      const prevCount = AppState.registeredBuyers ? AppState.registeredBuyers.length : 0;
+      AppState.registeredBuyers = buyers;
+
+      if (AppState.isAdmin && buyers.length > prevCount && prevCount > 0) {
+        const newest = buyers[0];
+        showToast(`🔔 新買家「${newest.name} (${newest.phone ? newest.phone.slice(-4) : ''})」已加入系統！`);
+      }
+
+      renderAdminBuyersRoster();
+    });
   }
 
   // 即時監聽 Firebase 全域設定節點（保證任何訪客與買家都能獲取最新店名與 Logo）
@@ -1230,19 +1297,65 @@ function listenAuctionItems() {
             user: b.bidderName || b.user || '買家',
             amount: b.amount,
             time: b.timestamp || b.time || (typeof getServerNow === 'function' ? getServerNow() : Date.now()),
-            phoneMasked: b.bidderPhoneMasked
+            phone: b.bidderPhone || b.phone || '',
+            phoneMasked: b.bidderPhoneMasked || (b.bidderPhone ? maskPhone(b.bidderPhone) : ''),
+            line: b.bidderLine || b.line || '',
+            ig: b.bidderIg || b.ig || '',
+            fb: b.bidderFb || b.fb || ''
           })).sort((a, b) => b.amount - a.amount);
           changed = true;
         }
+        // 即時同步買家結構化問答 (QA)
+        if (rItem.qa) {
+          const oldKeys = Object.keys(local.qa || {});
+          const newKeys = Object.keys(rItem.qa);
+          const isDiff = JSON.stringify(local.qa || {}) !== JSON.stringify(rItem.qa);
+          if (isDiff) {
+            if (AppState.isAdmin && newKeys.length > oldKeys.length) {
+              const newestKey = newKeys.filter(k => !oldKeys.includes(k))[0] || newKeys[newKeys.length - 1];
+              const qData = rItem.qa[newestKey];
+              if (qData) {
+                showToast(`💬 收到新提問！${qData.user ? qData.user + '：' : ''}${qData.question?.slice(0, 25) || ''}`);
+              }
+            }
+            local.qa = rItem.qa;
+            changed = true;
+          }
+        }
       }
     });
+
     if (changed) {
-      renderActiveItemDisplay();
-      renderItemTabs();
-      renderBidHistory();
-      renderWinnerStatus();
+      // 背景更新時保護捲軸位置與正在輸入的欄位焦點
+      const prevScroll = window.scrollY;
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+      const focusedId = isInputFocused ? activeEl.id : null;
+      const focusedVal = isInputFocused ? activeEl.value : null;
+
+      try { renderActiveItemDisplay(); } catch (e) {}
+      try { renderItemTabs(); } catch (e) {}
+      try { renderBidHistory(); } catch (e) {}
+      try { renderQA(); } catch (e) {}
+      try { renderAdminAllQA(); } catch (e) {}
+      try { renderWinnerStatus(); } catch (e) {}
       if (typeof updateAuctionTimerUI === 'function') {
-        updateAuctionTimerUI();
+        try { updateAuctionTimerUI(); } catch (e) {}
+      }
+
+      if (focusedId && el(focusedId)) {
+        const curInp = el(focusedId);
+        if (focusedVal !== null && curInp.value !== focusedVal) {
+          curInp.value = focusedVal;
+        }
+        curInp.focus();
+      }
+
+      window.scrollTo({ top: prevScroll, behavior: 'instant' });
+
+      // 電腦端 (localhost:8080) 自動將雲端最新狀態備份回本機 my_auction_data.json
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        syncToLocalServer();
       }
     }
   });
@@ -1521,7 +1634,7 @@ function renderActiveItemDisplay() {
   }
 }
 
-/** 渲染出價歷史清單 */
+/** 渲染出價歷史清單 (支援管理者完整解碼與買家隱私遮罩) */
 function renderBidHistory() {
   const item = getActiveItem();
   const list = el('history-list');
@@ -1548,12 +1661,24 @@ function renderBidHistory() {
     d.className = `history-item ${idx === 0 ? 'is-top' : ''}`;
 
     const isTopTag = idx === 0 ? '<span class="item-tab-badge badge-live" style="margin-right:4px;">目前最高</span>' : '';
-    const phoneDisplay = AppState.isAdmin && b.contact && b.contact.phone ? ` (${b.contact.phone})` : '';
+    
+    // 👑 管理者最高權限解碼視角 vs 一般買家隱私遮罩
+    let userDisplay = '';
+    if (AppState.isAdmin) {
+      const rawPhone = b.phone || (b.contact && b.contact.phone) || '';
+      const phoneLink = rawPhone ? `<a href="tel:${escapeHtml(rawPhone)}" class="buyer-phone-link" style="padding:1px 6px;font-size:.72rem;margin-left:4px;">📞 ${escapeHtml(rawPhone)}</a>` : '';
+      const lineTag = (b.line || (b.contact && b.contact.line)) ? `<span class="buyer-contact-badge badge-line" style="font-size:.66rem;padding:1px 4px;margin-left:2px;">Line: ${escapeHtml(b.line || b.contact.line)}</span>` : '';
+      userDisplay = `<span class="history-user" style="font-weight:700;">👤 ${escapeHtml(b.user || b.bidderName || '買家')}</span>${phoneLink}${lineTag}`;
+    } else {
+      const maskedPhone = b.phoneMasked || (b.phone ? maskPhone(b.phone) : '');
+      const phoneDisplay = maskedPhone ? ` (${maskedPhone})` : '';
+      userDisplay = `<span class="history-user">${maskBuyerName(b.user || b.bidderName)}${phoneDisplay}</span>`;
+    }
 
     d.innerHTML = `
       <div>
         ${isTopTag}
-        <span class="history-user">${maskBuyerName(b.user)}${phoneDisplay}</span>
+        ${userDisplay}
         <div class="history-time">${formatRelTime(b.time)}</div>
       </div>
       <div class="history-amt">${formatMoney(b.amount, AppState.activeCurrency)}</div>
@@ -1815,9 +1940,33 @@ function renderQA() {
     card.className = 'qa-card';
     card.dataset.qaKey = k;
 
-    const displayUser = AppState.isAdmin
-      ? `${escapeHtml(q.user)}${q.phone ? ' (' + escapeHtml(q.phone) + ')' : ''}`
-      : maskBuyerName(q.user);
+    // 前台買家視角 (打碼) vs 後台最高權限管理者解碼視角 (真實姓名、電話撥號、Line/IG/FB)
+    let userHeaderHtml = '';
+    if (AppState.isAdmin) {
+      const phoneBtn = q.phone ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:2px 7px;font-size:.74rem;">📞 ${escapeHtml(q.phone)}</a>` : '';
+      const lineBtn = q.line ? `<span class="buyer-contact-badge badge-line" style="font-size:.68rem;">Line: ${escapeHtml(q.line)}</span>` : '';
+      const igBtn = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.68rem;">IG: ${escapeHtml(q.ig)}</span>` : '';
+      const fbBtn = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.68rem;">FB</span>` : '';
+      const delBtn = `<button type="button" class="btn-del-qa" data-qa-key="${k}" title="刪除提問" style="margin-left:auto;">🗑️ 刪除</button>`;
+
+      userHeaderHtml = `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;width:100%;">
+          <span style="font-weight:700;color:var(--c-gold-1);">❓ ${escapeHtml(q.user)}</span>
+          ${phoneBtn}
+          ${lineBtn}
+          ${igBtn}
+          ${fbBtn}
+          ${delBtn}
+        </div>
+      `;
+    } else {
+      userHeaderHtml = `
+        <div class="qa-meta-row">
+          <span class="qa-user-tag">❓ ${maskBuyerName(q.user)}</span>
+          <span>${formatRelTime(q.time)}</span>
+        </div>
+      `;
+    }
 
     let replyBlock = '';
     if (q.reply) {
@@ -1848,10 +1997,7 @@ function renderQA() {
 
     card.innerHTML = `
       <div class="qa-question-block">
-        <div class="qa-meta-row">
-          <span class="qa-user-tag">❓ ${displayUser}</span>
-          <span>${formatRelTime(q.time)}</span>
-        </div>
+        ${userHeaderHtml}
         <div class="qa-question-text">${escapeHtml(q.question)}</div>
       </div>
       ${replyBlock}
@@ -1869,11 +2015,21 @@ function renderQA() {
         showToast('請輸入回覆內容！');
         return;
       }
-      submitQAReply(qKey, inp.value.trim());
+      submitQAReply(item.id, qKey, inp.value.trim());
+    });
+  });
+
+  listEl.querySelectorAll('.btn-del-qa').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qKey = btn.dataset.qaKey;
+      if (confirm('確定要刪除這筆留言提問嗎？')) {
+        deleteQuestion(item.id, qKey);
+      }
     });
   });
 }
 
+/** 提交新提問（連同買家真實聯絡資料完整推播至 Firebase 雲端） */
 function submitQuestion() {
   const inp = el('qa-ask-input');
   const text = inp ? inp.value.trim() : '';
@@ -1893,31 +2049,280 @@ function submitQuestion() {
     return;
   }
 
-  const qKey = 'qa_' + Date.now();
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+  const qKey = 'qa_' + now + '_' + Math.random().toString(36).slice(2, 6);
   if (!item.qa) item.qa = {};
-  item.qa[qKey] = {
+  const newQ = {
+    id: qKey,
     user: AppState.userProfile.name,
     phone: AppState.userProfile.phone,
+    line: AppState.userProfile.line || '',
+    ig: AppState.userProfile.ig || '',
+    fb: AppState.userProfile.fb || '',
     question: text,
-    time: Date.now(),
+    time: now,
     reply: null,
     replyTime: null
   };
+  item.qa[qKey] = newQ;
 
   inp.value = '';
   renderQA();
+  renderAdminAllQA();
   showToast('提問已送出！賣家回覆後將直接嵌套顯示於下方卡片。');
+
+  // 即時推播至雲端 Firebase
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(err => {
+      console.warn('提問寫入雲端失敗：', err);
+    });
+    // 同步更新買家名冊
+    const key = AppState.userProfile.phone.replace(/[^0-9]/g, '');
+    db.ref('buyers/' + key).update({
+      name: AppState.userProfile.name,
+      phone: AppState.userProfile.phone,
+      line: AppState.userProfile.line || '',
+      ig: AppState.userProfile.ig || '',
+      fb: AppState.userProfile.fb || '',
+      updatedAt: now,
+      lastQuestion: text,
+      lastQuestionItem: item.id
+    }).catch(() => {});
+  }
   syncToFirebase();
 }
 
-function submitQAReply(qKey, replyText) {
-  const item = getActiveItem();
+/** 提交提問回覆 (同步雲端 Firebase) */
+function submitQAReply(itemId, qKey, replyText) {
+  const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
   if (!item || !item.qa || !item.qa[qKey]) return;
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
   item.qa[qKey].reply = replyText;
-  item.qa[qKey].replyTime = Date.now();
+  item.qa[qKey].replyTime = now;
   renderQA();
+  renderAdminAllQA();
   showToast('回覆已送出並精準嵌入該買家問答區塊！');
+
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).update({
+      reply: replyText,
+      replyTime: now
+    }).catch(err => {
+      console.warn('回覆寫入雲端失敗：', err);
+    });
+  }
   syncToFirebase();
+}
+
+/** 刪除提問留言 (從雲端與本地同步移除) */
+function deleteQuestion(itemId, qKey) {
+  const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
+  if (item && item.qa && item.qa[qKey]) {
+    delete item.qa[qKey];
+  }
+  renderQA();
+  renderAdminAllQA();
+  showToast('🗑️ 已成功刪除該則提問！');
+
+  const db = FirebaseManager.getDb();
+  if (db && itemId) {
+    db.ref(`auction/items/${itemId}/qa/${qKey}`).remove().catch(err => {
+      console.warn('雲端刪除留言失敗：', err);
+    });
+  }
+  syncToFirebase();
+}
+
+/** 渲染管理者後台「💬 各商品買家提問即時總覽」 */
+function renderAdminAllQA() {
+  const container = el('admin-all-qa-list');
+  if (!container) return;
+
+  const allQAs = [];
+  (AppState.items || []).forEach(item => {
+    if (item.qa) {
+      Object.keys(item.qa).forEach(k => {
+        allQAs.push({
+          itemId: item.id,
+          itemName: item.name,
+          qaKey: k,
+          qa: item.qa[k]
+        });
+      });
+    }
+  });
+
+  allQAs.sort((a, b) => (b.qa.time || 0) - (a.qa.time || 0));
+
+  if (!allQAs.length) {
+    container.innerHTML = `
+      <div style="font-size:.84rem;color:var(--c-text-3);text-align:center;padding:16px;background:rgba(255,255,255,0.02);border-radius:10px;">
+        目前尚無任何商品買家提問。
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  allQAs.forEach(entry => {
+    const q = entry.qa;
+    const card = document.createElement('div');
+    card.className = 'qa-card';
+    card.style.marginBottom = '12px';
+
+    const lineTag = q.line ? `<span class="buyer-contact-badge badge-line" style="font-size:.68rem;">Line: ${escapeHtml(q.line)}</span>` : '';
+    const igTag = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.68rem;">IG: ${escapeHtml(q.ig)}</span>` : '';
+    const fbTag = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.68rem;">FB</span>` : '';
+
+    let replyHtml = '';
+    if (q.reply) {
+      replyHtml = `
+        <div class="qa-reply-block" style="margin-top:8px;">
+          <div class="qa-reply-header">
+            <span>🛡️ 賣家回覆</span>
+            <span style="font-size:.68rem;color:var(--c-text-3);">${formatRelTime(q.replyTime)}</span>
+          </div>
+          <div class="qa-reply-text">${escapeHtml(q.reply)}</div>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+        <span class="item-tab-badge badge-live" style="font-size:.72rem;">📦 ${escapeHtml(entry.itemName)}</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:.72rem;color:var(--c-text-3);">${formatRelTime(q.time)}</span>
+          <button type="button" class="btn-del-qa" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" title="刪除此留言">🗑️ 刪除</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="font-weight:700;color:var(--c-gold-1);font-size:.88rem;">👤 ${escapeHtml(q.user || '買家')}</span>
+        ${q.phone ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:2px 7px;font-size:.74rem;">📞 ${escapeHtml(q.phone)}</a>` : ''}
+        ${lineTag}
+        ${igTag}
+        ${fbTag}
+      </div>
+      <div class="qa-question-text" style="font-size:.9rem;color:#fff;background:rgba(255,255,255,0.03);padding:8px 10px;border-radius:6px;border-left:3px solid var(--c-gold-1);">
+        ${escapeHtml(q.question)}
+      </div>
+      ${replyHtml}
+      <div class="qa-admin-reply-box" style="margin-top:8px;">
+        <textarea class="qa-admin-textarea" placeholder="輸入回覆內容..." maxlength="300" id="inp-admin-reply-${entry.qaKey}">${q.reply ? escapeHtml(q.reply) : ''}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+          <button type="button" class="tbtn tbtn-purple tbtn-xs btn-admin-submit-reply" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}">
+            ${q.reply ? '✏️ 更新回覆' : '💬 送出回覆'}
+          </button>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('.btn-admin-submit-reply').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const itId = btn.dataset.itemId;
+      const qKey = btn.dataset.qaKey;
+      const inp = el(`inp-admin-reply-${qKey}`);
+      if (!inp || !inp.value.trim()) {
+        showToast('請輸入回覆內容！');
+        return;
+      }
+      submitQAReply(itId, qKey, inp.value.trim());
+    });
+  });
+
+  container.querySelectorAll('.btn-del-qa').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const itId = btn.dataset.itemId;
+      const qKey = btn.dataset.qaKey;
+      if (confirm('確定要刪除這筆買家留言嗎？刪除後將從雲端與本地同步移除。')) {
+        deleteQuestion(itId, qKey);
+      }
+    });
+  });
+}
+
+/** 渲染管理者後台「👥 已登入/註冊買家即時名冊（最高權限總覽）」 */
+function renderAdminBuyersRoster() {
+  const container = el('admin-buyers-list');
+  const countBadge = el('admin-buyers-count');
+  if (!container) return;
+
+  const buyers = AppState.registeredBuyers || [];
+  if (countBadge) {
+    countBadge.textContent = `${buyers.length} 位買家`;
+  }
+
+  if (!buyers.length) {
+    container.innerHTML = `
+      <div style="font-size:.84rem;color:var(--c-text-3);padding:18px;text-align:center;background:rgba(255,255,255,0.02);border-radius:10px;">
+        目前尚無任何買家登入資料。<br>當訪客在手機或前台填寫身分時，將即時解碼顯示於此！
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  buyers.forEach((b, idx) => {
+    const card = document.createElement('div');
+    card.className = 'admin-buyer-card';
+
+    const timeStr = formatRelTime(b.updatedAt || b.createdAt || Date.now());
+    const lineBadge = b.line
+      ? `<span class="buyer-contact-badge badge-line">Line: ${escapeHtml(b.line)}</span>
+         <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-line" data-line="${escapeHtml(b.line)}" title="複製 Line ID" style="padding:2px 6px;font-size:.7rem;">📋 複製</button>`
+      : '';
+    const igBadge = b.ig
+      ? `<span class="buyer-contact-badge badge-ig">IG: ${escapeHtml(b.ig)}</span>`
+      : '';
+    const fbBadge = b.fb
+      ? `<a href="${escapeHtml(b.fb.startsWith('http') ? b.fb : 'https://' + b.fb)}" target="_blank" rel="noopener" class="buyer-contact-badge badge-fb" style="text-decoration:none;">FB 連結 ↗</a>`
+      : '';
+
+    card.innerHTML = `
+      <div class="admin-buyer-header">
+        <div class="admin-buyer-name">
+          <span style="font-family:monospace;font-size:.78rem;background:rgba(255,215,0,0.15);color:var(--c-gold-1);padding:1px 6px;border-radius:4px;">#${String(idx + 1).padStart(2, '0')}</span>
+          <span>👤 ${escapeHtml(b.name || '訪客買家')}</span>
+        </div>
+        <div class="admin-buyer-time">🕒 最後更新/上線：${timeStr}</div>
+      </div>
+      <div class="admin-buyer-contacts">
+        <a href="tel:${escapeHtml(b.phone || '')}" class="buyer-phone-link" title="點擊直接撥打手機">
+          📞 <strong>${escapeHtml(b.phone || '無電話')}</strong>（一鍵撥號）
+        </a>
+        ${lineBadge}
+        ${igBadge}
+        ${fbBadge}
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('.btn-copy-line').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const lineId = btn.dataset.line;
+      if (!lineId) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(lineId).then(() => {
+          showToast(`📋 已複製 Line ID: ${lineId}`);
+        });
+      } else {
+        const t = document.createElement('textarea');
+        t.value = lineId;
+        document.body.appendChild(t);
+        t.select();
+        document.execCommand('copy');
+        document.body.removeChild(t);
+        showToast(`📋 已複製 Line ID: ${lineId}`);
+      }
+    });
+  });
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1999,12 +2404,16 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
         timestamp: now
       };
 
-      // 新增出價歷史紀錄
+      // 新增出價歷史紀錄 (完整記錄買家聯絡資訊以供管理者後台解碼)
       if (!item.bids) item.bids = {};
       const newBidKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
       item.bids[newBidKey] = {
         bidderName: buyerProfile.name,
+        bidderPhone: buyerProfile.phone,
         bidderPhoneMasked: maskPhone(buyerProfile.phone),
+        bidderLine: buyerProfile.line || '',
+        bidderIg: buyerProfile.ig || '',
+        bidderFb: buyerProfile.fb || '',
         amount: bidAmountTWD,
         timestamp: now
       };
@@ -3008,8 +3417,28 @@ function saveBuyerProfile() {
     el('user-profile-name').textContent = name;
   }
 
+  // 100% 即時寫入雲端 buyers（買家註冊名冊）節點
+  const db = FirebaseManager.getDb();
+  if (db) {
+    const key = phoneCheck.phone.replace(/[^0-9]/g, '');
+    const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+    const buyerData = {
+      name: name,
+      phone: phoneCheck.phone,
+      line: AppState.userProfile.line || '',
+      ig: AppState.userProfile.ig || '',
+      fb: AppState.userProfile.fb || '',
+      updatedAt: now,
+      createdAt: now
+    };
+    db.ref('buyers/' + key).update(buyerData).catch(err => {
+      console.warn('買家名冊同步至 Firebase 警告：', err);
+    });
+    db.ref('auction/buyers/' + key).update(buyerData).catch(() => {});
+  }
+
   closeBuyerProfileModal();
-  showToast(`✅ 買家身分「${name}」已驗證儲存！`);
+  showToast(`✅ 買家身分「${name}」已驗證儲存並同步至雲端名冊！`);
 }
 
 function restoreSavedProfile() {
@@ -3409,6 +3838,8 @@ function bindEvents() {
         }
         if (btnText) btnText.textContent = '前台';
         try { renderAdminItemsList(); } catch (e) { console.error('renderAdminItemsList 錯誤:', e); }
+        try { renderAdminBuyersRoster(); } catch (e) { console.error('renderAdminBuyersRoster 錯誤:', e); }
+        try { renderAdminAllQA(); } catch (e) { console.error('renderAdminAllQA 錯誤:', e); }
         try {
           if (AppState.activeItemId) {
             loadItemIntoEditForm(AppState.activeItemId);
@@ -4375,6 +4806,8 @@ async function checkAndLoadMyAuctionData() {
     try { renderQA(); } catch (e) { console.error('renderQA 錯誤:', e); }
     try { renderWinnerStatus(); } catch (e) { console.error('renderWinnerStatus 錯誤:', e); }
     try { renderAdminItemsList(); } catch (e) { console.error('renderAdminItemsList 錯誤:', e); }
+    try { renderAdminAllQA(); } catch (e) { console.error('renderAdminAllQA 錯誤:', e); }
+    try { renderAdminBuyersRoster(); } catch (e) { console.error('renderAdminBuyersRoster 錯誤:', e); }
     try { updateAuctionTimerUI(); } catch (e) { console.error('updateAuctionTimerUI 錯誤:', e); }
     try { updateShareUrl(); } catch (e) { console.error('updateShareUrl 錯誤:', e); }
     if (AppState.auctionId && typeof listenFirebase === 'function') {
@@ -4403,6 +4836,7 @@ function syncToLocalServer(force = false) {
     studioLogo: SafeStorage.get('agy_studio_logo') || 'icon-192.png',
     logoConfig: SafeStorage.get('agy_studio_logo_cfg') || getLogoConfig(),
     items: AppState.items,
+    buyers: AppState.registeredBuyers || [],
     agy_studio_name: AppState.studioName,
     agy_active_currency: AppState.activeCurrency,
     agy_last_auction_id: AppState.auctionId
@@ -4458,7 +4892,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     listenFirebase(cloudId);
   }
 
-  AppState.isAdmin = !p.get('id');
+  // 恢復重新整理前的後台模式（若原本在後台，重整後依然留在後台）
+  const savedPage = sessionStorage.getItem('auction_active_page');
+  if (savedPage === 'admin' && !p.get('id')) {
+    AppState.isAdmin = true;
+    const pageAuction = el('page-auction');
+    const pageAdmin = el('page-admin');
+    const btnText = el('switch-mode-text');
+    if (pageAuction) {
+      pageAuction.classList.remove('active');
+      pageAuction.style.display = 'none';
+    }
+    if (pageAdmin) {
+      pageAdmin.classList.add('active');
+      pageAdmin.style.display = 'block';
+    }
+    if (btnText) btnText.textContent = '前台';
+  } else {
+    AppState.isAdmin = !p.get('id');
+  }
+
+  // 初始渲染後精準恢復捲軸位置
+  restoreScrollPosition();
 
   // 若為 file:// 協定，在初始資料完全載入後才執行橋接防護
   checkAndBridgeFileToLocalServer();

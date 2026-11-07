@@ -34,7 +34,7 @@
   <meta http-equiv="Expires" content="0" />
 
   <!-- 主樣式表 (v5.2 單品專屬與獨立 QR Code 專用) -->
-  <link rel="stylesheet" href="style.css?v=6.2&t=20261107_fix" />
+  <link rel="stylesheet" href="style.css?v=6.3&t=20261107_sync" />
 </head>
 
 <body>
@@ -877,6 +877,20 @@
       </section>
 
 
+      <!-- ── 4. 👥 已登入/註冊買家即時名冊（最高權限總覽） ── -->
+      <section class="acard" id="admin-buyers-section" style="margin-bottom:14px;">
+        <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
+          <h2 class="acard-title"><span>👥</span> 已登入/註冊買家即時名冊（最高權限總覽）</h2>
+          <span class="item-tab-badge badge-live" id="admin-buyers-count">0 位買家</span>
+        </div>
+        <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">
+          最高權限管理者即時解碼名冊：即時同步買家填寫之完整姓名、未遮蔽電話、Line ID、IG 與 FB 聯絡管道。
+        </p>
+        <div id="admin-buyers-list" class="admin-buyers-list">
+          <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:16px;">目前尚無買家登入資料</div>
+        </div>
+      </section>
+
       <!-- ── 5. 各商品買家提問即時總覽 ── -->
       <section class="acard" style="margin-bottom:14px;">
         <div class="acard-hd">
@@ -1141,7 +1155,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
 <!-- 主程式腳本 (v5.2 單品獨立鎖定與帶品名 QR 圖卡專用) -->
-<script src="app.js?v=6.2&t=20261107_fix"></script>
+<script src="app.js?v=6.3&t=20261107_sync"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1154,7 +1168,7 @@
       });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=14').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=15').then(reg => {
         if (reg.waiting) {
           reg.waiting.postMessage({ action: 'skipWaiting' });
         }

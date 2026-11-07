@@ -126,6 +126,9 @@ class AuctionServerHandler(SimpleHTTPRequestHandler):
                     if 'baseCurrency' in incoming_data and incoming_data['baseCurrency']:
                         final_data['baseCurrency'] = incoming_data['baseCurrency']
 
+                    if 'buyers' in incoming_data:
+                        final_data['buyers'] = incoming_data['buyers']
+
                 # 寫回 my_auction_data.json
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(final_data, f, ensure_ascii=False, indent=2)
