@@ -2263,3 +2263,581 @@ body {
     justify-content: center;
   }
 }
+
+
+
+/* ═════════════════════════════════════════════════════════════
+   18. 手機版防裁切、防重疊、防超框與「📱 手機 / 💻 電腦」雙模式系統 (v6.6)
+   ═════════════════════════════════════════════════════════════ */
+
+/* 全站防水平溢位保護 */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* ── 18.1 頂端導覽列 (#nav-studio-name 與右側按鈕防擠壓) ── */
+.top-navbar .nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nav-brand {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+}
+
+.nav-logo {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+}
+
+.nav-studio-name-box {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#nav-studio-name {
+  display: inline-block;
+  font-size: .92rem;
+  font-weight: 900;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* 當店名/公告文字較長時，啟用平滑跑馬燈循環顯示，絕不推擠右側按鈕 */
+.nav-studio-name-box.is-marquee {
+  mask-image: linear-gradient(90deg, transparent 0%, #000 5%, #000 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 5%, #000 95%, transparent 100%);
+}
+
+.nav-studio-name-box.is-marquee #nav-studio-name {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  padding-right: 36px;
+  animation: navStudioMarquee 16s linear infinite;
+}
+
+.nav-studio-name-box.is-marquee:hover #nav-studio-name {
+  animation-play-state: paused;
+}
+
+@keyframes navStudioMarquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(calc(-100% + 90px)); }
+}
+
+.nav-actions {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nav-actions > * {
+  flex-shrink: 0 !important;
+}
+
+.nav-btn-viewmode {
+  background: rgba(96, 165, 250, 0.14) !important;
+  border: 1px solid rgba(96, 165, 250, 0.4) !important;
+  color: #93c5fd !important;
+  font-weight: 800 !important;
+  padding: 0 9px !important;
+  height: 32px !important;
+  gap: 4px !important;
+}
+
+.nav-btn-viewmode:hover {
+  background: rgba(96, 165, 250, 0.25) !important;
+  border-color: #60a5fa !important;
+  color: #fff !important;
+}
+
+/* ── 18.2 賣家膠囊徽章與長篇介紹自動換行防切字 ── */
+.seller-identity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100% !important;
+  width: auto;
+  height: auto !important;
+  padding: 6px 12px !important;
+  border-radius: 14px !important;
+  box-sizing: border-box;
+}
+
+.seller-badge-name {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.45 !important;
+  max-width: 100% !important;
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.product-title, .product-subtitle, .product-desc {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* ── 18.3 分享此拍賣品項卡片 (#share-card) 排版重構：防重疊與防切字 ── */
+.share-mode-radios {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.share-mode-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  font-size: .78rem;
+  color: #fff;
+  background: rgba(255, 215, 0, 0.06);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 215, 0, 0.25);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.share-mode-radio-card.share-mode-radio-alt {
+  color: var(--c-text-2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.share-body-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.share-qr-box {
+  background: #ffffff;
+  padding: 10px;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
+.share-qr-box img,
+.share-qr-box canvas {
+  display: block !important;
+  max-width: 136px;
+  height: auto;
+}
+
+.share-actions-col {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.share-url-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  font-size: .78rem !important;
+  font-family: var(--f-num), monospace !important;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.share-btns-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.share-btn-full {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 40px !important;
+  height: auto !important;
+  padding: 9px 12px !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  line-height: 1.35 !important;
+  text-align: center !important;
+  justify-content: center !important;
+  font-size: .82rem !important;
+  box-sizing: border-box !important;
+}
+
+/* ── 18.4 底部出價控制列 (#mobile-bid-bar) 徹底防超框修復 ── */
+.mobile-bid-bar {
+  box-sizing: border-box;
+  max-width: 100vw;
+}
+
+.mobile-bid-inner {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.desktop-bid-console-hd {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.18);
+  font-size: .88rem;
+  font-weight: 800;
+  color: var(--c-gold-1);
+}
+
+.bid-action-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.bid-stepper-group {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--c-border-gold);
+  border-radius: var(--r-md);
+  padding: 3px !important;
+  height: 44px !important;
+  box-sizing: border-box !important;
+}
+
+.stepper-btn {
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  font-size: 1.15rem !important;
+}
+
+.bid-amount-input {
+  flex: 1 1 0% !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  padding: 0 2px !important;
+  font-size: 1.05rem !important;
+  text-align: center !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.btn-submit-bid {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  height: 44px !important;
+  padding: 0 14px !important;
+  font-size: .9rem !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  box-sizing: border-box !important;
+}
+
+/* ── 18.5 電腦端預覽「手機觀看模式」之頂端提示橫幅 ── */
+.mobile-sim-banner {
+  max-width: 430px;
+  margin: 8px auto 0;
+  padding: 7px 12px;
+  background: linear-gradient(90deg, rgba(30, 58, 138, 0.85), rgba(88, 28, 135, 0.85));
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 12px;
+  color: #e0f2fe;
+  font-size: .76rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-sim-switch-btn {
+  background: rgba(255, 215, 0, 0.18);
+  border: 1px solid rgba(255, 215, 0, 0.55);
+  color: var(--c-gold-1);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: .72rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.mobile-sim-switch-btn:hover {
+  background: var(--c-gold-1);
+  color: #09091a;
+}
+
+/* ═════════════════════════════════════════════════════════════
+   18.6 📱 手機觀看模式 (body.view-mode-mobile)
+   ═════════════════════════════════════════════════════════════ */
+body.view-mode-mobile #auction-container {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+body.view-mode-mobile .auction-col-main,
+body.view-mode-mobile .auction-col-side {
+  display: contents !important;
+}
+
+body.view-mode-mobile #auction-empty-state { order: 0; }
+body.view-mode-mobile #single-mode-banner  { order: 0; }
+body.view-mode-mobile #winner-card         { order: 1; }
+body.view-mode-mobile #product-card        { order: 2; }
+body.view-mode-mobile #timer-card          { order: 3; }
+body.view-mode-mobile #bid-current-card    { order: 4; }
+body.view-mode-mobile #product-video-card  { order: 5; }
+body.view-mode-mobile #history-card        { order: 6; }
+body.view-mode-mobile #qa-section          { order: 7; }
+body.view-mode-mobile #share-card          { order: 8; }
+
+body.view-mode-mobile .admin-workspace-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+body.view-mode-mobile .admin-col-main,
+body.view-mode-mobile .admin-col-side {
+  display: contents !important;
+}
+
+body.view-mode-mobile .admin-sec-items     { order: 1; }
+body.view-mode-mobile .admin-sec-edit      { order: 2; }
+body.view-mode-mobile .admin-sec-broadcast { order: 3; }
+body.view-mode-mobile .admin-sec-buyers    { order: 4; }
+body.view-mode-mobile .admin-sec-qa        { order: 5; }
+
+/* 手機模式導覽列按鈕精簡化，確保 360px 窄螢幕也絕不切字 */
+body.view-mode-mobile .nav-inner {
+  padding: 0 8px !important;
+  gap: 4px !important;
+}
+
+body.view-mode-mobile .nav-actions {
+  gap: 4px !important;
+}
+
+body.view-mode-mobile .nav-btn-viewmode,
+body.view-mode-mobile #btn-switch-mode,
+body.view-mode-mobile #btn-user-profile {
+  padding: 0 7px !important;
+  height: 30px !important;
+  font-size: .74rem !important;
+}
+
+body.view-mode-mobile .currency-select {
+  height: 30px !important;
+  padding: 0 18px 0 6px !important;
+  font-size: .72rem !important;
+}
+
+body.view-mode-mobile .nav-more-btn {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+}
+
+body.view-mode-mobile #user-profile-label {
+  display: inline-block;
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* 當在電腦大螢幕切換為「📱 手機觀看模式」時，居中收縮為 430px 手機模擬視窗 */
+@media (min-width: 600px) {
+  body.view-mode-mobile .top-navbar .nav-inner,
+  body.view-mode-mobile .item-tabs-scroll,
+  body.view-mode-mobile .main-wrap {
+    max-width: 430px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  body.view-mode-mobile #page-auction .main-wrap,
+  body.view-mode-mobile #page-admin .main-wrap {
+    background: rgba(10, 10, 28, 0.55);
+    border-left: 1px solid rgba(255, 215, 0, 0.16);
+    border-right: 1px solid rgba(255, 215, 0, 0.16);
+    box-shadow: 0 0 48px rgba(0, 0, 0, 0.65);
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  body.view-mode-mobile .mobile-bid-bar {
+    max-width: 430px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: 100% !important;
+    border-left: 1px solid rgba(255, 215, 0, 0.25);
+    border-right: 1px solid rgba(255, 215, 0, 0.25);
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* 真實手機窄螢幕下隱藏模擬器提示橫幅 */
+@media (max-width: 599px) {
+  #mobile-sim-banner {
+    display: none !important;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════
+   18.7 💻 電腦觀看模式 (body.view-mode-desktop)
+   ═════════════════════════════════════════════════════════════ */
+body.view-mode-desktop {
+  padding-bottom: 40px !important;
+}
+
+body.view-mode-desktop .top-navbar .nav-inner,
+body.view-mode-desktop .item-tabs-scroll,
+body.view-mode-desktop .main-wrap {
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+body.view-mode-desktop #page-auction .main-wrap,
+body.view-mode-desktop #page-admin .main-wrap {
+  padding: 20px 24px 60px !important;
+}
+
+/* 前台左右雙欄寬螢幕布局 (左欄 58% 主圖與詳情/問答，右欄 42% 即時倒數與出價面板) */
+body.view-mode-desktop #auction-container {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.38fr) minmax(360px, 1fr) !important;
+  gap: 22px !important;
+  align-items: start !important;
+}
+
+body.view-mode-desktop #auction-empty-state,
+body.view-mode-desktop #single-mode-banner,
+body.view-mode-desktop #winner-card {
+  grid-column: 1 / -1 !important;
+}
+
+body.view-mode-desktop .auction-col-main {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px !important;
+  min-width: 0 !important;
+}
+
+body.view-mode-desktop .auction-col-side {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+  position: sticky;
+  top: calc(var(--nav-h) + 16px);
+}
+
+/* 電腦模式下，圖片主舞台放大更清晰 */
+body.view-mode-desktop .gallery-main-stage {
+  aspect-ratio: 16 / 10;
+  max-height: 520px;
+}
+
+body.view-mode-desktop .gallery-thumb {
+  width: 68px;
+  height: 68px;
+}
+
+/* 電腦模式下，出價控制列直接嵌入右欄卡片中（不再遮擋螢幕底部） */
+body.view-mode-desktop .mobile-bid-bar {
+  position: static !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  background: linear-gradient(145deg, rgba(22, 22, 50, 0.95), rgba(14, 14, 34, 0.98)) !important;
+  border: 1px solid var(--c-border-gold) !important;
+  border-radius: var(--r-lg) !important;
+  padding: 16px !important;
+  box-shadow: var(--sh-card), var(--sh-gold) !important;
+  backdrop-filter: none !important;
+  transform: none !important;
+}
+
+body.view-mode-desktop .desktop-bid-console-hd {
+  display: flex !important;
+}
+
+/* 電腦模式下，分享卡片可左右並排且按鈕自動換行不超框 */
+body.view-mode-desktop .share-body-layout {
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+/* 後台雙欄專業管理工作區 */
+body.view-mode-desktop .admin-workspace-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) !important;
+  gap: 22px !important;
+  align-items: start !important;
+}
+
+body.view-mode-desktop .admin-col-main,
+body.view-mode-desktop .admin-col-side {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+}

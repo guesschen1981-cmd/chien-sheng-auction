@@ -34,7 +34,7 @@
   <meta http-equiv="Expires" content="0" />
 
   <!-- 主樣式表 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <link rel="stylesheet" href="style.css?v=6.5&t=20261107_admin_auth" />
+  <link rel="stylesheet" href="style.css?v=6.6&t=20261107_viewmode" />
 </head>
 
 <body>
@@ -55,10 +55,18 @@
     <div class="nav-inner">
       <a href="#" class="nav-brand" id="brand-link" title="建生工坊線上拍賣系統">
         <img id="nav-logo-img" class="nav-logo" src="icon-192.png" alt="Logo" />
-        <span id="nav-studio-name">建生工坊</span>
+        <span class="nav-studio-name-box" id="nav-studio-name-box">
+          <span id="nav-studio-name">建生工坊</span>
+        </span>
       </a>
 
       <div class="nav-actions">
+        <!-- 📱/💻 觀看模式一鍵切換按鈕 (手機觀看模式 / 電腦觀看模式) -->
+        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-viewmode" id="btn-toggle-view-mode" type="button" title="切換手機觀看模式 / 電腦觀看模式">
+          <span id="view-mode-icon">📱</span>
+          <span id="view-mode-text" class="nav-viewmode-text">手機</span>
+        </button>
+
         <!-- 幣別切換選單 (核心功能 2 精緻微縮化) -->
         <div class="currency-select-wrap" title="切換顯示貨幣">
           <select id="currency-select" class="currency-select" aria-label="選擇幣別">
@@ -91,6 +99,10 @@
             <span>⋯</span>
           </button>
           <div class="nav-more-dropdown" id="nav-more-dropdown">
+            <button class="nav-dropdown-item" id="btn-dropdown-view-mode" type="button" style="color:#60a5fa;">
+              <span id="dropdown-viewmode-icon">💻</span>
+              <span id="dropdown-viewmode-text">切換為電腦觀看模式</span>
+            </button>
             <button class="nav-dropdown-item" id="btn-force-refresh" type="button" style="color:#fbbf24;">
               <span>🔄</span> 強制清除快取更新
             </button>
@@ -120,6 +132,12 @@
       <!-- 由腳本動態生成多品項藥丸按鈕 -->
     </div>
   </section>
+
+  <!-- 📱 電腦端預覽「手機觀看模式」時之頂端模擬器狀態提示列 -->
+  <div id="mobile-sim-banner" class="mobile-sim-banner" style="display:none;">
+    <span>📱 目前為<strong>手機觀看模式</strong>（模擬手機螢幕排版）</span>
+    <button type="button" class="mobile-sim-switch-btn" id="btn-sim-to-desktop">💻 切回電腦寬版模式</button>
+  </div>
 
   <!-- ════════════════════════════════════════════════════════
      PAGE: AUCTION (前台競標頁面 - 手機優先排版)
@@ -221,6 +239,9 @@
       </div>
     </div><!-- /winner-card -->
 
+      <!-- 左欄主視覺區 (電腦模式為左欄 58%，手機模式透過 display:contents 恢復單欄垂直排序) -->
+      <div class="auction-col-main" id="auction-col-main">
+
       <!-- ── 2. 商品展示主卡片 (主圖輪播 + 60x60 水平縮圖滑動 + 標題與簡介) ── -->
       <div class="acard" id="product-card">
         <!-- 圖片輪播區 (黑底防溢位約束) -->
@@ -267,6 +288,44 @@
           <span id="product-warranty-text">原件現況出售</span>
         </div>
       </div>
+
+      <!-- ── 5. 多平台實拍影音播放器卡片 (嚴格限制高度與比例，絕不溢位 - 核心功能 3) ── -->
+      <div class="acard video-card" id="product-video-card" style="display:none;">
+        <div class="acard-hd">
+          <h2 class="acard-title"><span>🎬</span> 商品實拍實物影音</h2>
+          <span class="item-tab-badge badge-live" id="video-platform-badge">影音展示</span>
+        </div>
+        <div class="video-embed-container" id="video-embed-container"></div>
+      </div>
+
+      <!-- ── 7. 結構化樹狀 Q&A 問答討論串 (核心功能 8) ── -->
+      <div class="acard qa-section" id="qa-section">
+        <div class="acard-hd">
+          <h2 class="acard-title"><span>💬</span> 一對一結構化問答討論串</h2>
+          <span class="item-tab-badge badge-live">即時解答</span>
+        </div>
+
+        <!-- 買家發問輸入框 -->
+        <div class="qa-ask-box">
+          <textarea id="qa-ask-input" class="qa-ask-input" placeholder="對本商品外觀、保固或取貨有疑問嗎？歡迎在此提問…" rows="2"
+            maxlength="300"></textarea>
+          <div class="qa-ask-bar">
+            <button class="tbtn tbtn-purple tbtn-sm" id="btn-send-question">送出提問</button>
+          </div>
+        </div>
+
+        <!-- 問答卡片列表 -->
+        <div class="qa-list" id="qa-list">
+          <div style="text-align:center;padding:18px 0;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">
+            目前本品項尚無問答，若有任何問題歡迎提問！
+          </div>
+        </div>
+      </div>
+
+      </div><!-- /auction-col-main -->
+
+      <!-- 右欄即時競標控制台 (電腦模式固定並列於右側 42%，手機模式透過 display:contents 恢復單欄排序) -->
+      <div class="auction-col-side" id="auction-col-side">
 
       <!-- ── 3. 核心拍賣倒數計時器卡片 (緊隨主圖，一目了然剩餘時間 - 核心功能 1) ── -->
       <div class="timer-card" id="timer-card">
@@ -316,7 +375,7 @@
       </div>
 
       <!-- ── 4. 目前最高出價卡片 (核心功能 2 & 3) ── -->
-      <div class="bid-current-card">
+      <div class="bid-current-card" id="bid-current-card">
         <div class="bid-row-header">
           <span>目前最高價（即時同步）</span>
           <span id="active-currency-badge" class="item-tab-badge badge-live">TWD NT$</span>
@@ -338,17 +397,8 @@
         </div>
       </div>
 
-      <!-- ── 5. 多平台實拍影音播放器卡片 (嚴格限制高度與比例，絕不溢位 - 核心功能 3) ── -->
-      <div class="acard video-card" id="product-video-card" style="display:none;">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>🎬</span> 商品實拍實物影音</h2>
-          <span class="item-tab-badge badge-live" id="video-platform-badge">影音展示</span>
-        </div>
-        <div class="video-embed-container" id="video-embed-container"></div>
-      </div>
-
       <!-- ── 6. 出價歷史紀錄卡片 (折疊式清單) ── -->
-      <div class="acard" style="padding:14px;">
+      <div class="acard history-card" id="history-card" style="padding:14px;">
         <div class="history-toggle-bar" id="history-toggle-bar">
           <span>📋 出價紀錄 (<span id="history-count">0</span> 筆)</span>
           <span id="history-arrow">▼</span>
@@ -358,31 +408,7 @@
         </div>
       </div>
 
-      <!-- ── 7. 結構化樹狀 Q&A 問答討論串 (核心功能 8) ── -->
-      <div class="acard qa-section" id="qa-section">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>💬</span> 一對一結構化問答討論串</h2>
-          <span class="item-tab-badge badge-live">即時解答</span>
-        </div>
-
-        <!-- 買家發問輸入框 -->
-        <div class="qa-ask-box">
-          <textarea id="qa-ask-input" class="qa-ask-input" placeholder="對本商品外觀、保固或取貨有疑問嗎？歡迎在此提問…" rows="2"
-            maxlength="300"></textarea>
-          <div class="qa-ask-bar">
-            <button class="tbtn tbtn-purple tbtn-sm" id="btn-send-question">送出提問</button>
-          </div>
-        </div>
-
-        <!-- 問答卡片列表 -->
-        <div class="qa-list" id="qa-list">
-          <div style="text-align:center;padding:18px 0;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">
-            目前本品項尚無問答，若有任何問題歡迎提問！
-          </div>
-        </div>
-      </div>
-
-      <!-- ── 8. 分享與 QR Code 卡片 (單品專屬鎖定 + 帶品名 QR 圖卡下載) ── -->
+      <!-- ── 8. 分享與 QR Code 卡片 (單品專屬鎖定 + 帶品名 QR 圖卡下載 - 手機上下置中防重疊) ── -->
       <div class="acard share-card" id="share-card">
         <div class="acard-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <h2 class="acard-title"><span>🔗</span> 分享此拍賣品項</h2>
@@ -393,30 +419,34 @@
         </p>
 
         <!-- 單品專屬模式 / 賣場大廳模式切換 -->
-        <div class="share-mode-radios" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.78rem;color:#fff;background:rgba(255,215,0,0.06);padding:8px 10px;border-radius:8px;border:1px solid rgba(255,215,0,0.25);">
+        <div class="share-mode-radios">
+          <label class="share-mode-radio-card">
             <input type="radio" name="share-link-mode" id="share-mode-single" value="single" checked style="accent-color:var(--c-gold-1);" />
             <span>🎯 <strong>單品專屬頁</strong><br><small style="color:var(--c-text-3);">推薦：只看此商品</small></span>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.78rem;color:var(--c-text-2);background:rgba(255,255,255,0.03);padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
+          <label class="share-mode-radio-card share-mode-radio-alt">
             <input type="radio" name="share-link-mode" id="share-mode-all" value="all" style="accent-color:var(--c-gold-1);" />
             <span>🏬 <strong>賣場總覽</strong><br><small style="color:var(--c-text-3);">保留頂端商品分頁</small></span>
           </label>
         </div>
 
-        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-          <div id="qr-container" style="background:#fff;padding:8px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);"></div>
-          <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
-            <input type="text" id="share-url-input" class="form-input" readonly style="font-size:.8rem;font-family:monospace;" />
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="tbtn tbtn-gold tbtn-sm" id="btn-copy-share" style="flex:1;">📋 複製專屬連結</button>
+        <div class="share-body-layout">
+          <div id="qr-container" class="share-qr-box"></div>
+          <div class="share-actions-col">
+            <input type="text" id="share-url-input" class="form-input share-url-input" readonly />
+            <div class="share-btns-stack">
+              <button class="tbtn tbtn-gold tbtn-sm share-btn-full" id="btn-copy-share" type="button">
+                📋 複製專屬連結
+              </button>
+              <button class="tbtn tbtn-purple tbtn-sm share-btn-full" id="btn-download-qr-card" type="button">
+                📥 下載此商品專屬 QR 圖卡（含品名標籤）
+              </button>
             </div>
-            <button class="tbtn tbtn-purple tbtn-sm" id="btn-download-qr-card" style="width:100%;">
-              📥 下載此商品專屬 QR 圖卡（含品名標籤）
-            </button>
           </div>
         </div>
       </div>
+
+      </div><!-- /auction-col-side -->
 
     </div><!-- /auction-container -->
 
@@ -425,6 +455,10 @@
   ════════════════════════════════════════════════════════ -->
     <aside class="mobile-bid-bar" id="mobile-bid-bar" aria-label="競標操作欄">
       <div class="mobile-bid-inner">
+        <div class="desktop-bid-console-hd" id="desktop-bid-console-hd">
+          <span>🔨 直接出價控制面板</span>
+          <span class="item-tab-badge badge-live">即時加價</span>
+        </div>
         <!-- 快速加價按鈕列 (隨當前貨幣自動換算) -->
         <div class="quick-chips-row" id="quick-chips-row">
           <button class="quick-chip" type="button" data-add="50">+50</button>
@@ -466,6 +500,7 @@
           <p class="admin-top-sub">支援多商品同時開拍、多幣別切換、全員即時廣播與客製化取貨期限管理</p>
         </div>
         <div class="admin-top-actions">
+          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-view-mode" type="button" title="切換手機或電腦觀看模式">💻 電腦寬版模式</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-to-front" type="button">👁️ 前台預覽</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button">☁️ Firebase 連線</button>
           <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all" type="button">🚀 全面發布拍賣</button>
@@ -473,8 +508,11 @@
         </div>
       </div>
 
+      <div class="admin-workspace-grid" id="admin-workspace-grid">
+      <div class="admin-col-main" id="admin-col-main">
+
       <!-- ── 1. 拍賣商品品項列表卡片 (多商品同時開拍) ── -->
-      <section class="acard" style="margin-bottom:14px;">
+      <section class="acard admin-sec-items" id="admin-items-section" style="margin-bottom:14px;">
         <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
           <h2 class="acard-title"><span>📦</span> 拍賣商品品項列表 (多商品同時管理)</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -487,8 +525,11 @@
         </div>
       </section>
 
+      </div><!-- /admin-col-main -->
+      <div class="admin-col-side" id="admin-col-side">
+
       <!-- ── 2. 當前選定品項編輯表單 (折疊式收納，支援一鍵收合) ── -->
-      <section class="acard admin-edit-collapsible" id="admin-item-edit-section" style="margin-bottom:14px;">
+      <section class="acard admin-edit-collapsible admin-sec-edit" id="admin-item-edit-section" style="margin-bottom:14px;">
         <div class="acard-hd" style="border-bottom:1px solid var(--c-border);padding-bottom:12px;margin-bottom:14px;">
           <h2 class="acard-title">
             <span>✏️</span> 編輯商品設定：<span id="edit-item-name-preview" style="color:var(--c-gold-1);">商品一</span>
@@ -866,7 +907,7 @@
       </section>
 
       <!-- ── 3. 全員即時廣播公告發布區 ── -->
-      <section class="acard" style="margin-bottom:14px;">
+      <section class="acard admin-sec-broadcast" id="admin-broadcast-section" style="margin-bottom:14px;">
         <div class="acard-hd">
           <h2 class="acard-title"><span>📢</span> 手動輸入全員廣播公告</h2>
           <span class="item-tab-badge badge-live">即時推播</span>
@@ -886,7 +927,7 @@
 
 
       <!-- ── 4. 👥 已登入/註冊買家即時名冊（最高權限總覽） ── -->
-      <section class="acard" id="admin-buyers-section" style="margin-bottom:14px;">
+      <section class="acard admin-sec-buyers" id="admin-buyers-section" style="margin-bottom:14px;">
         <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
           <h2 class="acard-title"><span>👥</span> 已登入/註冊買家即時名冊（最高權限總覽）</h2>
           <span class="item-tab-badge badge-live" id="admin-buyers-count">0 位買家</span>
@@ -900,7 +941,7 @@
       </section>
 
       <!-- ── 5. 各商品買家提問即時總覽 ── -->
-      <section class="acard" style="margin-bottom:14px;">
+      <section class="acard admin-sec-qa" id="admin-qa-overview-section" style="margin-bottom:14px;">
         <div class="acard-hd">
           <h2 class="acard-title"><span>💬</span> 各商品買家提問即時總覽</h2>
         </div>
@@ -908,6 +949,9 @@
           <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無買家提問</div>
         </div>
       </section>
+
+      </div><!-- /admin-col-side -->
+      </div><!-- /admin-workspace-grid -->
 
     </main>
   </div><!-- /page-admin -->
@@ -1210,7 +1254,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
 <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-<script src="app.js?v=6.5&t=20261107_admin_auth"></script>
+<script src="app.js?v=6.6&t=20261107_viewmode"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1223,7 +1267,7 @@
       });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=17').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=18').then(reg => {
         if (reg.waiting) {
           reg.waiting.postMessage({ action: 'skipWaiting' });
         }

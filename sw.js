@@ -1,12 +1,12 @@
 /* ============================================================
    建生工坊拍賣系統  –  sw.js (Service Worker 腳本)
    ============================================================ */
-const CACHE_NAME = 'jiansheng-auction-v27';
+const CACHE_NAME = 'jiansheng-auction-v28';
 const ASSETS = [
   './',
   './index.html',
-  './style.css?v=6.5&t=20261107_admin_auth',
-  './app.js?v=6.5&t=20261107_admin_auth',
+  './style.css?v=6.6&t=20261107_viewmode',
+  './app.js?v=6.6&t=20261107_viewmode',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

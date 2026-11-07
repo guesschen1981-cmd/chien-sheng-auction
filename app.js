@@ -107,6 +107,7 @@ const AppState = {
   auctionId: UNIFIED_AUCTION_ID,
   isAdmin: false,
   isAdminAuthenticated: false,
+  viewMode: 'mobile',            // 觀看模式：'mobile' (手機觀看模式) | 'desktop' (電腦觀看模式)
   pendingAdminAction: null,
   isTabsManuallyExpanded: false, // 標記使用者是否已點擊展開全部商品
   userProfile: {
@@ -677,6 +678,119 @@ function validatePhoneNumber(rawPhone, userName) {
 /**
  * 全域動態更新店鋪名稱（同步導覽列、分頁 Title、後台標題、輸入框與 Firebase）
  */
+
+/* ─────────────────────────────────────────────────────────────
+   5.8 📱 手機觀看模式 / 💻 電腦觀看模式 智慧偵測與自由切換腳本
+   ───────────────────────────────────────────────────────────── */
+const VIEW_MODE_STORAGE_KEY = 'agy_view_mode';
+
+/**
+ * 智慧判斷初始觀看模式：
+ * 1. 若網址參數帶有 ?view=mobile 或 ?view=desktop 優先採用
+ * 2. 若使用者曾手動切換並儲存於 localStorage，尊重使用者偏好
+ * 3. 否則依裝置螢幕寬度自動判定 (寬度 >= 960px 預設電腦模式，其餘預設手機模式)
+ */
+function detectInitialViewMode() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    if (urlView === 'mobile' || urlView === 'desktop') {
+      return urlView;
+    }
+    const saved = SafeStorage.get(VIEW_MODE_STORAGE_KEY);
+    if (saved === 'mobile' || saved === 'desktop') {
+      return saved;
+    }
+  } catch (e) {}
+  return (window.innerWidth >= 960) ? 'desktop' : 'mobile';
+}
+
+/**
+ * 套用指定的觀看模式 ('mobile' | 'desktop')
+ * @param {'mobile'|'desktop'} mode 目標觀看模式
+ * @param {boolean} savePreference 是否寫入本機偏好並顯示提示
+ */
+function applyViewMode(mode, savePreference = true) {
+  const targetMode = (mode === 'desktop') ? 'desktop' : 'mobile';
+  AppState.viewMode = targetMode;
+
+  document.body.classList.toggle('view-mode-desktop', targetMode === 'desktop');
+  document.body.classList.toggle('view-mode-mobile', targetMode === 'mobile');
+
+  if (savePreference) {
+    SafeStorage.set(VIEW_MODE_STORAGE_KEY, targetMode);
+  }
+
+  // 動態調度出價控制列 (#mobile-bid-bar) 位置：
+  // 電腦模式下直接嵌入右欄 #bid-current-card 下方；手機模式下固定於 #page-auction 底部懸浮
+  const bidBar = el('mobile-bid-bar');
+  const bidCurrentCard = el('bid-current-card');
+  const colSide = el('auction-col-side');
+  const pageAuction = el('page-auction');
+
+  if (bidBar) {
+    if (targetMode === 'desktop' && colSide && bidCurrentCard) {
+      if (bidCurrentCard.nextSibling !== bidBar) {
+        colSide.insertBefore(bidBar, bidCurrentCard.nextSibling);
+      }
+    } else if (targetMode === 'mobile' && pageAuction) {
+      if (bidBar.parentElement !== pageAuction) {
+        pageAuction.appendChild(bidBar);
+      }
+    }
+  }
+
+  // 更新頂端導覽列切換按鈕文字與圖示（清楚標示當前模式，點擊可切換）
+  const navIcon = el('view-mode-icon');
+  const navText = el('view-mode-text');
+  const navBtn = el('btn-toggle-view-mode');
+  if (navIcon) navIcon.textContent = targetMode === 'desktop' ? '💻' : '📱';
+  if (navText) navText.textContent = targetMode === 'desktop' ? '電腦版' : '手機版';
+  if (navBtn) {
+    navBtn.title = targetMode === 'desktop'
+      ? '目前為電腦觀看模式（點擊切換為手機觀看模式）'
+      : '目前為手機觀看模式（點擊切換為電腦觀看模式）';
+  }
+
+  // 更新「⋯ 更多功能選單」內的切換項目文字
+  const dropIcon = el('dropdown-viewmode-icon');
+  const dropText = el('dropdown-viewmode-text');
+  if (dropIcon) dropIcon.textContent = targetMode === 'desktop' ? '📱' : '💻';
+  if (dropText) {
+    dropText.textContent = targetMode === 'desktop'
+      ? '切換為手機觀看模式 (單欄預覽)'
+      : '切換為電腦觀看模式 (雙欄寬版)';
+  }
+
+  // 更新後台頂部切換按鈕文字
+  const adminViewBtn = el('btn-admin-view-mode');
+  if (adminViewBtn) {
+    adminViewBtn.innerHTML = targetMode === 'desktop'
+      ? '📱 切換手機觀看模式'
+      : '💻 切換電腦觀看模式';
+  }
+
+  // 當在電腦寬螢幕 (寬度 >= 600px) 選擇「手機觀看模式」時，顯示頂端手機模擬器狀態列
+  const simBanner = el('mobile-sim-banner');
+  if (simBanner) {
+    const showSim = (targetMode === 'mobile' && window.innerWidth >= 600);
+    simBanner.style.display = showSim ? 'flex' : 'none';
+  }
+}
+
+/**
+ * 一鍵切換「📱 手機觀看模式 / 💻 電腦觀看模式」
+ */
+function toggleViewMode() {
+  const nextMode = (AppState.viewMode === 'desktop') ? 'mobile' : 'desktop';
+  applyViewMode(nextMode, true);
+  if (nextMode === 'desktop') {
+    showToast('💻 已切換為「電腦觀看模式」（寬螢幕左右雙欄介面）');
+  } else {
+    showToast('📱 已切換為「手機觀看模式」（直式單欄與底部懸浮出價列）');
+  }
+}
+
 function updateStudioName(newName, shouldSync = true) {
   let trimmed = (newName || '').trim();
   if (!trimmed || trimmed === 'JianSheng Boutique') {
@@ -686,9 +800,13 @@ function updateStudioName(newName, shouldSync = true) {
   AppState.studioName = trimmed;
   SafeStorage.set('agy_studio_name', trimmed);
 
-  // 1. 網頁最頂部的導覽列標題
+  // 1. 網頁最頂部的導覽列標題（自動偵測長文字啟動平滑跑馬燈，防止擠出右側功能按鈕）
   const navStudio = el('nav-studio-name');
   if (navStudio) navStudio.textContent = trimmed;
+  const navStudioBox = el('nav-studio-name-box');
+  if (navStudioBox) {
+    navStudioBox.classList.toggle('is-marquee', trimmed.length > 10);
+  }
 
   const brandLink = el('brand-link');
   if (brandLink) brandLink.title = `${trimmed}線上拍賣系統`;
@@ -1630,7 +1748,7 @@ function renderActiveItemDisplay() {
     }
 
     if (emptyState) emptyState.style.display = 'none';
-    if (container) container.style.display = 'flex';
+    if (container) container.style.display = (AppState.viewMode === 'desktop') ? 'grid' : 'flex';
     if (bidBar) {
       bidBar.style.display = (item.status === 'active' || item.status === 'live') ? 'block' : 'none';
     }
@@ -4495,6 +4613,28 @@ function bindEvents() {
     location.reload();
   });
 
+  // 18-1. 📱 手機觀看模式 / 💻 電腦觀看模式 一鍵切換按鈕綁定
+  el('btn-toggle-view-mode')?.addEventListener('click', () => {
+    toggleViewMode();
+  });
+  el('btn-dropdown-view-mode')?.addEventListener('click', () => {
+    el('nav-more-dropdown')?.classList.remove('show');
+    toggleViewMode();
+  });
+  el('btn-admin-view-mode')?.addEventListener('click', () => {
+    toggleViewMode();
+  });
+  el('btn-sim-to-desktop')?.addEventListener('click', () => {
+    applyViewMode('desktop', true);
+    showToast('💻 已切換為「電腦觀看模式」（寬螢幕左右雙欄介面）');
+  });
+  window.addEventListener('resize', () => {
+    const simBanner = el('mobile-sim-banner');
+    if (simBanner) {
+      simBanner.style.display = (AppState.viewMode === 'mobile' && window.innerWidth >= 600) ? 'flex' : 'none';
+    }
+  });
+
   // 19. 頂部導覽列更多功能選單 (⋯ 下拉開關與外部點擊關閉)
   const btnNavMore = el('btn-nav-more');
   const navMoreDropdown = el('nav-more-dropdown');
@@ -5380,6 +5520,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const initialAdminVerified = checkSavedAdminAuth();
   AppState.isAdminAuthenticated = initialAdminVerified;
   AppState.isAdmin = initialAdminVerified;
+
+  // 📱/💻 啟動時自動偵測或還原「手機觀看模式 / 電腦觀看模式」
+  applyViewMode(detectInitialViewMode(), false);
 
   restoreSavedProfile();
   restoreSavedLegacyLocalStorage(); // 舊版本機設定與歷史資料還原保護
