@@ -1342,22 +1342,25 @@ function renderItemTabs() {
 
 /** 渲染選定商品的圖片輪播、影音與文字 (支援全部刪除空狀態 - 核心功能 1 & 3) */
 function renderActiveItemDisplay() {
-  const item = getActiveItem();
-  const emptyState = el('auction-empty-state');
-  const container = el('auction-container');
-  const bidBar = el('mobile-bid-bar');
+  try {
+    const item = getActiveItem();
+    const emptyState = el('auction-empty-state');
+    const container = el('auction-container');
+    const bidBar = el('mobile-bid-bar');
 
-  // 全部商品已刪除時的乾淨空狀態版面 (核心功能 1)
-  if (!item) {
-    if (emptyState) emptyState.style.display = 'block';
-    if (container) container.style.display = 'none';
-    if (bidBar) bidBar.style.display = 'none';
-    return;
-  }
+    // 全部商品已刪除時的乾淨空狀態版面 (核心功能 1)
+    if (!item) {
+      if (emptyState) emptyState.style.display = 'block';
+      if (container) container.style.display = 'none';
+      if (bidBar) bidBar.style.display = 'none';
+      return;
+    }
 
-  if (emptyState) emptyState.style.display = 'none';
-  if (container) container.style.display = 'flex';
-  if (bidBar && (item.status === 'active' || item.status === 'live')) bidBar.style.display = 'block';
+    if (emptyState) emptyState.style.display = 'none';
+    if (container) container.style.display = 'flex';
+    if (bidBar) {
+      bidBar.style.display = (item.status === 'active' || item.status === 'live') ? 'block' : 'none';
+    }
 
   // 1-0. 店家識別標籤 (在商品名稱正上方：[店家 Logo 縮圖/商標] + 店家或企業名稱)
   const sellerBadge = el('product-seller-badge');
@@ -1512,6 +1515,9 @@ function renderActiveItemDisplay() {
   const adminItemControls = el('admin-item-controls');
   if (adminItemControls) {
     adminItemControls.style.display = AppState.isAdmin ? 'flex' : 'none';
+  }
+  } catch (err) {
+    console.error('renderActiveItemDisplay 錯誤:', err);
   }
 }
 
@@ -3385,30 +3391,48 @@ function bindEvents() {
 
   // 11. 前後台模式切換
   el('btn-switch-mode')?.addEventListener('click', () => {
-    const pageAuction = el('page-auction');
-    const pageAdmin = el('page-admin');
-    const btnText = el('switch-mode-text');
-    const isCurrentlyAdmin = pageAdmin?.classList.contains('active');
+    try {
+      const pageAuction = el('page-auction');
+      const pageAdmin = el('page-admin');
+      const btnText = el('switch-mode-text');
+      const isCurrentlyAdmin = pageAdmin?.classList.contains('active');
 
-    if (!isCurrentlyAdmin) {
-      AppState.isAdmin = true;
-      pageAuction?.classList.remove('active');
-      pageAdmin?.classList.add('active');
-      if (btnText) btnText.textContent = '前台';
-      renderAdminItemsList();
-      if (AppState.activeItemId) {
-        loadItemIntoEditForm(AppState.activeItemId);
+      if (!isCurrentlyAdmin) {
+        AppState.isAdmin = true;
+        if (pageAuction) {
+          pageAuction.classList.remove('active');
+          pageAuction.style.display = 'none';
+        }
+        if (pageAdmin) {
+          pageAdmin.classList.add('active');
+          pageAdmin.style.display = 'block';
+        }
+        if (btnText) btnText.textContent = '前台';
+        try { renderAdminItemsList(); } catch (e) { console.error('renderAdminItemsList 錯誤:', e); }
+        try {
+          if (AppState.activeItemId) {
+            loadItemIntoEditForm(AppState.activeItemId);
+          }
+        } catch (e) { console.error('loadItemIntoEditForm 錯誤:', e); }
+        showToast('🔧 已切換至【管理者後台控制中心】');
+      } else {
+        if (pageAdmin) {
+          pageAdmin.classList.remove('active');
+          pageAdmin.style.display = 'none';
+        }
+        if (pageAuction) {
+          pageAuction.classList.add('active');
+          pageAuction.style.display = 'block';
+        }
+        if (btnText) btnText.textContent = '後台';
+        try { renderItemTabs(); } catch (e) { console.error('renderItemTabs 錯誤:', e); }
+        try { renderActiveItemDisplay(); } catch (e) { console.error('renderActiveItemDisplay 錯誤:', e); }
+        try { renderQA(); } catch (e) { console.error('renderQA 錯誤:', e); }
+        try { renderWinnerStatus(); } catch (e) { console.error('renderWinnerStatus 錯誤:', e); }
+        showToast('👁️ 已切換至【買家前台競標視角】');
       }
-      showToast('🔧 已切換至【管理者後台控制中心】');
-    } else {
-      pageAdmin?.classList.remove('active');
-      pageAuction?.classList.add('active');
-      if (btnText) btnText.textContent = '後台';
-      renderItemTabs();
-      renderActiveItemDisplay();
-      renderQA();
-      renderWinnerStatus();
-      showToast('👁️ 已切換至【買家前台競標視角】');
+    } catch (err) {
+      console.error('前後台切換錯誤:', err);
     }
   });
 
@@ -3810,6 +3834,7 @@ function updateShareUrl() {
 
   if (el('share-url-input')) {
     el('share-url-input').value = url;
+    el('share-url-input').setAttribute('value', url);
   }
 
   const badge = el('share-item-badge');
@@ -4338,20 +4363,22 @@ async function checkAndLoadMyAuctionData() {
   } finally {
     // ★ 核心關鍵：標記初始資料讀取完成，才允許後續的使用者操作存檔
     isInitialDataLoaded = true;
-    applyUrlRouteParams();
-    if (AppState.activeItemId) {
-      loadItemIntoEditForm(AppState.activeItemId);
-    }
-    renderItemTabs();
-    renderActiveItemDisplay();
-    renderBidHistory();
-    renderQA();
-    renderWinnerStatus();
-    renderAdminItemsList();
-    updateAuctionTimerUI();
-    updateShareUrl();
+    try { applyUrlRouteParams(); } catch (e) { console.error('applyUrlRouteParams 錯誤:', e); }
+    try {
+      if (AppState.activeItemId) {
+        loadItemIntoEditForm(AppState.activeItemId);
+      }
+    } catch (e) { console.error('loadItemIntoEditForm 錯誤:', e); }
+    try { renderItemTabs(); } catch (e) { console.error('renderItemTabs 錯誤:', e); }
+    try { renderActiveItemDisplay(); } catch (e) { console.error('renderActiveItemDisplay 錯誤:', e); }
+    try { renderBidHistory(); } catch (e) { console.error('renderBidHistory 錯誤:', e); }
+    try { renderQA(); } catch (e) { console.error('renderQA 錯誤:', e); }
+    try { renderWinnerStatus(); } catch (e) { console.error('renderWinnerStatus 錯誤:', e); }
+    try { renderAdminItemsList(); } catch (e) { console.error('renderAdminItemsList 錯誤:', e); }
+    try { updateAuctionTimerUI(); } catch (e) { console.error('updateAuctionTimerUI 錯誤:', e); }
+    try { updateShareUrl(); } catch (e) { console.error('updateShareUrl 錯誤:', e); }
     if (AppState.auctionId && typeof listenFirebase === 'function') {
-      listenFirebase(AppState.auctionId);
+      try { listenFirebase(AppState.auctionId); } catch (e) { console.error('listenFirebase 錯誤:', e); }
     }
   }
 }

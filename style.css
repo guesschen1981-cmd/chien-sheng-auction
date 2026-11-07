@@ -89,8 +89,8 @@ body {
   transition: opacity .25s var(--ease);
 }
 .page.active {
-  display: block;
-  opacity: 1;
+  display: block !important;
+  opacity: 1 !important;
 }
 
 /* ── 廣播橫幅 (Firebase 即時廣播) ── */
