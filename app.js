@@ -90,6 +90,13 @@ const DEFAULT_ITEMS = [
    ───────────────────────────────────────────────────────────── */
 const UNIFIED_AUCTION_ID = 'item-local-recovered';
 
+// 👑 最高權限管理者帳號與密碼驗證常數
+const SUPER_ADMIN_ACCOUNT = 'guess_chen1981';
+const SUPER_ADMIN_PASS = 'dr_chen_1981cs701203';
+const ADMIN_AUTH_STORAGE_KEY = 'agy_super_admin_auth';
+const ADMIN_AUTH_SESSION_KEY = 'agy_super_admin_session';
+const ADMIN_TOKEN_VAL = 'verified_guess_chen1981_v1';
+
 const AppState = {
   studioName: '建生工坊',
   baseCurrency: 'TWD',
@@ -99,6 +106,8 @@ const AppState = {
   broadcasts: [],
   auctionId: UNIFIED_AUCTION_ID,
   isAdmin: false,
+  isAdminAuthenticated: false,
+  pendingAdminAction: null,
   isTabsManuallyExpanded: false, // 標記使用者是否已點擊展開全部商品
   userProfile: {
     name: '',
@@ -125,7 +134,8 @@ window.addEventListener('scroll', () => {
     try {
       sessionStorage.setItem('auction_scroll_y', String(window.scrollY));
       sessionStorage.setItem('auction_active_item', AppState.activeItemId || '');
-      sessionStorage.setItem('auction_active_page', AppState.isAdmin ? 'admin' : 'auction');
+      const isViewingAdmin = document.getElementById('page-admin')?.classList.contains('active');
+      sessionStorage.setItem('auction_active_page', (AppState.isAdmin && isViewingAdmin) ? 'admin' : 'auction');
     } catch (e) {}
   }, 100);
 }, { passive: true });
@@ -133,7 +143,8 @@ window.addEventListener('scroll', () => {
 window.addEventListener('beforeunload', () => {
   try {
     sessionStorage.setItem('auction_scroll_y', String(window.scrollY));
-    sessionStorage.setItem('auction_active_page', AppState.isAdmin ? 'admin' : 'auction');
+    const isViewingAdmin = document.getElementById('page-admin')?.classList.contains('active');
+    sessionStorage.setItem('auction_active_page', (AppState.isAdmin && isViewingAdmin) ? 'admin' : 'auction');
   } catch (e) {}
 });
 
@@ -1345,18 +1356,26 @@ function handleIncomingAuctionItems(remoteItems) {
         changed = true;
       }
       if (rItem.qa) {
-        const oldKeys = Object.keys(local.qa || {});
-        const newKeys = Object.keys(rItem.qa);
-        const isDiff = JSON.stringify(local.qa || {}) !== JSON.stringify(rItem.qa);
+        if (!local.qa) local.qa = {};
+        const oldKeys = Object.keys(local.qa);
+        const mergedQa = Object.assign({}, local.qa);
+        Object.keys(rItem.qa).forEach(qk => {
+          const mergedEntry = Object.assign({}, local.qa[qk] || {}, rItem.qa[qk]);
+          if (mergedEntry.question) {
+            mergedQa[qk] = mergedEntry;
+          }
+        });
+        const newKeys = Object.keys(mergedQa);
+        const isDiff = JSON.stringify(local.qa) !== JSON.stringify(mergedQa);
         if (isDiff) {
           if (AppState.isAdmin && newKeys.length > oldKeys.length) {
             const newestKey = newKeys.filter(k => !oldKeys.includes(k))[0] || newKeys[newKeys.length - 1];
-            const qData = rItem.qa[newestKey];
-            if (qData) {
+            const qData = mergedQa[newestKey];
+            if (qData && qData.question) {
               showToast(`💬 收到新提問！${qData.user ? qData.user + '：' : ''}${qData.question?.slice(0, 25) || ''}`);
             }
           }
-          local.qa = rItem.qa;
+          local.qa = mergedQa;
           changed = true;
         }
       }
@@ -1382,7 +1401,12 @@ function handleIncomingAuctionData(data) {
 
   let incomingItems = [];
   if (data.items) {
-    const rawList = Array.isArray(data.items) ? data.items : Object.values(data.items);
+    const rawList = (Array.isArray(data.items) ? data.items : Object.values(data.items)).filter(it => {
+      if (!it || typeof it !== 'object') return false;
+      const nm = String(it.name || it.itemName || it.title || '').trim();
+      if (!nm || (nm === '拍賣商品' && Number(it.startPrice) === 100 && (!it.images || it.images[0] === 'icon-512.png'))) return false;
+      return true;
+    });
     incomingItems = rawList.map((it, idx) => normalizeItem(it, it.id || `item-${idx + 1}`));
   } else if (data.name || data.itemName) {
     incomingItems = [normalizeItem(data, data.id || 'item-local-recovered')];
@@ -1837,6 +1861,7 @@ function hasItemBids(item) {
  * 🔄 一鍵重新開啟競標核心函式 (支援改價重開 + 多種時段)
  */
 function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newStartPrice = null) {
+  if (!requireAdminAuth(() => restartAuctionItem(itemId, mode, durationHours, newStartPrice))) return;
   const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
   if (!item) return;
 
@@ -1968,7 +1993,9 @@ function renderWinnerStatus() {
         el('timer-status-chip').className = 'timer-status-chip ended';
       }
       el('winner-headline').textContent = '⏳ 本檔期競標時間已結束（尚無人出標）';
-      el('winner-subline').textContent = '可由下方快速重新開啟競標，或調整起標價後再次發布';
+      el('winner-subline').textContent = AppState.isAdmin
+        ? '可由下方快速重新開啟競標，或調整起標價後再次發布'
+        : '本檔期競標時間已截止，敬請期待賣家開啟下一檔期競標';
       el('winner-name-tag').textContent = '得標買家：無人出標（流標）';
       el('winner-amount-tag').textContent = `起標金額：${formatMoney(item.startPrice, AppState.activeCurrency)}`;
 
@@ -1978,9 +2005,9 @@ function renderWinnerStatus() {
       if (adminActions) adminActions.style.display = 'none';
       if (chatSection) chatSection.style.display = 'none';
 
-      // 顯示「重新開啟競標控制面板」
+      // 僅限最高權限管理者顯示「重新開啟競標控制面板」
       if (relistPanel) {
-        relistPanel.style.display = 'block';
+        relistPanel.style.display = AppState.isAdmin ? 'block' : 'none';
         if (el('winner-relist-price')) el('winner-relist-price').value = item.startPrice || 10000;
       }
     }
@@ -2232,7 +2259,6 @@ function submitQuestion() {
   // 即時推播至統一雲端 Firebase 節點 (auctions/item-local-recovered, auction/items 與 settings/buyers)
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auctions/${UNIFIED_AUCTION_ID}/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => {});
     db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => {});
 
     const key = AppState.userProfile.phone.replace(/[^0-9]/g, '');
@@ -2252,8 +2278,9 @@ function submitQuestion() {
   syncToFirebase();
 }
 
-/** 提交提問回覆 (同步雲端 Firebase) */
+/** 提交提問回覆 (同步雲端 Firebase - 最高權限管理者專屬) */
 function submitQAReply(itemId, qKey, replyText) {
+  if (!requireAdminAuth()) return;
   const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
   if (!item || !item.qa || !item.qa[qKey]) return;
   const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
@@ -2265,20 +2292,14 @@ function submitQAReply(itemId, qKey, replyText) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auctions/${UNIFIED_AUCTION_ID}/items/${item.id}/qa/${qKey}`).update({
-      reply: replyText,
-      replyTime: now
-    }).catch(() => {});
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).update({
-      reply: replyText,
-      replyTime: now
-    }).catch(() => {});
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).update(item.qa[qKey]).catch(() => {});
   }
   syncToFirebase();
 }
 
-/** 刪除提問留言 (從雲端與本地同步移除) */
+/** 刪除提問留言 (從雲端與本地同步移除 - 最高權限管理者專屬) */
 function deleteQuestion(itemId, qKey) {
+  if (!requireAdminAuth()) return;
   const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
   if (item && item.qa && item.qa[qKey]) {
     delete item.qa[qKey];
@@ -2289,7 +2310,6 @@ function deleteQuestion(itemId, qKey) {
 
   const db = FirebaseManager.getDb();
   if (db && itemId) {
-    db.ref(`auctions/${UNIFIED_AUCTION_ID}/items/${itemId}/qa/${qKey}`).remove().catch(() => {});
     db.ref(`auction/items/${itemId}/qa/${qKey}`).remove().catch(() => {});
   }
   syncToFirebase();
@@ -2546,7 +2566,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
   if (submitText) submitText.textContent = '出標同步中…';
 
   try {
-    const itemRef = firebase.database().ref(`auctions/${UNIFIED_AUCTION_ID}/items/${itemId}`);
+    const itemRef = firebase.database().ref(`auction/items/${itemId}`);
     let extendMessage = '';
 
     const result = await itemRef.transaction((item) => {
@@ -2812,11 +2832,259 @@ function checkOutbidNotice(itemId, newTopBidder, newAmount) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   11. 管理者操作與刪除全部商品 (Admin Actions - 核心功能 1 & 7)
+   11. 最高權限管理者驗證與全站控制模組 (Super Admin Auth & Actions)
    ───────────────────────────────────────────────────────────── */
+
+/** 檢查本機或當次瀏覽階段是否已通過最高權限管理者驗證 */
+function checkSavedAdminAuth() {
+  try {
+    if (SafeStorage.get(ADMIN_AUTH_STORAGE_KEY) === ADMIN_TOKEN_VAL) return true;
+    if (sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY) === ADMIN_TOKEN_VAL) return true;
+  } catch (e) {}
+  return false;
+}
+
+/** 同步全站最高權限管理者 UI 狀態（導覽列按鈕、下拉選單、前台管理控制項與個資解碼） */
+function syncAdminUIState() {
+  const isAuth = !!(AppState.isAdmin && AppState.isAdminAuthenticated);
+  const pageAdmin = el('page-admin');
+  const pageAuction = el('page-auction');
+  const isViewingAdminPage = pageAdmin?.classList.contains('active');
+
+  // 若未通過最高權限驗證卻處於後台頁面，強制退回前台拍賣頁
+  if (!isAuth && isViewingAdminPage) {
+    if (pageAdmin) {
+      pageAdmin.classList.remove('active');
+      pageAdmin.style.display = 'none';
+    }
+    if (pageAuction) {
+      pageAuction.classList.add('active');
+      pageAuction.style.display = 'block';
+    }
+  }
+
+  const switchBtn = el('btn-switch-mode');
+  const switchIcon = el('switch-mode-icon');
+  const switchText = el('switch-mode-text');
+  const nowInAdmin = pageAdmin?.classList.contains('active');
+
+  if (switchBtn) {
+    switchBtn.classList.toggle('admin-unlocked', isAuth);
+  }
+  if (switchIcon) {
+    switchIcon.textContent = !isAuth ? '🔒' : (nowInAdmin ? '👁️' : '👑');
+  }
+  if (switchText) {
+    switchText.textContent = nowInAdmin ? '前台' : '後台';
+  }
+
+  // 導覽列更多選單內之管理者專屬項目顯隱控制
+  const navFbBtn = el('btn-nav-fb-config');
+  if (navFbBtn) navFbBtn.style.display = isAuth ? 'flex' : 'none';
+  const navLogoutBtn = el('btn-nav-admin-logout');
+  if (navLogoutBtn) navLogoutBtn.style.display = isAuth ? 'flex' : 'none';
+
+  // 前台倒數卡片下方之管理者應變控制列
+  const adminItemControls = el('admin-item-controls');
+  if (adminItemControls) {
+    adminItemControls.style.display = isAuth ? 'flex' : 'none';
+  }
+
+  // 重新渲染前台與後台組件以即時套用個資解碼或隱私遮罩
+  try { renderActiveItemDisplay(); } catch (e) {}
+  try { renderBidHistory(); } catch (e) {}
+  try { renderQA(); } catch (e) {}
+  try { renderWinnerStatus(); } catch (e) {}
+  if (isAuth) {
+    try { renderAdminItemsList(); } catch (e) {}
+    try { renderAdminBuyersRoster(); } catch (e) {}
+    try { renderAdminAllQA(); } catch (e) {}
+  }
+}
+
+/** 開啟最高權限管理者登入視窗 */
+function openAdminLoginModal(onSuccessCallback = null) {
+  AppState.pendingAdminAction = (typeof onSuccessCallback === 'function') ? onSuccessCallback : null;
+  const modal = el('modal-admin-login');
+  const errBox = el('admin-login-error');
+  const accInp = el('inp-admin-account');
+  const pwdInp = el('inp-admin-password');
+  const pwdIcon = el('toggle-pwd-icon');
+  const pwdText = el('toggle-pwd-text');
+
+  if (errBox) errBox.style.display = 'none';
+  if (pwdInp) {
+    pwdInp.type = 'password';
+    pwdInp.value = '';
+  }
+  if (pwdIcon) pwdIcon.textContent = '👁️';
+  if (pwdText) pwdText.textContent = '顯示';
+
+  if (modal) modal.classList.add('show');
+  setTimeout(() => {
+    if (accInp && !accInp.value.trim()) {
+      accInp.focus();
+    } else if (pwdInp) {
+      pwdInp.focus();
+    }
+  }, 80);
+}
+
+/** 關閉最高權限管理者登入視窗 */
+function closeAdminLoginModal() {
+  const modal = el('modal-admin-login');
+  const errBox = el('admin-login-error');
+  if (modal) modal.classList.remove('show');
+  if (errBox) errBox.style.display = 'none';
+  AppState.pendingAdminAction = null;
+}
+
+/** 切換顯示/隱藏管理者密碼（支援手機好按大按鈕） */
+function toggleAdminPasswordVisibility() {
+  const pwdInp = el('inp-admin-password');
+  const pwdIcon = el('toggle-pwd-icon');
+  const pwdText = el('toggle-pwd-text');
+  if (!pwdInp) return;
+
+  const isHidden = pwdInp.type === 'password';
+  pwdInp.type = isHidden ? 'text' : 'password';
+  if (pwdIcon) pwdIcon.textContent = isHidden ? '🙈' : '👁️';
+  if (pwdText) pwdText.textContent = isHidden ? '隱藏' : '顯示';
+  pwdInp.focus();
+}
+
+/** 切換至後台管理控制中心（需先通過最高權限驗證） */
+function switchToAdminPage() {
+  if (!requireAdminAuth(() => switchToAdminPage())) return;
+
+  const pageAuction = el('page-auction');
+  const pageAdmin = el('page-admin');
+  if (pageAuction) {
+    pageAuction.classList.remove('active');
+    pageAuction.style.display = 'none';
+  }
+  if (pageAdmin) {
+    pageAdmin.classList.add('active');
+    pageAdmin.style.display = 'block';
+  }
+  try {
+    sessionStorage.setItem('auction_active_page', 'admin');
+  } catch (e) {}
+
+  syncAdminUIState();
+  try {
+    if (AppState.activeItemId) {
+      loadItemIntoEditForm(AppState.activeItemId);
+    }
+  } catch (e) { console.error('loadItemIntoEditForm 錯誤:', e); }
+  showToast('👑 已進入【最高權限管理者後台控制中心】');
+}
+
+/** 切換至前台拍賣頁面 */
+function switchToAuctionPage() {
+  const pageAuction = el('page-auction');
+  const pageAdmin = el('page-admin');
+  if (pageAdmin) {
+    pageAdmin.classList.remove('active');
+    pageAdmin.style.display = 'none';
+  }
+  if (pageAuction) {
+    pageAuction.classList.add('active');
+    pageAuction.style.display = 'block';
+  }
+  try {
+    sessionStorage.setItem('auction_active_page', 'auction');
+  } catch (e) {}
+
+  syncAdminUIState();
+  try { renderItemTabs(); } catch (e) { console.error('renderItemTabs 錯誤:', e); }
+  showToast('👁️ 已切換至【前台競標頁面】');
+}
+
+/** 執行最高權限管理者帳號密碼驗證 */
+function handleAdminLoginSubmit() {
+  const accInp = el('inp-admin-account');
+  const pwdInp = el('inp-admin-password');
+  const remChk = el('chk-admin-remember');
+  const errBox = el('admin-login-error');
+
+  const account = accInp ? accInp.value.trim() : '';
+  const password = pwdInp ? pwdInp.value.trim() : '';
+  const remember = remChk ? !!remChk.checked : true;
+
+  if (account !== SUPER_ADMIN_ACCOUNT || password !== SUPER_ADMIN_PASS) {
+    if (errBox) {
+      errBox.style.display = 'block';
+      errBox.style.animation = 'none';
+      void errBox.offsetWidth;
+      errBox.style.animation = 'adminShake .35s ease';
+    }
+    if ('vibrate' in navigator) {
+      try { navigator.vibrate([100, 50, 100]); } catch (e) {}
+    }
+    showToast('❌ 管理者帳號或密碼錯誤，請重新確認！');
+    return;
+  }
+
+  // 驗證通過：解鎖最高管理者完整控制權
+  AppState.isAdminAuthenticated = true;
+  AppState.isAdmin = true;
+
+  try {
+    sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, ADMIN_TOKEN_VAL);
+  } catch (e) {}
+
+  if (remember) {
+    SafeStorage.set(ADMIN_AUTH_STORAGE_KEY, ADMIN_TOKEN_VAL);
+  } else {
+    SafeStorage.remove(ADMIN_AUTH_STORAGE_KEY);
+  }
+
+  if (pwdInp) pwdInp.value = '';
+  const pendingCb = AppState.pendingAdminAction;
+  closeAdminLoginModal();
+  syncAdminUIState();
+
+  if (typeof pendingCb === 'function') {
+    pendingCb();
+  } else {
+    switchToAdminPage();
+  }
+  showToast('👑 最高權限管理者登入成功！已解鎖全站控制與買家完整聯絡資訊！');
+}
+
+/** 安全登出並鎖定管理後台 */
+function handleAdminLogout() {
+  AppState.isAdminAuthenticated = false;
+  AppState.isAdmin = false;
+  AppState.pendingAdminAction = null;
+
+  SafeStorage.remove(ADMIN_AUTH_STORAGE_KEY);
+  try {
+    sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+    sessionStorage.setItem('auction_active_page', 'auction');
+  } catch (e) {}
+
+  el('modal-fb-setup')?.classList.remove('show');
+  el('nav-more-dropdown')?.classList.remove('show');
+
+  switchToAuctionPage();
+  showToast('🔒 已安全登出並鎖定管理後台！目前恢復為一般買家隱私保護模式。');
+}
+
+/** 最高權限管理者門禁檢查（未登入時自動攔截並彈出驗證視窗） */
+function requireAdminAuth(onSuccessCallback = null) {
+  if (AppState.isAdmin && AppState.isAdminAuthenticated) {
+    return true;
+  }
+  showToast('🔒 此功能僅限最高權限管理者使用，請先輸入帳號密碼驗證！');
+  openAdminLoginModal(onSuccessCallback);
+  return false;
+}
 
 /** 手動提前結標按鈕 */
 function handleAdminEndEarly() {
+  if (!requireAdminAuth(() => handleAdminEndEarly())) return;
   const item = getActiveItem();
   if (!item || item.status === 'ended') return;
 
@@ -2838,6 +3106,7 @@ function handleAdminEndEarly() {
 
 /** 確認客人已取貨 */
 function handleAdminMarkPickedUp() {
+  if (!requireAdminAuth(() => handleAdminMarkPickedUp())) return;
   const item = getActiveItem();
   if (!item) return;
 
@@ -2854,6 +3123,7 @@ function handleAdminMarkPickedUp() {
  * 前台自動切換為「目前尚無競標商品」的乾淨提示版面。
  */
 function handleAdminDeleteItem(targetItemId) {
+  if (!requireAdminAuth(() => handleAdminDeleteItem(targetItemId))) return;
   const item = targetItemId
     ? AppState.items.find(i => i.id === targetItemId)
     : getActiveItem();
@@ -3288,6 +3558,7 @@ function loadItemIntoEditForm(itemId) {
 }
 
 function saveCurrentItemEdits() {
+  if (!requireAdminAuth(() => saveCurrentItemEdits())) return;
   let item = AppState.items.find(i => i.id === AppState.editingItemId);
   if (!item) {
     item = AppState.items.find(i => i.id === AppState.activeItemId);
@@ -3404,6 +3675,7 @@ function saveCurrentItemEdits() {
 }
 
 function addNewItem() {
+  if (!requireAdminAuth(() => addNewItem())) return;
   const newId = 'item-' + (getServerNow());
   const newItem = {
     id: newId,
@@ -3707,7 +3979,7 @@ function syncToFirebase() {
       isCover: i === 0
     }));
 
-    // 同步更新至 auction/items 節點以支援跨客戶端 Transaction 與防蓋標
+    // 同步更新至 auction/items 節點以支援跨客戶端 Transaction、問答與防壓標
     AppState.items.forEach(it => {
       if (it && it.id) {
         db.ref(`auction/items/${it.id}`).update({
@@ -3721,7 +3993,9 @@ function syncToFirebase() {
           timeMode: it.timeMode || 'fixed',
           antiSnipeEnable: it.antiSnipeEnable !== false && it.antiSnipeEnabled !== false,
           antiSnipeMins: Number(it.antiSnipeMins || 3),
-          antiSnipeExt: Number(it.antiSnipeExt || it.antiSnipeExtMins || 3)
+          antiSnipeExt: Number(it.antiSnipeExt || it.antiSnipeExtMins || 3),
+          qa: it.qa || {},
+          bids: it.bids || {}
         }).catch(() => {});
       }
     });
@@ -3767,7 +4041,12 @@ function listenFirebase(auctionId) {
 
     // 1. 判斷多商品結構 (items 陣列或物件)
     if (data.items) {
-      const rawList = Array.isArray(data.items) ? data.items : Object.values(data.items);
+      const rawList = (Array.isArray(data.items) ? data.items : Object.values(data.items)).filter(it => {
+        if (!it || typeof it !== 'object') return false;
+        const nm = String(it.name || it.itemName || it.title || '').trim();
+        if (!nm || (nm === '拍賣商品' && Number(it.startPrice) === 100 && (!it.images || it.images[0] === 'icon-512.png'))) return false;
+        return true;
+      });
       incomingItems = rawList.map((it, idx) => normalizeItem(it, it.id || `item-${idx + 1}`));
     }
     // 2. 舊版單一商品頂層結構自動相容遷移 (itemName / startPrice / imageList 等舊格式)
@@ -4031,57 +4310,50 @@ function bindEvents() {
     });
   });
 
-  // 10. 管理者廣播公告
-  el('btn-admin-broadcast')?.addEventListener('click', () => sendBroadcast());
+  // 10. 管理者廣播公告（受最高權限保護）
+  el('btn-admin-broadcast')?.addEventListener('click', () => {
+    if (!requireAdminAuth(() => sendBroadcast())) return;
+    sendBroadcast();
+  });
 
-  // 11. 前後台模式切換
+  // 11. 前後台模式切換与最高權限管理者驗證事件綁定
   el('btn-switch-mode')?.addEventListener('click', () => {
     try {
-      const pageAuction = el('page-auction');
       const pageAdmin = el('page-admin');
-      const btnText = el('switch-mode-text');
-      const isCurrentlyAdmin = pageAdmin?.classList.contains('active');
+      const isCurrentlyOnAdminPage = pageAdmin?.classList.contains('active');
 
-      if (!isCurrentlyAdmin) {
-        AppState.isAdmin = true;
-        if (pageAuction) {
-          pageAuction.classList.remove('active');
-          pageAuction.style.display = 'none';
+      if (!isCurrentlyOnAdminPage) {
+        if (!AppState.isAdmin || !AppState.isAdminAuthenticated) {
+          openAdminLoginModal(() => switchToAdminPage());
+          return;
         }
-        if (pageAdmin) {
-          pageAdmin.classList.add('active');
-          pageAdmin.style.display = 'block';
-        }
-        if (btnText) btnText.textContent = '前台';
-        try { renderAdminItemsList(); } catch (e) { console.error('renderAdminItemsList 錯誤:', e); }
-        try { renderAdminBuyersRoster(); } catch (e) { console.error('renderAdminBuyersRoster 錯誤:', e); }
-        try { renderAdminAllQA(); } catch (e) { console.error('renderAdminAllQA 錯誤:', e); }
-        try {
-          if (AppState.activeItemId) {
-            loadItemIntoEditForm(AppState.activeItemId);
-          }
-        } catch (e) { console.error('loadItemIntoEditForm 錯誤:', e); }
-        showToast('🔧 已切換至【管理者後台控制中心】');
+        switchToAdminPage();
       } else {
-        if (pageAdmin) {
-          pageAdmin.classList.remove('active');
-          pageAdmin.style.display = 'none';
-        }
-        if (pageAuction) {
-          pageAuction.classList.add('active');
-          pageAuction.style.display = 'block';
-        }
-        if (btnText) btnText.textContent = '後台';
-        try { renderItemTabs(); } catch (e) { console.error('renderItemTabs 錯誤:', e); }
-        try { renderActiveItemDisplay(); } catch (e) { console.error('renderActiveItemDisplay 錯誤:', e); }
-        try { renderQA(); } catch (e) { console.error('renderQA 錯誤:', e); }
-        try { renderWinnerStatus(); } catch (e) { console.error('renderWinnerStatus 錯誤:', e); }
-        showToast('👁️ 已切換至【買家前台競標視角】');
+        switchToAuctionPage();
       }
     } catch (err) {
       console.error('前後台切換錯誤:', err);
     }
   });
+
+  // 11-1. 最高權限管理者登入視窗、密碼顯示切換與登出/鎖定後台按鈕綁定
+  el('btn-toggle-admin-pwd')?.addEventListener('click', toggleAdminPasswordVisibility);
+  el('btn-submit-admin-login')?.addEventListener('click', handleAdminLoginSubmit);
+  el('btn-cancel-admin-login')?.addEventListener('click', closeAdminLoginModal);
+  el('modal-admin-login')?.addEventListener('click', e => {
+    if (e.target === el('modal-admin-login')) closeAdminLoginModal();
+  });
+  ['inp-admin-account', 'inp-admin-password'].forEach(inpId => {
+    el(inpId)?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAdminLoginSubmit();
+      }
+    });
+  });
+  el('btn-admin-logout')?.addEventListener('click', handleAdminLogout);
+  el('btn-nav-admin-logout')?.addEventListener('click', handleAdminLogout);
+  el('btn-admin-to-front')?.addEventListener('click', switchToAuctionPage);
 
   // 12. 買家身分彈窗
   el('btn-user-profile')?.addEventListener('click', openBuyerProfileModal);
@@ -4103,8 +4375,9 @@ function bindEvents() {
   el('btn-save-current-item')?.addEventListener('click', saveCurrentItemEdits);
   el('btn-add-new-item')?.addEventListener('click', addNewItem);
 
-  // 15. 全面發布拍賣 (統一發布至主節點 auctions/item-local-recovered 與鏡像節點)
+  // 15. 全面發布拍賣 (統一發布至主節點 auctions/item-local-recovered 與鏡像節點 - 最高權限專屬)
   el('btn-publish-all')?.addEventListener('click', () => {
+    if (!requireAdminAuth()) return;
     const db = FirebaseManager.getDb();
     if (!db) {
       showToast('請先連線 Firebase 雲端資料庫！');
@@ -4197,10 +4470,11 @@ function bindEvents() {
   // 後台：一鍵複製全部商品獨立網址清單
   el('btn-copy-all-urls')?.addEventListener('click', copyAllItemsUrls);
 
-  // 18. Firebase 設定彈窗 (支援後台按鈕與導覽列選單)
+  // 18. Firebase 設定彈窗 (僅限最高權限管理者開啟與修改)
   const handleOpenFbConfig = () => {
-    el('modal-fb-setup')?.classList.add('show');
     el('nav-more-dropdown')?.classList.remove('show');
+    if (!requireAdminAuth(() => { el('modal-fb-setup')?.classList.add('show'); })) return;
+    el('modal-fb-setup')?.classList.add('show');
   };
   el('btn-fb-config')?.addEventListener('click', handleOpenFbConfig);
   el('btn-nav-fb-config')?.addEventListener('click', handleOpenFbConfig);
@@ -4332,11 +4606,29 @@ function bindEvents() {
   }
 
   el('btn-save-studio-name')?.addEventListener('click', () => {
+    if (!requireAdminAuth()) return;
     const val = el('cfg-studio-name')?.value.trim();
     if (val) {
       updateStudioName(val, true);
       showToast(`💾 店鋪名稱已成功更新為【${val}】，並同步至雲端！`);
     }
+  });
+
+  // 後台商品基本資料內之「💾 儲存店名」快捷按鈕連動全站店名與當前商品
+  el('btn-save-seller-name-quick')?.addEventListener('click', () => {
+    if (!requireAdminAuth()) return;
+    const val = el('edit-item-seller-name')?.value.trim();
+    if (!val) {
+      showToast('請輸入賣家 / 店家名稱！');
+      return;
+    }
+    const item = AppState.items.find(i => i.id === AppState.editingItemId) || getActiveItem();
+    if (item) item.sellerName = val;
+    updateStudioName(val, true);
+    renderActiveItemDisplay();
+    syncToFirebase();
+    syncToLocalServer();
+    showToast(`💾 賣家/店鋪名稱已更新為【${val}】並同步至全站！`);
   });
 
   // 全域賣家 Logo / 名片貼圖上傳與網址
@@ -4995,7 +5287,9 @@ async function checkAndLoadMyAuctionData() {
       if (data.items && Array.isArray(data.items) && data.items.length > 0) {
         // 過濾假範例商品
         const filtered = data.items.filter(it => {
-          const n = String(it.name || '');
+          if (!it || typeof it !== 'object') return false;
+          const n = String(it.name || '').trim();
+          if (!n || (n === '拍賣商品' && Number(it.startPrice) === 100 && (!it.images || it.images[0] === 'icon-512.png'))) return false;
           return !n.includes('樟木箱') && !n.includes('茶盤') && !n.includes('官帽椅');
         });
         if (filtered.length > 0) {
@@ -5082,6 +5376,11 @@ function syncToLocalServer(force = false) {
    19. 系統啟動初始化入口 (Init on DOM Ready)
    ───────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
+  // 啟動時立即讀取最高權限管理者驗證狀態（未驗證者嚴格預設為一般買家隱私保護視角）
+  const initialAdminVerified = checkSavedAdminAuth();
+  AppState.isAdminAuthenticated = initialAdminVerified;
+  AppState.isAdmin = initialAdminVerified;
+
   restoreSavedProfile();
   restoreSavedLegacyLocalStorage(); // 舊版本機設定與歷史資料還原保護
 
@@ -5120,13 +5419,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 恢復重新整理前的後台模式（若原本在後台，重整後依然留在後台）
+  // 👑 驗證並恢復最高權限管理者登入狀態（嚴格隔離一般買家與最高管理者）
+  const isVerifiedAdmin = checkSavedAdminAuth();
+  AppState.isAdminAuthenticated = isVerifiedAdmin;
+  AppState.isAdmin = isVerifiedAdmin;
+
   const savedPage = sessionStorage.getItem('auction_active_page');
-  if (savedPage === 'admin' && !p.get('id')) {
-    AppState.isAdmin = true;
+  if (isVerifiedAdmin && savedPage === 'admin' && !p.get('id')) {
     const pageAuction = el('page-auction');
     const pageAdmin = el('page-admin');
-    const btnText = el('switch-mode-text');
     if (pageAuction) {
       pageAuction.classList.remove('active');
       pageAuction.style.display = 'none';
@@ -5135,10 +5436,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       pageAdmin.classList.add('active');
       pageAdmin.style.display = 'block';
     }
-    if (btnText) btnText.textContent = '前台';
   } else {
-    AppState.isAdmin = !p.get('id');
+    const pageAuction = el('page-auction');
+    const pageAdmin = el('page-admin');
+    if (pageAdmin) {
+      pageAdmin.classList.remove('active');
+      pageAdmin.style.display = 'none';
+    }
+    if (pageAuction) {
+      pageAuction.classList.add('active');
+      pageAuction.style.display = 'block';
+    }
   }
+  syncAdminUIState();
 
   // 初始渲染後精準恢復捲軸位置
   restoreScrollPosition();

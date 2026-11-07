@@ -33,8 +33,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 
-  <!-- 主樣式表 (v5.2 單品專屬與獨立 QR Code 專用) -->
-  <link rel="stylesheet" href="style.css?v=6.4&t=20261107_unified" />
+  <!-- 主樣式表 (v6.5 最高權限管理者登入與全站控制專用) -->
+  <link rel="stylesheet" href="style.css?v=6.5&t=20261107_admin_auth" />
 </head>
 
 <body>
@@ -72,9 +72,9 @@
           <span class="currency-select-arrow">▼</span>
         </div>
 
-        <!-- 模式切換按鈕 (前台/後台) -->
-        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-mode" id="btn-switch-mode" title="前台/後台模式切換">
-          <span>⚙️</span>
+        <!-- 模式切換按鈕 (前台/後台 - 最高權限管理者驗證保護) -->
+        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-mode" id="btn-switch-mode" title="前台/後台模式切換（需最高權限管理者驗證）">
+          <span id="switch-mode-icon">🔒</span>
           <span id="switch-mode-text">後台</span>
         </button>
 
@@ -100,8 +100,11 @@
             <button class="nav-dropdown-item" id="btn-nav-copy-share" type="button">
               <span>📋</span> 複製分享連結
             </button>
-            <button class="nav-dropdown-item" id="btn-nav-fb-config" type="button">
+            <button class="nav-dropdown-item" id="btn-nav-fb-config" type="button" style="display:none;">
               <span>☁️</span> Firebase 雲端設定
+            </button>
+            <button class="nav-dropdown-item" id="btn-nav-admin-logout" type="button" style="display:none;color:#f87171;">
+              <span>🔒</span> 登出 / 鎖定後台
             </button>
           </div>
         </div>
@@ -182,8 +185,8 @@
         </div>
       </div>
 
-      <!-- ── 🔄 一鍵重新開啟競標快捷面板（支援改價重開 + 多種時段） ── -->
-      <div class="winner-relist-panel" id="winner-relist-panel" style="margin-top:14px;padding:14px;background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.25);border-radius:12px;">
+      <!-- ── 🔄 一鍵重新開啟競標快捷面板（僅限最高權限管理者顯示） ── -->
+      <div class="winner-relist-panel" id="winner-relist-panel" style="display:none;margin-top:14px;padding:14px;background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.25);border-radius:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
           <div style="font-weight:800;color:var(--c-gold-1);font-size:.9rem;display:flex;align-items:center;gap:6px;">
             <span>🔄</span> 重新開啟競標控制台
@@ -456,12 +459,17 @@
       <!-- 頂端後台動作列 -->
       <div class="admin-top-bar">
         <div>
+          <div class="admin-auth-status-pill" id="admin-auth-status-pill">
+            <span>👑</span> 最高權限管理者：<strong>guess_chen1981</strong>（全站控制已解鎖）
+          </div>
           <h1 class="admin-top-title" id="admin-top-title">🔨 建生工坊拍賣後台控制中心</h1>
           <p class="admin-top-sub">支援多商品同時開拍、多幣別切換、全員即時廣播與客製化取貨期限管理</p>
         </div>
         <div class="admin-top-actions">
-          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config">☁️ Firebase 連線</button>
-          <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all">🚀 全面發布拍賣</button>
+          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-to-front" type="button">👁️ 前台預覽</button>
+          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button">☁️ Firebase 連線</button>
+          <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all" type="button">🚀 全面發布拍賣</button>
+          <button class="tbtn tbtn-danger tbtn-sm" id="btn-admin-logout" type="button" title="安全登出並鎖定管理後台">🔒 登出/鎖定後台</button>
         </div>
       </div>
 
@@ -906,6 +914,53 @@
 
 
   <!-- ════════════════════════════════════════════════════════
+     MODAL: 最高權限管理者登入驗證 (Super Admin Login & Full Site Control)
+════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" id="modal-admin-login" role="dialog" aria-modal="true" aria-labelledby="modal-admin-login-title">
+    <div class="modal-sheet admin-login-sheet">
+      <div class="modal-title" id="modal-admin-login-title">
+        <span>🛡️</span> 最高權限管理者驗證
+      </div>
+      <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:14px;line-height:1.5;">
+        請輸入最高權限管理者帳號與密碼。通過驗證後即可跨裝置掌控全站後台設定、解碼買家完整聯絡資料與回覆問答：
+      </p>
+
+      <div id="admin-login-error" class="admin-login-error" style="display:none;">
+        ❌ 帳號或密碼不正確，請重新確認輸入！
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="inp-admin-account">最高管理者帳號 <em>*</em></label>
+        <input type="text" id="inp-admin-account" class="form-input" placeholder="請輸入最高管理者帳號" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="inp-admin-password">最高管理者密碼 <em>*</em></label>
+        <div class="admin-pwd-input-wrap">
+          <input type="password" id="inp-admin-password" class="form-input admin-pwd-input" placeholder="請輸入最高管理者密碼" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          <button type="button" class="btn-toggle-pwd" id="btn-toggle-admin-pwd" aria-label="顯示或隱藏密碼" title="切換顯示/隱藏密碼">
+            <span id="toggle-pwd-icon">👁️</span>
+            <span id="toggle-pwd-text">顯示</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="admin-remember-row">
+        <label class="admin-remember-label" for="chk-admin-remember">
+          <input type="checkbox" id="chk-admin-remember" checked />
+          <span>記住登入狀態（此裝置下次開啟自動維持最高權限）</span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button type="button" class="tbtn tbtn-ghost" id="btn-cancel-admin-login" style="flex:1;">取消</button>
+        <button type="button" class="tbtn tbtn-gold" id="btn-submit-admin-login" style="flex:1.6;">🔓 驗證並解鎖後台</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════
      MODAL: 買家多元身分登入與嚴格電話驗證 (核心功能 3 & 4)
 ════════════════════════════════════════════════════════ -->
   <div class="modal-backdrop" id="modal-buyer-profile" role="dialog" aria-modal="true">
@@ -1154,8 +1209,8 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-<!-- 主程式腳本 (v5.2 單品獨立鎖定與帶品名 QR 圖卡專用) -->
-<script src="app.js?v=6.4&t=20261107_unified"></script>
+<!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
+<script src="app.js?v=6.5&t=20261107_admin_auth"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1168,7 +1223,7 @@
       });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=16').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=17').then(reg => {
         if (reg.waiting) {
           reg.waiting.postMessage({ action: 'skipWaiting' });
         }

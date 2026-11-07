@@ -51,14 +51,38 @@
       "videoUrl": "https://youtu.be/YJJEP2dyl4M",
       "startPrice": 10000,
       "increment": 10,
-      "currentPrice": 10000,
-      "currentBid": 10000,
-      "bids": {},
-      "topBidder": "",
-      "topBidderContact": null,
-      "topBidTime": null,
-      "bidHistory": [],
-      "endTime": 1794060175483,
+      "currentPrice": 10050,
+      "currentBid": 10050,
+      "bids": {
+        "bid_1794013645376_9joez": {
+          "amount": 10050,
+          "bidderName": "小建",
+          "bidderPhoneMasked": "0931***482",
+          "timestamp": 1794013645376
+        }
+      },
+      "topBidder": "小建",
+      "topBidderContact": {
+        "fb": "",
+        "ig": "",
+        "line": "guess_chen1981",
+        "name": "小建",
+        "phone": "0931849482"
+      },
+      "topBidTime": 1794013646163,
+      "bidHistory": [
+        {
+          "user": "小建",
+          "amount": 10050,
+          "time": 1794013645376,
+          "phone": "",
+          "phoneMasked": "0931***482",
+          "line": "",
+          "ig": "",
+          "fb": ""
+        }
+      ],
+      "endTime": 1794100045376,
       "status": "live",
       "timeMode": "reset24",
       "autoRelistIfNoBids": true,
@@ -80,8 +104,14 @@
       "warrantyText": "原件現況出售",
       "qa": {
         "qa_1794011780771": {
+          "fb": "",
+          "id": "qa_1794011780771",
+          "ig": "",
+          "line": "guess_chen1981",
           "phone": "0931849482",
           "question": "請問蓋商品還有貨嗎？",
+          "reply": "目前還有",
+          "replyTime": 1794013572066,
           "time": 1794011780771,
           "user": "小建"
         }
@@ -91,5 +121,6 @@
   ],
   "agy_studio_name": "建生工坊 - 利用 AI 協助打造了一款全新的「多商品線上拍賣網頁」，  為了確保系統在正式上線前流暢穩定，想邀請各位朋友抽空幫忙進行壓力測試！",
   "agy_active_currency": "TWD",
-  "agy_last_auction_id": "item-local-recovered"
+  "agy_last_auction_id": "item-local-recovered",
+  "buyers": []
 }
