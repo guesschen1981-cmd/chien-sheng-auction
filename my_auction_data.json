@@ -51,14 +51,44 @@
       "videoUrl": "https://youtu.be/YJJEP2dyl4M",
       "startPrice": 10000,
       "increment": 10,
-      "currentPrice": 10050,
-      "currentBid": 10050,
+      "currentPrice": 10140,
+      "currentBid": 10140,
       "bids": {
         "bid_1794013645376_9joez": {
           "amount": 10050,
           "bidderName": "小建",
           "bidderPhoneMasked": "0931***482",
           "timestamp": 1794013645376
+        },
+        "bid_1794024599354_mxo4d": {
+          "amount": 10120,
+          "bidderFb": "",
+          "bidderIg": "",
+          "bidderLine": "guess_chen1981",
+          "bidderName": "小建",
+          "bidderPhone": "0931849482",
+          "bidderPhoneMasked": "0931***482",
+          "timestamp": 1794024599354
+        },
+        "bid_1794024609988_9c0ht": {
+          "amount": 10130,
+          "bidderFb": "",
+          "bidderIg": "",
+          "bidderLine": "guess_chen1981",
+          "bidderName": "小建",
+          "bidderPhone": "0931849482",
+          "bidderPhoneMasked": "0931***482",
+          "timestamp": 1794024609988
+        },
+        "bid_1794024769962_y0jkq": {
+          "amount": 10140,
+          "bidderFb": "",
+          "bidderIg": "",
+          "bidderLine": "guess_chen1981",
+          "bidderName": "小建",
+          "bidderPhone": "0931849482",
+          "bidderPhoneMasked": "0931***482",
+          "timestamp": 1794024769962
         }
       },
       "topBidder": "小建",
@@ -69,8 +99,38 @@
         "name": "小建",
         "phone": "0931849482"
       },
-      "topBidTime": 1794013646163,
+      "topBidTime": 1794024771194,
       "bidHistory": [
+        {
+          "user": "小建",
+          "amount": 10140,
+          "time": 1794024769962,
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
+        },
+        {
+          "user": "小建",
+          "amount": 10130,
+          "time": 1794024609988,
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
+        },
+        {
+          "user": "小建",
+          "amount": 10120,
+          "time": 1794024599354,
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
+        },
         {
           "user": "小建",
           "amount": 10050,
@@ -82,7 +142,7 @@
           "fb": ""
         }
       ],
-      "endTime": 1794100045376,
+      "endTime": 1794111169962,
       "status": "live",
       "timeMode": "reset24",
       "autoRelistIfNoBids": true,
