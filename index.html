@@ -34,7 +34,7 @@
   <meta http-equiv="Expires" content="0" />
 
   <!-- 主樣式表 (v5.2 單品專屬與獨立 QR Code 專用) -->
-  <link rel="stylesheet" href="style.css?v=6.3&t=20261107_sync" />
+  <link rel="stylesheet" href="style.css?v=6.4&t=20261107_unified" />
 </head>
 
 <body>
@@ -1155,7 +1155,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
 <!-- 主程式腳本 (v5.2 單品獨立鎖定與帶品名 QR 圖卡專用) -->
-<script src="app.js?v=6.3&t=20261107_sync"></script>
+<script src="app.js?v=6.4&t=20261107_unified"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1168,7 +1168,7 @@
       });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=15').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=16').then(reg => {
         if (reg.waiting) {
           reg.waiting.postMessage({ action: 'skipWaiting' });
         }
