@@ -701,12 +701,13 @@ function validatePhoneNumber(rawPhone, userName) {
    5.8 📱 手機觀看模式 / 💻 電腦觀看模式 智慧偵測與自由切換腳本
    ───────────────────────────────────────────────────────────── */
 const VIEW_MODE_STORAGE_KEY = 'agy_view_mode';
+const VIEW_MODE_EXPLICIT_KEY = 'agy_view_mode_explicit_v2';
 
 /**
  * 智慧判斷初始觀看模式：
  * 1. 若網址參數帶有 ?view=mobile 或 ?view=desktop 優先採用
- * 2. 若使用者曾手動切換並儲存於 localStorage，尊重使用者偏好
- * 3. 否則依裝置螢幕寬度自動判定 (寬度 >= 960px 預設電腦模式，其餘預設手機模式)
+ * 2. 若使用者曾點擊「💻 電腦模式 / 📱 手機模式」並存入 localStorage，自動維持上次習慣的觀看模式
+ * 3. 否則在寬螢幕 (寬度 >= 860px) 下自動啟用「💻 電腦模式（黃金雙欄儀表板）」，手機螢幕預設「📱 手機模式」
  */
 function detectInitialViewMode() {
   try {
@@ -715,18 +716,18 @@ function detectInitialViewMode() {
     if (urlView === 'mobile' || urlView === 'desktop') {
       return urlView;
     }
-    const saved = SafeStorage.get(VIEW_MODE_STORAGE_KEY);
-    if (saved === 'mobile' || saved === 'desktop') {
-      return saved;
+    const explicitMode = SafeStorage.get(VIEW_MODE_EXPLICIT_KEY);
+    if (explicitMode === 'mobile' || explicitMode === 'desktop') {
+      return explicitMode;
     }
   } catch (e) {}
-  return (window.innerWidth >= 960) ? 'desktop' : 'mobile';
+  return (window.innerWidth >= 860) ? 'desktop' : 'mobile';
 }
 
 /**
  * 套用指定的觀看模式 ('mobile' | 'desktop')
  * @param {'mobile'|'desktop'} mode 目標觀看模式
- * @param {boolean} savePreference 是否寫入本機偏好並顯示提示
+ * @param {boolean} savePreference 是否寫入 localStorage 記憶使用者選擇
  */
 function applyViewMode(mode, savePreference = true) {
   const targetMode = (mode === 'desktop') ? 'desktop' : 'mobile';
@@ -735,8 +736,15 @@ function applyViewMode(mode, savePreference = true) {
   document.body.classList.toggle('view-mode-desktop', targetMode === 'desktop');
   document.body.classList.toggle('view-mode-mobile', targetMode === 'mobile');
 
+  const container = el('auction-container');
+  const emptyState = el('auction-empty-state');
+  if (container && (!emptyState || emptyState.style.display === 'none')) {
+    container.style.display = (targetMode === 'desktop') ? 'grid' : 'flex';
+  }
+
   if (savePreference) {
     SafeStorage.set(VIEW_MODE_STORAGE_KEY, targetMode);
+    SafeStorage.set(VIEW_MODE_EXPLICIT_KEY, targetMode);
   }
 
   // 動態調度出價控制列 (#mobile-bid-bar) 位置：
@@ -758,16 +766,22 @@ function applyViewMode(mode, savePreference = true) {
     }
   }
 
-  // 更新頂端導覽列切換按鈕文字與圖示（清楚標示當前模式，點擊可切換）
+  // 更新頂端導覽列「💻 電腦模式 / 📱 手機模式」雙按鈕膠囊高亮狀態
+  const btnDesktop = el('btn-view-desktop');
+  const btnMobile = el('btn-view-mobile');
+  if (btnDesktop) btnDesktop.classList.toggle('active', targetMode === 'desktop');
+  if (btnMobile) btnMobile.classList.toggle('active', targetMode === 'mobile');
+
+  // 更新窄螢幕單鍵切換按鈕（顯示下一個可切換之目標模式，直覺好按）
   const navIcon = el('view-mode-icon');
   const navText = el('view-mode-text');
   const navBtn = el('btn-toggle-view-mode');
-  if (navIcon) navIcon.textContent = targetMode === 'desktop' ? '💻' : '📱';
-  if (navText) navText.textContent = targetMode === 'desktop' ? '電腦版' : '手機版';
+  if (navIcon) navIcon.textContent = targetMode === 'desktop' ? '📱' : '💻';
+  if (navText) navText.textContent = targetMode === 'desktop' ? '手機模式' : '電腦模式';
   if (navBtn) {
     navBtn.title = targetMode === 'desktop'
-      ? '目前為電腦觀看模式（點擊切換為手機觀看模式）'
-      : '目前為手機觀看模式（點擊切換為電腦觀看模式）';
+      ? '點擊收合為「📱 手機模式」預覽視窗'
+      : '點擊展開為「💻 電腦模式」寬螢幕雙欄儀表板';
   }
 
   // 更新「⋯ 更多功能選單」內的切換項目文字
@@ -777,7 +791,7 @@ function applyViewMode(mode, savePreference = true) {
   if (dropText) {
     dropText.textContent = targetMode === 'desktop'
       ? '切換為手機觀看模式 (單欄預覽)'
-      : '切換為電腦觀看模式 (雙欄寬版)';
+      : '切換為電腦觀看模式 (黃金雙欄)';
   }
 
   // 更新後台頂部切換按鈕文字
@@ -803,9 +817,9 @@ function toggleViewMode() {
   const nextMode = (AppState.viewMode === 'desktop') ? 'mobile' : 'desktop';
   applyViewMode(nextMode, true);
   if (nextMode === 'desktop') {
-    showToast('💻 已切換為「電腦觀看模式」（寬螢幕左右雙欄介面）');
+    showToast('💻 已切換為「電腦觀看模式」（1380px 黃金雙欄儀表板）');
   } else {
-    showToast('📱 已切換為「手機觀看模式」（直式單欄與底部懸浮出價列）');
+    showToast('📱 已切換為「手機觀看模式」（精緻直式視窗預覽）');
   }
 }
 
@@ -1877,7 +1891,7 @@ function renderActiveItemDisplay() {
     }
   }
 
-  // 2. 圖片輪播
+  // 2. 圖片輪播與 28 張縮圖多欄網格 / 水平滑動渲染
   const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
   if (AppState.galleryIndex >= images.length) AppState.galleryIndex = 0;
 
@@ -1889,8 +1903,12 @@ function renderActiveItemDisplay() {
   if (counter) {
     counter.textContent = `${AppState.galleryIndex + 1} / ${images.length}`;
   }
+  const countBadge = el('gallery-thumbs-count-badge');
+  if (countBadge) {
+    countBadge.textContent = `共 ${images.length} 張實拍照`;
+  }
 
-  // 縮圖 (強制固定 60px x 60px，並水平平滑滾動)
+  // 縮圖列表 (電腦模式為多欄 Grid，手機模式為 60x60 水平滑動，點擊零延遲切換主圖)
   const thumbsBox = el('gallery-thumbs');
   if (thumbsBox) {
     thumbsBox.innerHTML = '';
@@ -1902,11 +1920,10 @@ function renderActiveItemDisplay() {
       th.alt = `縮圖 ${idx + 1}`;
       th.loading = 'lazy';
       th.addEventListener('click', () => {
-        AppState.galleryIndex = idx;
-        renderActiveItemDisplay();
+        switchGalleryImage(idx);
       });
       thumbsBox.appendChild(th);
-      if (isActive) {
+      if (isActive && AppState.viewMode === 'mobile') {
         setTimeout(() => {
           th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }, 30);
@@ -1974,6 +1991,102 @@ function renderActiveItemDisplay() {
     console.error('renderActiveItemDisplay 錯誤:', err);
   }
 }
+
+/**
+ * 零延遲切換主圖與縮圖高亮狀態（絕不觸發頁面垂直捲動跳動）
+ */
+function switchGalleryImage(idx) {
+  const item = getActiveItem();
+  if (!item) return;
+  const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
+  const total = images.length;
+  AppState.galleryIndex = ((idx % total) + total) % total;
+
+  const mainImg = el('gallery-main-img');
+  if (mainImg) {
+    mainImg.src = images[AppState.galleryIndex];
+  }
+  const counter = el('gallery-counter');
+  if (counter) {
+    counter.textContent = `${AppState.galleryIndex + 1} / ${total}`;
+  }
+
+  const thumbsBox = el('gallery-thumbs');
+  if (thumbsBox) {
+    const allThumbs = thumbsBox.querySelectorAll('.gallery-thumb');
+    allThumbs.forEach((th, i) => {
+      const active = (i === AppState.galleryIndex);
+      th.classList.toggle('active', active);
+      if (active && AppState.viewMode === 'mobile') {
+        th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    });
+  }
+
+  // 若滿版預覽視窗開啟中，同步更新滿版大圖
+  const lbModal = el('modal-gallery-lightbox');
+  if (lbModal && lbModal.style.display !== 'none') {
+    syncLightboxDisplay();
+  }
+}
+
+/**
+ * 開啟商品實拍照全螢幕滿版放大預覽器 (#modal-gallery-lightbox)
+ */
+function openGalleryLightbox() {
+  const item = getActiveItem();
+  if (!item) return;
+  const lbModal = el('modal-gallery-lightbox');
+  if (!lbModal) return;
+
+  lbModal.style.display = 'flex';
+  syncLightboxDisplay();
+}
+
+function closeGalleryLightbox() {
+  const lbModal = el('modal-gallery-lightbox');
+  if (lbModal) lbModal.style.display = 'none';
+}
+
+function syncLightboxDisplay() {
+  const item = getActiveItem();
+  if (!item) return;
+  const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
+  const total = images.length;
+  if (AppState.galleryIndex >= total) AppState.galleryIndex = 0;
+
+  if (el('lightbox-main-img')) el('lightbox-main-img').src = images[AppState.galleryIndex];
+  if (el('lightbox-counter')) el('lightbox-counter').textContent = `${AppState.galleryIndex + 1} / ${total}`;
+  if (el('lightbox-title')) el('lightbox-title').textContent = item.name || '商品實拍照滿版預覽';
+
+  const strip = el('lightbox-thumbs');
+  if (strip) {
+    if (strip.dataset.itemId !== item.id || strip.children.length !== total) {
+      strip.dataset.itemId = item.id;
+      strip.innerHTML = '';
+      images.forEach((src, i) => {
+        const im = document.createElement('img');
+        im.className = `lightbox-thumb-item ${i === AppState.galleryIndex ? 'active' : ''}`;
+        im.src = src;
+        im.alt = `預覽縮圖 ${i + 1}`;
+        im.addEventListener('click', (e) => {
+          e.stopPropagation();
+          switchGalleryImage(i);
+        });
+        strip.appendChild(im);
+      });
+    } else {
+      Array.from(strip.children).forEach((child, i) => {
+        const isAct = (i === AppState.galleryIndex);
+        child.classList.toggle('active', isAct);
+        if (isAct) {
+          child.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+  }
+}
+
 
 /** 渲染出價歷史清單 (支援管理者完整解碼與買家隱私遮罩) */
 function renderBidHistory() {
@@ -5359,20 +5472,41 @@ function bindEvents() {
     window.location.reload();
   });
 
-  // 2. 圖片輪播箭頭
-  el('btn-gallery-prev')?.addEventListener('click', () => {
-    const item = getActiveItem();
-    if (!item) return;
-    const imgs = item.images || [];
-    AppState.galleryIndex = (AppState.galleryIndex - 1 + imgs.length) % imgs.length;
-    renderActiveItemDisplay();
+  // 2. 圖片輪播箭頭與全螢幕滿版放大預覽
+  el('btn-gallery-prev')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    switchGalleryImage(AppState.galleryIndex - 1);
   });
-  el('btn-gallery-next')?.addEventListener('click', () => {
-    const item = getActiveItem();
-    if (!item) return;
-    const imgs = item.images || [];
-    AppState.galleryIndex = (AppState.galleryIndex + 1) % imgs.length;
-    renderActiveItemDisplay();
+  el('btn-gallery-next')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    switchGalleryImage(AppState.galleryIndex + 1);
+  });
+  el('gallery-main-img')?.addEventListener('click', openGalleryLightbox);
+  el('btn-gallery-zoom')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openGalleryLightbox();
+  });
+  el('btn-lightbox-close')?.addEventListener('click', closeGalleryLightbox);
+  el('btn-lightbox-prev')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    switchGalleryImage(AppState.galleryIndex - 1);
+  });
+  el('btn-lightbox-next')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    switchGalleryImage(AppState.galleryIndex + 1);
+  });
+  el('modal-gallery-lightbox')?.addEventListener('click', (e) => {
+    if (e.target === el('modal-gallery-lightbox') || e.target === el('lightbox-stage')) {
+      closeGalleryLightbox();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    const lb = el('modal-gallery-lightbox');
+    if (lb && lb.style.display !== 'none') {
+      if (e.key === 'Escape') closeGalleryLightbox();
+      if (e.key === 'ArrowLeft') switchGalleryImage(AppState.galleryIndex - 1);
+      if (e.key === 'ArrowRight') switchGalleryImage(AppState.galleryIndex + 1);
+    }
   });
 
   // 3. 快速加價按鈕
@@ -5752,7 +5886,15 @@ function bindEvents() {
     location.reload();
   });
 
-  // 18-1. 📱 手機觀看模式 / 💻 電腦觀看模式 一鍵切換按鈕綁定
+  // 18-1. 📱 手機觀看模式 / 💻 電腦觀看模式 直覺雙按鈕與單鍵切換綁定
+  el('btn-view-desktop')?.addEventListener('click', () => {
+    applyViewMode('desktop', true);
+    showToast('💻 已切換為「電腦觀看模式」（1380px 黃金雙欄儀表板）');
+  });
+  el('btn-view-mobile')?.addEventListener('click', () => {
+    applyViewMode('mobile', true);
+    showToast('📱 已切換為「手機觀看模式」（精緻直式視窗預覽）');
+  });
   el('btn-toggle-view-mode')?.addEventListener('click', () => {
     toggleViewMode();
   });

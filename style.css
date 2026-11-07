@@ -3236,3 +3236,544 @@ body.view-mode-desktop .admin-col-side {
   border: 1px solid rgba(239, 68, 68, 0.6);
   color: #fca5a5;
 }
+
+
+/* ═════════════════════════════════════════════════════════════
+   20. 💻 電腦觀看模式「黃金雙欄儀表板 (55% : 45%・1380px)」與滿版預覽升級 (v6.8)
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── 20.1 頂端導覽列「💻 電腦模式 / 📱 手機模式」直覺雙按鈕膠囊切換器 ── */
+.view-mode-capsule {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(10, 10, 28, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+.view-mode-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-2);
+  font-family: var(--f-body);
+  font-size: .76rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.view-mode-pill-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.view-mode-pill-btn.active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #09091e;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.45);
+}
+
+/* 在寬螢幕 (>= 680px) 顯示雙按鈕膠囊切換器，隱藏單一迷你按鈕；窄螢幕反之 */
+@media (min-width: 680px) {
+  #view-mode-capsule {
+    display: inline-flex !important;
+  }
+  #btn-toggle-view-mode {
+    display: none !important;
+  }
+}
+
+@media (max-width: 679px) {
+  #view-mode-capsule {
+    display: none !important;
+  }
+  #btn-toggle-view-mode {
+    display: inline-flex !important;
+  }
+}
+
+/* ── 20.2 主圖右上角「🔍 滿版預覽」按鈕與縮圖導覽標題列 ── */
+.gallery-zoom-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(9, 9, 30, 0.78);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: var(--c-gold-2);
+  font-family: var(--f-body);
+  font-size: .76rem;
+  font-weight: 800;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  transition: all 0.18s ease;
+}
+
+.gallery-zoom-btn:hover {
+  background: var(--c-gold-1);
+  color: #09091e;
+  transform: scale(1.04);
+}
+
+#gallery-main-img {
+  cursor: zoom-in;
+}
+
+.gallery-thumbs-hd {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 0 2px;
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--c-gold-2);
+}
+
+.gallery-thumbs-count-badge {
+  font-size: .72rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  color: var(--c-gold-1);
+}
+
+/* ── 20.3 📱 手機觀看模式 (body.view-mode-mobile) 單欄順序與手機模擬器視窗 ── */
+body.view-mode-mobile #auction-container {
+  width: 100% !important;
+  max-width: 480px !important;
+  margin: 0 auto !important;
+  padding: 12px 14px 115px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+body.view-mode-mobile .auction-col-main,
+body.view-mode-mobile .auction-col-side {
+  display: contents !important;
+}
+
+body.view-mode-mobile #winner-card        { order: 1; }
+body.view-mode-mobile #product-card       { order: 2; }
+body.view-mode-mobile #timer-card         { order: 3; }
+body.view-mode-mobile #bid-current-card   { order: 4; }
+body.view-mode-mobile #product-video-card { order: 5; }
+body.view-mode-mobile #product-specs-card { order: 6; }
+body.view-mode-mobile #history-card       { order: 7; }
+body.view-mode-mobile #qa-section         { order: 8; }
+body.view-mode-mobile #share-card         { order: 9; }
+
+body.view-mode-mobile #mobile-bid-bar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 9990 !important;
+}
+
+@media (min-width: 600px) {
+  body.view-mode-mobile #auction-container {
+    max-width: 430px !important;
+    background: rgba(10, 10, 28, 0.6);
+    border-left: 1px solid rgba(255, 215, 0, 0.18);
+    border-right: 1px solid rgba(255, 215, 0, 0.18);
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.7);
+  }
+  body.view-mode-mobile #mobile-bid-bar {
+    max-width: 430px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: 100% !important;
+    border-left: 1px solid rgba(255, 215, 0, 0.28) !important;
+    border-right: 1px solid rgba(255, 215, 0, 0.28) !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════
+   20.4 💻 電腦觀看模式 (body.view-mode-desktop)：1380px 黃金雙欄儀表板 (55% : 45%)
+   ═════════════════════════════════════════════════════════════ */
+body.view-mode-desktop .auction-nav .nav-inner,
+body.view-mode-desktop .item-tabs-scroll,
+body.view-mode-desktop .single-mode-banner,
+body.view-mode-desktop .broadcast-inner,
+body.view-mode-desktop .admin-main {
+  max-width: 1380px !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+
+/* 主競標容器：突破手機 540px 限制，展開至 1380px 並採用 55% : 45% 黃金比例雙欄 */
+body.view-mode-desktop #auction-container {
+  width: 100% !important;
+  max-width: 1380px !important;
+  margin: 0 auto !important;
+  padding: 20px 24px 64px 24px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 55fr) minmax(390px, 45fr) !important;
+  gap: 24px !important;
+  align-items: start !important;
+}
+
+/* 【左側欄位：視覺展示區（55%）】 */
+body.view-mode-desktop .auction-col-main {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px !important;
+  min-width: 0 !important;
+}
+
+/* 大尺寸精美商品主圖展示舞台 (無需捲動即可與右側出價中樞同屏並排) */
+body.view-mode-desktop #gallery-wrap {
+  height: 430px !important;
+  max-height: 52vh !important;
+  border-radius: 16px !important;
+  background: radial-gradient(circle at center, #151538 0%, #070716 100%) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.32) !important;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.65), 0 6px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+body.view-mode-desktop .gallery-arrow {
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 1.55rem !important;
+  background: rgba(9, 9, 30, 0.72) !important;
+  border-color: rgba(245, 158, 11, 0.45) !important;
+}
+
+body.view-mode-desktop .gallery-arrow:hover {
+  background: var(--c-gold-1) !important;
+  color: #09091e !important;
+}
+
+body.view-mode-desktop .gallery-thumbs-hd {
+  display: flex !important;
+}
+
+/* 28 張實拍縮圖：在電腦模式下以整齊的多欄網格 (CSS Grid) 排列！ */
+body.view-mode-desktop #gallery-thumbs {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)) !important;
+  gap: 8px !important;
+  white-space: normal !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  margin-top: 8px !important;
+  padding: 10px !important;
+  background: rgba(8, 8, 24, 0.55) !important;
+  border: 1px solid rgba(168, 85, 247, 0.25) !important;
+  border-radius: 14px !important;
+}
+
+body.view-mode-desktop #gallery-thumbs .gallery-thumb {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 62px !important;
+  min-height: 62px !important;
+  max-height: 62px !important;
+  flex: none !important;
+  border-radius: 8px !important;
+  object-fit: cover !important;
+  opacity: 0.72;
+}
+
+body.view-mode-desktop #gallery-thumbs .gallery-thumb:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+body.view-mode-desktop #gallery-thumbs .gallery-thumb.active {
+  opacity: 1 !important;
+  border: 2px solid var(--c-gold-1) !important;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.65) !important;
+  transform: scale(1.04);
+}
+
+body.view-mode-desktop .product-name {
+  font-size: 1.42rem !important;
+  line-height: 1.38 !important;
+}
+
+/* 【右側欄位：出價與互動中樞（45%・Sticky 置頂固定）】 */
+body.view-mode-desktop .auction-col-side {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  min-width: 0 !important;
+  position: sticky !important;
+  top: 108px !important;
+  align-self: start !important;
+}
+
+/* 電腦模式下右欄頂部三大核心卡片緊湊大器化，確保打開網頁免捲動即可一眼看清照片與出價區 */
+body.view-mode-desktop #timer-card {
+  padding: 14px 18px !important;
+  border-radius: 18px !important;
+}
+
+body.view-mode-desktop #timer-card .timer-status-chip {
+  margin-bottom: 6px !important;
+}
+
+body.view-mode-desktop #timer-card .timer-digits-box {
+  margin: 6px 0 !important;
+  gap: 8px !important;
+}
+
+body.view-mode-desktop #timer-card .time-unit-val {
+  font-size: 1.85rem !important;
+  min-width: 58px !important;
+  padding: 5px 8px !important;
+}
+
+body.view-mode-desktop #bid-current-card {
+  padding: 15px 20px !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(168, 85, 247, 0.1)) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.45) !important;
+}
+
+body.view-mode-desktop #bid-current-card .bid-price-huge {
+  font-size: 2.35rem !important;
+  margin: 4px 0 !important;
+}
+
+/* 電腦模式下，快捷出價面板直接嵌入右欄，成為醒目卡片 */
+body.view-mode-desktop #mobile-bid-bar {
+  position: static !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  background: linear-gradient(145deg, rgba(24, 24, 56, 0.96), rgba(14, 14, 36, 0.98)) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.5) !important;
+  border-radius: 18px !important;
+  padding: 16px 18px !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 22px rgba(245, 158, 11, 0.18) !important;
+  transform: none !important;
+}
+
+body.view-mode-desktop #mobile-bid-bar .mobile-bid-inner {
+  max-width: 100% !important;
+  gap: 10px !important;
+}
+
+body.view-mode-desktop .desktop-bid-console-hd {
+  display: flex !important;
+  margin-bottom: 4px !important;
+}
+
+body.view-mode-desktop .quick-chip {
+  padding: 7px 8px !important;
+  font-size: .82rem !important;
+  border-radius: 8px !important;
+}
+
+body.view-mode-desktop .quick-chip:hover {
+  background: rgba(245, 158, 11, 0.22) !important;
+  border-color: var(--c-gold-1) !important;
+  color: #fff !important;
+}
+
+body.view-mode-desktop .bid-amount-input {
+  height: 46px !important;
+  font-size: 1.35rem !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.45) !important;
+  border-radius: 10px !important;
+}
+
+body.view-mode-desktop .stepper-btn {
+  width: 46px !important;
+  height: 46px !important;
+  flex: 0 0 46px !important;
+  font-size: 1.35rem !important;
+}
+
+body.view-mode-desktop .btn-submit-bid {
+  height: 46px !important;
+  padding: 0 20px !important;
+  font-size: .98rem !important;
+}
+
+/* 當螢幕寬度介於 600px ~ 920px 且處於電腦模式時，自動調整欄位最小寬度防擠壓 */
+@media (max-width: 920px) {
+  body.view-mode-desktop #auction-container {
+    grid-template-columns: minmax(0, 52fr) minmax(320px, 48fr) !important;
+    gap: 16px !important;
+    padding: 14px 14px 48px 14px !important;
+  }
+}
+
+/* ── 20.5 全螢幕高畫質圖片滿版預覽視窗 (#modal-gallery-lightbox) ── */
+.gallery-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(5, 5, 18, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 24px 20px;
+  box-sizing: border-box;
+  animation: fadeInLightbox 0.2s ease;
+}
+
+@keyframes fadeInLightbox {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.lightbox-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 1380px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.lightbox-counter-pill {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: var(--c-gold-1);
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-family: var(--f-num);
+  font-size: .85rem;
+  font-weight: 800;
+}
+
+.lightbox-title-text {
+  flex: 1;
+  text-align: center;
+  color: #fff;
+  font-size: .92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lightbox-close-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: var(--f-body);
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lightbox-close-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.lightbox-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 12px 0;
+}
+
+.lightbox-main-img {
+  max-width: 90vw;
+  max-height: 74vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.lightbox-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(14, 14, 38, 0.85);
+  border: 1.5px solid rgba(245, 158, 11, 0.55);
+  color: var(--c-gold-1);
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  z-index: 5;
+}
+
+.lightbox-nav-arrow:hover {
+  background: var(--c-gold-1);
+  color: #09091e;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+
+.lightbox-thumbs-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+}
+
+.lightbox-thumb-item {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  border-radius: 6px;
+  object-fit: cover;
+  cursor: pointer;
+  opacity: 0.55;
+  border: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.lightbox-thumb-item:hover,
+.lightbox-thumb-item.active {
+  opacity: 1;
+  border-color: var(--c-gold-1);
+  transform: scale(1.05);
+}
