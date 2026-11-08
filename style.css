@@ -4613,3 +4613,44 @@ body.view-mode-desktop .btn-submit-bid {
   color: #fff !important;
 }
 
+/* ── ☁️ Firebase 雲端資料庫設定視窗：即時連線狀態標籤與預設恢復按鈕樣式 ── */
+.fb-connection-status-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(52, 211, 153, 0.42);
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.55), rgba(16, 185, 129, 0.16));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.fb-connection-status-banner.fallback {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.55), rgba(245, 158, 11, 0.16));
+}
+.fb-status-dot {
+  font-size: 1.05rem;
+  line-height: 1.25;
+  flex-shrink: 0;
+}
+.fb-status-info {
+  flex: 1;
+  min-width: 0;
+}
+.fb-status-title {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #6ee7b7;
+  line-height: 1.38;
+  word-break: break-word;
+}
+.fb-connection-status-banner.fallback .fb-status-title {
+  color: #fde68a;
+}
+.fb-status-sub {
+  font-size: 0.73rem;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 3px;
+  line-height: 1.4;
+}

@@ -783,7 +783,7 @@
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-view-mode" type="button" title="切換手機或電腦觀看模式">💻
             電腦寬版模式</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-to-front" type="button">👁️ 前台預覽</button>
-          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button">☁️ Firebase 連線</button>
+          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button" style="display:none;">☁️ Firebase 連線</button>
           <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all" type="button">🚀 全面發布拍賣</button>
           <button class="tbtn tbtn-danger tbtn-sm" id="btn-admin-logout" type="button" title="安全登出並鎖定管理後台">🔒
             登出/鎖定後台</button>
@@ -1499,29 +1499,46 @@
 
 
   <!-- ════════════════════════════════════════════════════════
-     MODAL: Firebase 雲端連線設定
+     MODAL: Firebase 雲端連線設定（僅限最高權限管理者檢視與操作）
 ════════════════════════════════════════════════════════ -->
   <div class="modal-backdrop" id="modal-fb-setup" role="dialog" aria-modal="true">
-    <div class="modal-sheet">
+    <div class="modal-sheet" style="max-width:480px;">
       <div class="modal-title">☁️ Firebase 雲端資料庫設定</div>
-      <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;line-height:1.5;">
-        輸入 Firebase 專案設定以啟用跨裝置全體即時競價同步：
+
+      <!-- 即時雲端連線狀態標籤 -->
+      <div class="fb-connection-status-banner connected" id="fb-connection-status-banner">
+        <span class="fb-status-dot" id="fb-connection-status-dot">🟢</span>
+        <div class="fb-status-info">
+          <div class="fb-status-title" id="fb-connection-status-text">目前已成功連線至 chien-sheng-auction 雲端即時資料庫</div>
+          <div class="fb-status-sub" id="fb-connection-status-sub">全球買家開啟網頁皆自動透過系統內建參數即時同步競價，無須手動設定</div>
+        </div>
+      </div>
+
+      <p style="font-size:.8rem;color:var(--c-text-2);margin-bottom:12px;line-height:1.5;">
+        以下為目前生效中的 Firebase 雲端即時資料庫連線參數（系統已內建防呆保護，禁止空白覆蓋）：
       </p>
       <div class="form-group">
         <label class="form-label">API Key</label>
-        <input type="text" id="fb-api-key" class="form-input" placeholder="AIzaSy..." />
+        <input type="text" id="fb-api-key" class="form-input" value="AIzaSyDemoAuctionKeyFake1234567890" placeholder="AIzaSyDemoAuctionKeyFake1234567890" autocomplete="off" />
       </div>
       <div class="form-group">
         <label class="form-label">Database URL</label>
-        <input type="text" id="fb-db-url" class="form-input" placeholder="https://your-project-rtdb.firebaseio.com" />
+        <input type="text" id="fb-db-url" class="form-input" value="https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app" placeholder="https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app" autocomplete="off" />
       </div>
       <div class="form-group">
         <label class="form-label">Project ID</label>
-        <input type="text" id="fb-project-id" class="form-input" placeholder="your-project-id" />
+        <input type="text" id="fb-project-id" class="form-input" value="chien-sheng-auction" placeholder="chien-sheng-auction" autocomplete="off" />
       </div>
-      <div style="display:flex;gap:10px;margin-top:16px;">
-        <button class="tbtn tbtn-ghost" id="btn-fb-close" style="flex:1;">關閉</button>
-        <button class="tbtn tbtn-gold" id="btn-fb-save" style="flex:1.5;">💾 儲存並連線</button>
+
+      <div style="margin-top:12px;margin-bottom:6px;">
+        <button type="button" class="tbtn tbtn-purple tbtn-sm" id="btn-fb-restore-default" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;">
+          🔄 恢復系統內建預設連線（chien-sheng-auction）
+        </button>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="tbtn tbtn-ghost" id="btn-fb-close" type="button" style="flex:1;">關閉</button>
+        <button class="tbtn tbtn-gold" id="btn-fb-save" type="button" style="flex:1.5;">💾 儲存並連線</button>
       </div>
     </div>
   </div>
@@ -1694,7 +1711,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
   <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <script src="app.js?v=7.2&t=20261108_dual_identity"></script>
+  <script src="app.js?v=7.3&t=20261108_fb_modal_guard"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1707,7 +1724,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=24').then(reg => {
+        navigator.serviceWorker.register('./sw.js?v=25').then(reg => {
           if (reg.waiting) {
             reg.waiting.postMessage({ action: 'skipWaiting' });
           }

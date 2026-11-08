@@ -1361,32 +1361,58 @@ function setupLogoDragAndDrop() {
 /* ─────────────────────────────────────────────────────────────
    6. Firebase 雲端模組 (Firebase Module)
    ───────────────────────────────────────────────────────────── */
+// 系統內建預設 Firebase Realtime Database 雲端節點常數 (新加坡區域 chien-sheng-auction)
+const DEFAULT_FIREBASE_CONFIG = Object.freeze({
+  apiKey: "AIzaSyDemoAuctionKeyFake1234567890",
+  databaseURL: "https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "chien-sheng-auction"
+});
+
 const FirebaseManager = (function () {
   let _app = null;
   let _db = null;
+  let _activeCfg = Object.assign({}, DEFAULT_FIREBASE_CONFIG);
 
   // 強制寫死綁定真實 Firebase Realtime Database 雲端節點 (新加坡區域)
-  const DEFAULT_CONFIG = {
-    apiKey: "AIzaSyDemoAuctionKeyFake1234567890",
-    databaseURL: "https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "chien-sheng-auction"
-  };
+  const DEFAULT_CONFIG = DEFAULT_FIREBASE_CONFIG;
 
-  function init() {
-    let cfg = DEFAULT_CONFIG;
+  function isValidFirebaseConfig(candidate) {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const apiKey = String(candidate.apiKey || '').trim();
+    const dbUrl = String(candidate.databaseURL || '').trim();
+    const projId = String(candidate.projectId || '').trim();
+    if (!apiKey || !dbUrl || !projId) return false;
+    if (!dbUrl.startsWith('https://')) return false;
+    if (!dbUrl.includes('firebasedatabase.app') && !dbUrl.includes('firebaseio.com')) return false;
+    return true;
+  }
+
+  function resolveEffectiveConfig() {
     try {
       const stored = SafeStorage.get('agy_fb_config');
       if (stored) {
         const parsed = typeof stored === 'object' ? stored : JSON.parse(stored);
-        if (parsed && parsed.databaseURL && parsed.databaseURL.startsWith('http') && parsed.databaseURL.includes('firebaseio.com')) {
-          cfg = parsed;
+        if (isValidFirebaseConfig(parsed)) {
+          return {
+            apiKey: String(parsed.apiKey).trim(),
+            databaseURL: String(parsed.databaseURL).trim(),
+            projectId: String(parsed.projectId).trim()
+          };
+        } else {
+          // 自動清除無效或空白的覆蓋設定，確保絕不斷線
+          SafeStorage.remove('agy_fb_config');
         }
       }
     } catch (e) {}
+    return Object.assign({}, DEFAULT_CONFIG);
+  }
+
+  function init() {
+    _activeCfg = resolveEffectiveConfig();
 
     try {
       if (typeof firebase !== 'undefined' && !_app) {
-        _app = firebase.initializeApp(cfg);
+        _app = firebase.initializeApp(_activeCfg);
         _db = firebase.database();
         if (typeof initServerTimeSync === 'function') {
           initServerTimeSync(_db);
@@ -1471,8 +1497,21 @@ const FirebaseManager = (function () {
 
   function getDb() { return _db; }
   function isReady() { return !!_db; }
+  function getDefaultConfig() { return Object.assign({}, DEFAULT_CONFIG); }
+  function getActiveConfig() {
+    const resolved = resolveEffectiveConfig();
+    _activeCfg = resolved;
+    return Object.assign({}, _activeCfg);
+  }
 
-  return { init: init, getDb: getDb, isReady: isReady };
+  return {
+    init: init,
+    getDb: getDb,
+    isReady: isReady,
+    getDefaultConfig: getDefaultConfig,
+    getActiveConfig: getActiveConfig,
+    isValidFirebaseConfig: isValidFirebaseConfig
+  };
 })();
 
 /**
@@ -1544,28 +1583,23 @@ function handleIncomingAuctionItems(remoteItems) {
         changed = true;
       }
       if (rItem.qa) {
-        if (!local.qa) local.qa = {};
-        const oldKeys = Object.keys(local.qa);
-        const mergedQa = Object.assign({}, local.qa);
-        Object.keys(rItem.qa).forEach(qk => {
-          const mergedEntry = Object.assign({}, local.qa[qk] || {}, rItem.qa[qk]);
-          if (mergedEntry.question) {
-            mergedQa[qk] = mergedEntry;
-          }
-        });
-        const newKeys = Object.keys(mergedQa);
-        const isDiff = JSON.stringify(local.qa) !== JSON.stringify(mergedQa);
+        const oldKeys = Object.keys(local.qa || {});
+        const newKeys = Object.keys(rItem.qa);
+        const isDiff = JSON.stringify(local.qa || {}) !== JSON.stringify(rItem.qa);
         if (isDiff) {
           if (AppState.isAdmin && newKeys.length > oldKeys.length) {
             const newestKey = newKeys.filter(k => !oldKeys.includes(k))[0] || newKeys[newKeys.length - 1];
-            const qData = mergedQa[newestKey];
+            const qData = rItem.qa[newestKey];
             if (qData && qData.question) {
               showToast(`💬 收到新提問！${qData.user ? qData.user + '：' : ''}${qData.question?.slice(0, 25) || ''}`);
             }
           }
-          local.qa = mergedQa;
+          local.qa = rItem.qa;
           changed = true;
         }
+      } else if (!rItem.qa && local.qa && Object.keys(local.qa).length > 0) {
+        local.qa = {};
+        changed = true;
       }
     }
   });
@@ -4078,9 +4112,14 @@ function syncAdminUIState() {
     switchText.textContent = nowInAdmin ? '前台' : '後台';
   }
 
-  // 導覽列更多選單內之管理者專屬項目顯隱控制
+  // 導覽列更多選單與後台頂部之 Firebase 設定按鈕顯隱控制（僅限已登入最高管理者）
   const navFbBtn = el('btn-nav-fb-config');
   if (navFbBtn) navFbBtn.style.display = isAuth ? 'flex' : 'none';
+  const adminFbBtn = el('btn-fb-config');
+  if (adminFbBtn) adminFbBtn.style.display = isAuth ? 'inline-flex' : 'none';
+  if (!isAuth) {
+    el('modal-fb-setup')?.classList.remove('show');
+  }
   const navLogoutBtn = el('btn-nav-admin-logout');
   if (navLogoutBtn) navLogoutBtn.style.display = isAuth ? 'flex' : 'none';
 
@@ -6553,6 +6592,136 @@ function triggerConfetti() {
 /* ─────────────────────────────────────────────────────────────
    18. 事件監聽綁定與初始化 (Event Listeners & Init)
    ───────────────────────────────────────────────────────────── */
+/**
+ * ☁️ 自動將目前生效中（或系統內建預設）的 Firebase 參數填入設定視窗，並更新即時連線狀態標籤
+ * 嚴格保證開啟視窗時三個輸入框絕不呈現空白！
+ */
+function populateFbSetupModal() {
+  const defCfg = FirebaseManager.getDefaultConfig();
+  const activeCfg = FirebaseManager.getActiveConfig();
+
+  const apiKey = (activeCfg.apiKey && activeCfg.apiKey.trim()) ? activeCfg.apiKey.trim() : defCfg.apiKey;
+  const dbUrl = (activeCfg.databaseURL && activeCfg.databaseURL.trim()) ? activeCfg.databaseURL.trim() : defCfg.databaseURL;
+  const projId = (activeCfg.projectId && activeCfg.projectId.trim()) ? activeCfg.projectId.trim() : defCfg.projectId;
+
+  const inpKey = el('fb-api-key');
+  const inpUrl = el('fb-db-url');
+  const inpProj = el('fb-project-id');
+
+  if (inpKey) {
+    inpKey.value = apiKey;
+    inpKey.setAttribute('value', apiKey);
+  }
+  if (inpUrl) {
+    inpUrl.value = dbUrl;
+    inpUrl.setAttribute('value', dbUrl);
+  }
+  if (inpProj) {
+    inpProj.value = projId;
+    inpProj.setAttribute('value', projId);
+  }
+
+  const banner = el('fb-connection-status-banner');
+  const dot = el('fb-connection-status-dot');
+  const title = el('fb-connection-status-text');
+  const sub = el('fb-connection-status-sub');
+
+  const isReady = FirebaseManager.isReady();
+  const isDefaultNode = (projId === defCfg.projectId && dbUrl === defCfg.databaseURL);
+
+  if (banner) {
+    banner.classList.toggle('connected', isReady);
+    banner.classList.toggle('fallback', !isReady);
+  }
+  if (dot) {
+    dot.textContent = isReady ? '🟢' : '🟡';
+  }
+  if (title) {
+    if (isReady) {
+      title.textContent = `目前已成功連線至 ${projId} 雲端即時資料庫`;
+    } else {
+      title.textContent = `預設綁定 ${projId} 雲端資料庫（本機安全同步模式就緒）`;
+    }
+  }
+  if (sub) {
+    sub.textContent = isDefaultNode
+      ? '系統內建預設連線生效中・全球買家開啟網頁皆自動連線同步，無須手動設定'
+      : `目前使用自訂節點（${dbUrl}）・可隨時點擊下方按鈕恢復系統內建預設連線`;
+  }
+}
+
+/**
+ * 開啟「☁️ Firebase 雲端資料庫設定」視窗（僅限最高權限管理者 guess_chen1981）
+ */
+function openFbSetupModal() {
+  if (!requireAdminAuth(() => openFbSetupModal())) return;
+  populateFbSetupModal();
+  el('modal-fb-setup')?.classList.add('show');
+}
+
+/**
+ * 儲存 Firebase 雲端連線設定（具備防呆保護：若任一欄位為空白或格式不完整，自動還原為系統內建預設參數，絕不寫入空值導致斷線）
+ */
+function handleSaveFbConfig() {
+  if (!requireAdminAuth(() => handleSaveFbConfig())) return;
+
+  const defCfg = FirebaseManager.getDefaultConfig();
+  const rawKey = el('fb-api-key')?.value.trim() || '';
+  const rawUrl = el('fb-db-url')?.value.trim() || '';
+  const rawProj = el('fb-project-id')?.value.trim() || '';
+
+  const candidate = {
+    apiKey: rawKey,
+    databaseURL: rawUrl,
+    projectId: rawProj
+  };
+
+  // 防呆保護：若使用者不小心把欄位清空或網址格式不完整，自動攔截並還原為系統內建預設參數
+  if (!FirebaseManager.isValidFirebaseConfig(candidate)) {
+    SafeStorage.remove('agy_fb_config');
+    populateFbSetupModal();
+    el('modal-fb-setup')?.classList.remove('show');
+    showToast('🛡️ 偵測到空白或未完整填寫之欄位，腳本已自動保護並維持系統內建 chien-sheng-auction 預設雲端連線！', 4200);
+    return;
+  }
+
+  // 若填寫的值與系統內建預設完全相同，無須重複刷新頁面，直接保持連線並提示
+  if (
+    candidate.apiKey === defCfg.apiKey &&
+    candidate.databaseURL === defCfg.databaseURL &&
+    candidate.projectId === defCfg.projectId
+  ) {
+    SafeStorage.remove('agy_fb_config');
+    populateFbSetupModal();
+    el('modal-fb-setup')?.classList.remove('show');
+    showToast('🟢 目前已成功連線至 chien-sheng-auction 雲端即時資料庫（系統內建預設參數生效中）！', 3800);
+    return;
+  }
+
+  SafeStorage.set('agy_fb_config', candidate);
+  el('modal-fb-setup')?.classList.remove('show');
+  showToast('💾 Firebase 自訂連線設定已更新，正在重新連線…');
+  setTimeout(() => location.reload(), 300);
+}
+
+/**
+ * 🔄 一鍵恢復系統內建預設連線（清除本機自訂覆蓋並重新載入 chien-sheng-auction 預設參數）
+ */
+function handleRestoreDefaultFbConfig() {
+  if (!requireAdminAuth(() => handleRestoreDefaultFbConfig())) return;
+
+  const hadCustom = !!SafeStorage.get('agy_fb_config');
+  SafeStorage.remove('agy_fb_config');
+  populateFbSetupModal();
+
+  if (hadCustom) {
+    showToast('🔄 已清除自訂覆蓋並恢復系統內建 chien-sheng-auction 預設雲端連線，正在重新載入…', 3500);
+    setTimeout(() => location.reload(), 450);
+  } else {
+    showToast('🟢 已為您重新帶入系統內建 chien-sheng-auction 預設連線參數，目前雲端連線正常運作中！', 3600);
+  }
+}
+
 function bindEvents() {
   // 1. 貨幣切換
   el('currency-select')?.addEventListener('change', e => {
@@ -7000,29 +7169,19 @@ function bindEvents() {
   // 後台：一鍵複製全部商品獨立網址清單
   el('btn-copy-all-urls')?.addEventListener('click', copyAllItemsUrls);
 
-  // 18. Firebase 設定彈窗 (僅限最高權限管理者開啟與修改)
+  // 18. Firebase 雲端資料庫設定彈窗 (僅限最高權限管理者檢視與操作，自動帶入內建預設參數與防空白覆蓋保護)
   const handleOpenFbConfig = () => {
     el('nav-more-dropdown')?.classList.remove('show');
-    if (!requireAdminAuth(() => { el('modal-fb-setup')?.classList.add('show'); })) return;
-    el('modal-fb-setup')?.classList.add('show');
+    if (!requireAdminAuth(() => openFbSetupModal())) return;
+    openFbSetupModal();
   };
   el('btn-fb-config')?.addEventListener('click', handleOpenFbConfig);
   el('btn-nav-fb-config')?.addEventListener('click', handleOpenFbConfig);
   el('btn-fb-close')?.addEventListener('click', () => el('modal-fb-setup')?.classList.remove('show'));
-  el('btn-fb-save')?.addEventListener('click', () => {
-    const cfg = {
-      apiKey: el('fb-api-key')?.value.trim(),
-      databaseURL: el('fb-db-url')?.value.trim(),
-      projectId: el('fb-project-id')?.value.trim()
-    };
-    if (!cfg.apiKey || !cfg.databaseURL) {
-      alert('請填寫完整 Firebase 設定資訊！');
-      return;
-    }
-    SafeStorage.set('agy_fb_config', cfg);
-    el('modal-fb-setup')?.classList.remove('show');
-    showToast('💾 Firebase 設定已更新，重新連線中…');
-    location.reload();
+  el('btn-fb-save')?.addEventListener('click', handleSaveFbConfig);
+  el('btn-fb-restore-default')?.addEventListener('click', handleRestoreDefaultFbConfig);
+  el('modal-fb-setup')?.addEventListener('click', e => {
+    if (e.target === el('modal-fb-setup')) el('modal-fb-setup')?.classList.remove('show');
   });
 
   // 18-1. 📱 手機觀看模式 / 💻 電腦觀看模式 直覺雙按鈕與單鍵切換綁定
@@ -7964,6 +8123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyLogoConfig(getLogoConfig(), false);
 
   FirebaseManager.init();
+  try { populateFbSetupModal(); } catch (e) {}
   bindEvents();
 
   // ★ 核心防禦：先完成 await checkAndLoadMyAuctionData() 載入真實商品並渲染完畢！
