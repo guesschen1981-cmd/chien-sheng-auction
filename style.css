@@ -2882,9 +2882,30 @@ body.view-mode-desktop .admin-col-side {
 
 .buyer-retention-options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin-top: 6px;
+}
+@media (max-width: 500px) {
+  .buyer-retention-options {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.retention-option-card.retention-card-forever {
+  border-color: rgba(168, 85, 247, 0.38);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(245, 158, 11, 0.06));
+}
+.retention-option-card.retention-card-forever.selected {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.28), rgba(245, 158, 11, 0.25));
+  border-color: var(--c-gold-1);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+.buyer-status-chip.chip-retention-forever {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.26), rgba(245, 158, 11, 0.24)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.6) !important;
+  color: #fde68a !important;
 }
 
 .retention-option-card {

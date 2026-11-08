@@ -184,34 +184,64 @@ function el(id) { return document.getElementById(id); }
 /**
  * 安全 LocalStorage 存取封裝 (防無痕模式崩潰與序列化異常)
  */
+/** 判斷保留期限設定值是否為「∞ 永久保留」 */
+function isPermanentRetention(val) {
+  return val === 'forever' || val === 0 || val === '0' || val === -1 || val === Infinity || val === true;
+}
+
 const SafeStorage = {
   get(key, fallback = null) {
     try {
       const val = localStorage.getItem(key);
-      if (val === null) return fallback;
-      try {
-        return JSON.parse(val);
-      } catch (_) {
-        return val;
+      if (val !== null) {
+        try {
+          return JSON.parse(val);
+        } catch (_) {
+          return val;
+        }
       }
     } catch (e) {
       console.warn('localStorage get blocked:', e);
-      return fallback;
     }
+    // 若 localStorage 無資料且讀取買家設定，自動由 Cookie 備援還原
+    if (key === 'agy_buyer_profile' && typeof document !== 'undefined' && document.cookie) {
+      try {
+        const match = document.cookie.split('; ').find(row => row.startsWith('agy_buyer_profile='));
+        if (match) {
+          const decoded = decodeURIComponent(match.split('=')[1]);
+          return JSON.parse(decoded);
+        }
+      } catch (_) {}
+    }
+    return fallback;
   },
   set(key, value) {
+    let ok = false;
     try {
       localStorage.setItem(key, JSON.stringify(value));
-      return true;
+      ok = true;
     } catch (e) {
       console.warn('localStorage set blocked:', e);
-      return false;
     }
+    // 針對買家身分資料同步寫入 Cookie（永久保留設定 10 年效期，一般天數依設定天數）
+    if (key === 'agy_buyer_profile' && value && typeof value === 'object' && typeof document !== 'undefined') {
+      try {
+        const isPerm = isPermanentRetention(value.retentionDays) || value.isPermanent;
+        const maxAge = isPerm ? 315360000 : (Number(value.retentionDays || 7) * 86400);
+        document.cookie = `agy_buyer_profile=${encodeURIComponent(JSON.stringify(value))}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      } catch (_) {}
+    }
+    return ok;
   },
   remove(key) {
     try {
       localStorage.removeItem(key);
     } catch (e) {}
+    if (key === 'agy_buyer_profile' && typeof document !== 'undefined') {
+      try {
+        document.cookie = 'agy_buyer_profile=; path=/; max-age=0; SameSite=Lax';
+      } catch (_) {}
+    }
   }
 };
 
@@ -3610,10 +3640,14 @@ function renderAdminBuyersRoster() {
       ? `<a href="${escapeHtml(b.fb.startsWith('http') ? b.fb : 'https://' + b.fb)}" target="_blank" rel="noopener" class="buyer-contact-badge badge-fb" style="text-decoration:none;">FB 連結 ↗</a>`
       : '';
 
-    const retDays = Number(b.retentionDays || 7);
-    const expStr = b.retentionExpiresAt
+    const isPerm = isPermanentRetention(b.retentionDays) || Boolean(b.isPermanent);
+    const retDays = isPerm ? 'forever' : ([7, 10, 15].includes(Number(b.retentionDays)) ? Number(b.retentionDays) : 7);
+    const expStr = (!isPerm && b.retentionExpiresAt)
       ? new Date(Number(b.retentionExpiresAt)).toLocaleDateString('zh-TW')
       : `${retDays}天內有效`;
+    const retentionBadgeHtml = isPerm
+      ? `<span class="buyer-status-chip chip-retention chip-retention-forever">♾️ 永久保留</span>`
+      : `<span class="buyer-status-chip chip-retention">📅 保留 ${retDays} 天（至 ${expStr}）</span>`;
     const lockCheck = checkBuyerHighBidderLock(b.phone, b.name);
     const lockChipHtml = lockCheck.locked
       ? `<span class="buyer-status-chip chip-locked" title="目前領先商品：${escapeHtml(lockCheck.itemName)}">🔒 最高出價鎖定中（${escapeHtml(lockCheck.itemName.slice(0, 10))}…）</span>`
@@ -3628,7 +3662,7 @@ function renderAdminBuyersRoster() {
         <div class="admin-buyer-name" style="flex-wrap:wrap;gap:6px;">
           <span style="font-family:monospace;font-size:.78rem;background:rgba(255,215,0,0.15);color:var(--c-gold-1);padding:1px 6px;border-radius:4px;">#${String(idx + 1).padStart(2, '0')}</span>
           <span>👤 ${escapeHtml(b.name || '訪客買家')}</span>
-          <span class="buyer-status-chip chip-retention">📅 保留 ${retDays} 天（至 ${expStr}）</span>
+          ${retentionBadgeHtml}
           ${lockChipHtml}
           ${blacklistChipHtml}
         </div>
@@ -5112,21 +5146,30 @@ function checkBuyerHighBidderLock(phone, name) {
 }
 
 /**
- * 更新買家保留天數選擇器 UI 與預計到期時間顯示
+ * 更新買家保留天數選擇器 UI 與預計到期時間顯示（支援 7 / 10 / 15 天 與 ∞ 永久保留）
  */
 function updateBuyerRetentionUI(days, existingExpiresAt = null) {
-  const d = [7, 10, 15].includes(Number(days)) ? Number(days) : 7;
-  [7, 10, 15].forEach(val => {
-    const rad = el(`retention-radio-${val}`);
-    const card = el(`ret-card-${val}`);
-    if (rad) rad.checked = (val === d);
-    if (card) card.classList.toggle('selected', val === d);
+  const isForever = isPermanentRetention(days);
+  const normKey = isForever
+    ? 'forever'
+    : ([7, 10, 15].includes(Number(days)) ? String(Number(days)) : '7');
+
+  ['7', '10', '15', 'forever'].forEach(key => {
+    const rad = el(`retention-radio-${key}`);
+    const card = el(`ret-card-${key}`);
+    if (rad) rad.checked = (key === normKey);
+    if (card) card.classList.toggle('selected', key === normKey);
   });
 
-  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
-  const targetTs = existingExpiresAt || (now + d * 86400000);
   const expEl = el('buyer-retention-expiry-text');
-  if (expEl) {
+  if (!expEl) return;
+
+  if (isForever) {
+    expEl.textContent = '♾️ 永久有效（將持續保留，直到您主動點擊立即登出為止）';
+  } else {
+    const d = Number(normKey);
+    const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+    const targetTs = existingExpiresAt || (now + d * 86400000);
     const dt = new Date(targetTs);
     expEl.textContent = `${dt.toLocaleString('zh-TW', { hour12: false })}（保留 ${d} 天）`;
   }
@@ -5134,7 +5177,7 @@ function updateBuyerRetentionUI(days, existingExpiresAt = null) {
 
 /**
  * 當買家輸入手機號碼時，自動與本機/雲端買家名冊比對：
- * 若尚在保留期限內，自動帶入已儲存的稱呼、Line ID、IG、FB 與保留天數
+ * 若尚在保留期限內（或設定為永久保留），自動帶入已儲存的稱呼、Line ID、IG、FB 與保留期限設定
  */
 function lookupCloudBuyerByPhone(rawPhone) {
   const clean = String(rawPhone || '').replace(/[^0-9]/g, '');
@@ -5154,7 +5197,8 @@ function lookupCloudBuyerByPhone(rawPhone) {
   const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
   const applyMatchedBuyer = (b) => {
     if (!b || !b.name) return false;
-    if (b.retentionExpiresAt && Number(b.retentionExpiresAt) < now) {
+    const isPerm = isPermanentRetention(b.retentionDays) || Boolean(b.isPermanent);
+    if (!isPerm && b.retentionExpiresAt && Number(b.retentionExpiresAt) < now) {
       // 若已過期且非最高出價鎖定者則不自動帶入
       const lockInfo = checkBuyerHighBidderLock(b.phone, b.name);
       if (!lockInfo.locked) return false;
@@ -5167,7 +5211,9 @@ function lookupCloudBuyerByPhone(rawPhone) {
     if (lineInp && !lineInp.value.trim()) lineInp.value = b.line || '';
     if (igInp && !igInp.value.trim()) igInp.value = b.ig || '';
     if (fbInp && !fbInp.value.trim()) fbInp.value = b.fb || '';
-    if (b.retentionDays) {
+    if (isPerm) {
+      updateBuyerRetentionUI('forever', null);
+    } else if (b.retentionDays) {
       updateBuyerRetentionUI(b.retentionDays, b.retentionExpiresAt);
     }
     if (hint) {
@@ -5212,10 +5258,10 @@ function refreshBuyerLockModalUI() {
       bannerTxt.textContent = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！`;
     } else if (hasLoggedBuyer) {
       banner.className = 'buyer-lock-banner unlocked';
-      bannerTxt.textContent = '🟢 目前無領先標案鎖定，您可隨時變更保留天數、修改聯絡資料或點擊下方「立即登出」。';
+      bannerTxt.textContent = '🟢 目前無領先標案鎖定，您可隨時變更保留期限（含永久保留）、修改聯絡資料或點擊下方「立即登出」。';
     } else {
       banner.className = 'buyer-lock-banner unlocked';
-      bannerTxt.textContent = '👋 歡迎參與競標！請填寫聯絡資料並選擇資料保留天數（7 / 10 / 15 天）。';
+      bannerTxt.textContent = '👋 歡迎參與競標！請填寫聯絡資料並選擇資料保留期限（7 / 10 / 15 天 或 ∞ 永久保留）。';
     }
   }
 
@@ -5244,8 +5290,9 @@ function openBuyerProfileModal() {
   if (el('inp-buyer-fb')) el('inp-buyer-fb').value = AppState.userProfile.fb || '';
   if (el('buyer-cloud-match-hint')) el('buyer-cloud-match-hint').style.display = 'none';
 
-  const savedDays = Number(AppState.userProfile.retentionDays || 7);
-  updateBuyerRetentionUI(savedDays, AppState.userProfile.retentionExpiresAt);
+  const isPerm = isPermanentRetention(AppState.userProfile.retentionDays) || Boolean(AppState.userProfile.isPermanent);
+  const savedDays = isPerm ? 'forever' : (AppState.userProfile.retentionDays || 7);
+  updateBuyerRetentionUI(savedDays, isPerm ? null : AppState.userProfile.retentionExpiresAt);
   refreshBuyerLockModalUI();
 
   el('modal-buyer-profile')?.classList.add('show');
@@ -5281,9 +5328,13 @@ function saveBuyerProfile() {
   }
 
   const chosenDaysRadio = document.querySelector('input[name="buyer-retention-days"]:checked');
-  const retentionDays = [7, 10, 15].includes(Number(chosenDaysRadio?.value)) ? Number(chosenDaysRadio.value) : 7;
+  const rawVal = chosenDaysRadio ? chosenDaysRadio.value : '7';
+  const isForever = isPermanentRetention(rawVal);
+  const retentionDays = isForever
+    ? 'forever'
+    : ([7, 10, 15].includes(Number(rawVal)) ? Number(rawVal) : 7);
   const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
-  const retentionExpiresAt = now + retentionDays * 86400000;
+  const retentionExpiresAt = isForever ? null : (now + retentionDays * 86400000);
 
   AppState.userProfile = {
     name: name,
@@ -5292,7 +5343,8 @@ function saveBuyerProfile() {
     ig: el('inp-buyer-ig')?.value.trim() || '',
     fb: el('inp-buyer-fb')?.value.trim() || '',
     retentionDays: retentionDays,
-    retentionExpiresAt: retentionExpiresAt
+    retentionExpiresAt: retentionExpiresAt,
+    isPermanent: isForever
   };
 
   SafeStorage.set('agy_buyer_profile', AppState.userProfile);
@@ -5301,7 +5353,7 @@ function saveBuyerProfile() {
     el('user-profile-name').textContent = name;
   }
 
-  // 即時寫入雲端 buyers（買家註冊名冊）節點，同步保留天數與到期時間戳記
+  // 即時寫入雲端 buyers（買家註冊名冊）節點，同步保留天數/永久保留狀態與到期時間戳記
   const key = phoneCheck.phone.replace(/[^0-9]/g, '');
   const buyerData = {
     name: name,
@@ -5311,6 +5363,7 @@ function saveBuyerProfile() {
     fb: AppState.userProfile.fb || '',
     retentionDays: retentionDays,
     retentionExpiresAt: retentionExpiresAt,
+    isPermanent: isForever,
     updatedAt: now,
     createdAt: now
   };
@@ -5333,12 +5386,13 @@ function saveBuyerProfile() {
   syncToLocalServer();
 
   closeBuyerProfileModal();
-  showToast(`✅ 買家身分「${name}」已儲存（資料保留 ${retentionDays} 天）並同步至雲端名冊！`);
+  const retLabel = isForever ? '♾️ 永久保留（免重複登入）' : `資料保留 ${retentionDays} 天`;
+  showToast(`✅ 買家身分「${name}」已儲存（${retLabel}）並同步至雲端名冊！`);
 }
 
 /**
  * 買家點擊「🚪 立即登出（清除本機保留資料）」
- * 嚴格檢查全站最高出價者防棄標鎖定規則
+ * 嚴格檢查全站最高出價者防棄標鎖定規則（只要無領先鎖定，包含永久保留買家皆可隨時手動登出）
  */
 function handleBuyerLogout() {
   const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
@@ -5364,7 +5418,8 @@ function handleBuyerLogout() {
     ig: '',
     fb: '',
     retentionDays: 7,
-    retentionExpiresAt: null
+    retentionExpiresAt: null,
+    isPermanent: false
   };
 
   if (el('user-profile-name')) {
@@ -5383,8 +5438,8 @@ function handleBuyerLogout() {
 
 /**
  * 啟動與商品資料載入後之買家保留期限與防棄標自動延長檢查：
- * 若買家的資料保留天數到期，但當下仍處於「最高出價領先者」狀態，
- * 腳本自動延長保留其登入鎖定狀態，直到被人超標或結標取貨完成為止！
+ * 若買家選擇「∞ 永久保留」，系統取消到期清除限制，永久維持其登入狀態直到主動登出；
+ * 若買家為一般天數且到期，但當下仍處於「最高出價領先者」狀態，腳本自動延長保留其登入鎖定狀態！
  */
 function enforceBuyerRetentionAndLock() {
   try {
@@ -5396,20 +5451,31 @@ function enforceBuyerRetentionAndLock() {
     const p = AppState.userProfile;
     if (!p || (!p.name && !p.phone)) return;
 
+    const isPerm = isPermanentRetention(p.retentionDays) || Boolean(p.isPermanent);
+    if (isPerm) {
+      p.retentionDays = 'forever';
+      p.retentionExpiresAt = null;
+      p.isPermanent = true;
+      if (el('user-profile-name') && p.name) {
+        el('user-profile-name').textContent = p.name;
+      }
+      return;
+    }
+
     const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
     const lockInfo = checkBuyerHighBidderLock(p.phone, p.name);
 
     if (p.retentionExpiresAt && now > Number(p.retentionExpiresAt)) {
       if (lockInfo.locked) {
-        // 自動延長保留期限 7 天，維持最高出價領先者鎖定狀態
-        const extDays = Number(p.retentionDays || 7);
+        // 自動延長保留期限，維持最高出價領先者鎖定狀態
+        const extDays = [7, 10, 15].includes(Number(p.retentionDays)) ? Number(p.retentionDays) : 7;
         p.retentionExpiresAt = now + extDays * 86400000;
         SafeStorage.set('agy_buyer_profile', p);
         console.log(`🔒 買家【${p.name}】仍為【${lockInfo.itemName}】最高出價領先者，腳本已自動延長保留鎖定狀態！`);
       } else {
         // 已到期且無領先標案鎖定，自動清除過期資料
         SafeStorage.remove('agy_buyer_profile');
-        AppState.userProfile = { name: '', phone: '', line: '', ig: '', fb: '', retentionDays: 7, retentionExpiresAt: null };
+        AppState.userProfile = { name: '', phone: '', line: '', ig: '', fb: '', retentionDays: 7, retentionExpiresAt: null, isPermanent: false };
         if (el('user-profile-name')) el('user-profile-name').textContent = '登入';
         return;
       }
@@ -5431,8 +5497,15 @@ function restoreSavedProfile() {
     const saved = SafeStorage.get('agy_buyer_profile');
     if (saved) {
       const p = (typeof saved === 'object') ? saved : JSON.parse(saved);
-      if (!p.retentionDays) p.retentionDays = 7;
-      if (!p.retentionExpiresAt) p.retentionExpiresAt = Date.now() + p.retentionDays * 86400000;
+      const isPerm = isPermanentRetention(p.retentionDays) || Boolean(p.isPermanent);
+      if (isPerm) {
+        p.retentionDays = 'forever';
+        p.retentionExpiresAt = null;
+        p.isPermanent = true;
+      } else {
+        if (!p.retentionDays) p.retentionDays = 7;
+        if (!p.retentionExpiresAt) p.retentionExpiresAt = Date.now() + Number(p.retentionDays) * 86400000;
+      }
       AppState.userProfile = Object.assign({}, AppState.userProfile, p);
       if (el('user-profile-name') && AppState.userProfile.name) {
         el('user-profile-name').textContent = AppState.userProfile.name;
@@ -6519,15 +6592,16 @@ function bindEvents() {
   el('btn-save-profile')?.addEventListener('click', saveBuyerProfile);
   el('btn-logout-profile')?.addEventListener('click', handleBuyerLogout);
 
-  // 點選 7 / 10 / 15 天保留期限即時更新預計到期時間
+  // 點選 7 / 10 / 15 天 或 ∞ 永久保留 即時更新預計到期時間
   document.querySelectorAll('input[name="buyer-retention-days"]').forEach(rad => {
     rad.addEventListener('change', e => {
-      updateBuyerRetentionUI(Number(e.target.value), null);
+      const val = e.target.value;
+      updateBuyerRetentionUI(isPermanentRetention(val) ? 'forever' : Number(val), null);
     });
   });
-  [7, 10, 15].forEach(d => {
+  ['7', '10', '15', 'forever'].forEach(d => {
     el(`ret-card-${d}`)?.addEventListener('click', () => {
-      updateBuyerRetentionUI(d, null);
+      updateBuyerRetentionUI(d === 'forever' ? 'forever' : Number(d), null);
     });
   });
 

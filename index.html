@@ -1394,11 +1394,11 @@
         </div>
       </div>
 
-      <!-- 📅 買家自選資料保留天數（7 天 / 10 天 / 15 天） -->
+      <!-- 📅 買家自選資料保留天數（7 天 / 10 天 / 15 天 / ∞ 永久保留） -->
       <div class="form-group buyer-retention-group">
         <label class="form-label"
           style="color:var(--c-gold-1);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
-          <span>📅 資料保留期限（自選天數，期間內免重複輸入）</span>
+          <span>📅 資料保留期限（自選天數或永久保留，免重複登入）</span>
           <span style="font-size:.7rem;color:var(--c-text-3);">可隨時點開變更</span>
         </label>
         <div class="buyer-retention-options" id="buyer-retention-options">
@@ -1416,6 +1416,11 @@
             <input type="radio" name="buyer-retention-days" id="retention-radio-15" value="15" />
             <span class="ret-days-num">保留 15 天</span>
             <span class="ret-days-sub">半月長效</span>
+          </label>
+          <label class="retention-option-card retention-card-forever" id="ret-card-forever">
+            <input type="radio" name="buyer-retention-days" id="retention-radio-forever" value="forever" />
+            <span class="ret-days-num">∞ 永久保留</span>
+            <span class="ret-days-sub">免重複登入</span>
           </label>
         </div>
         <div class="buyer-retention-expiry-preview" id="buyer-retention-expiry-preview">
@@ -1659,7 +1664,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
   <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <script src="app.js?v=7.0&t=20261108_qa_slim_del"></script>
+  <script src="app.js?v=7.1&t=20261108_forever_retention"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1672,7 +1677,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=22').then(reg => {
+        navigator.serviceWorker.register('./sw.js?v=23').then(reg => {
           if (reg.waiting) {
             reg.waiting.postMessage({ action: 'skipWaiting' });
           }

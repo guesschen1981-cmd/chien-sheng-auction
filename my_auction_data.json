@@ -51,8 +51,8 @@
       "videoUrl": "https://youtu.be/YJJEP2dyl4M",
       "startPrice": 10000,
       "increment": 10,
-      "currentPrice": 10140,
-      "currentBid": 10140,
+      "currentPrice": 10150,
+      "currentBid": 10150,
       "bids": {
         "bid_1794013645376_9joez": {
           "amount": 10050,
@@ -89,6 +89,16 @@
           "bidderPhone": "0931849482",
           "bidderPhoneMasked": "0931***482",
           "timestamp": 1794024769962
+        },
+        "bid_1794100055378_z603t": {
+          "amount": 10150,
+          "bidderFb": "",
+          "bidderIg": "",
+          "bidderLine": "guess_chen1981",
+          "bidderName": "小建",
+          "bidderPhone": "0931849482",
+          "bidderPhoneMasked": "0931***482",
+          "timestamp": 1794100055378
         }
       },
       "topBidder": "小建",
@@ -97,52 +107,64 @@
         "ig": "",
         "line": "guess_chen1981",
         "name": "小建",
-        "phone": "0931849482"
+        "phone": "0931849482",
+        "retentionDays": 7,
+        "retentionExpiresAt": 1794704831813
       },
-      "topBidTime": 1794024771194,
+      "topBidTime": 1794100056246,
       "bidHistory": [
         {
-          "user": "小建",
+          "amount": 10150,
+          "fb": "",
+          "ig": "",
+          "line": "guess_chen1981",
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "time": 1794100055378,
+          "user": "小建"
+        },
+        {
           "amount": 10140,
+          "fb": "",
+          "ig": "",
+          "line": "guess_chen1981",
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
           "time": 1794024769962,
-          "phone": "0931849482",
-          "phoneMasked": "0931***482",
-          "line": "guess_chen1981",
-          "ig": "",
-          "fb": ""
+          "user": "小建"
         },
         {
-          "user": "小建",
           "amount": 10130,
+          "fb": "",
+          "ig": "",
+          "line": "guess_chen1981",
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
           "time": 1794024609988,
-          "phone": "0931849482",
-          "phoneMasked": "0931***482",
-          "line": "guess_chen1981",
-          "ig": "",
-          "fb": ""
+          "user": "小建"
         },
         {
-          "user": "小建",
           "amount": 10120,
-          "time": 1794024599354,
+          "fb": "",
+          "ig": "",
+          "line": "guess_chen1981",
           "phone": "0931849482",
           "phoneMasked": "0931***482",
-          "line": "guess_chen1981",
-          "ig": "",
-          "fb": ""
+          "time": 1794024599354,
+          "user": "小建"
         },
         {
-          "user": "小建",
           "amount": 10050,
-          "time": 1794013645376,
+          "fb": "",
+          "ig": "",
+          "line": "",
           "phone": "",
           "phoneMasked": "0931***482",
-          "line": "",
-          "ig": "",
-          "fb": ""
+          "time": 1794013645376,
+          "user": "小建"
         }
       ],
-      "endTime": 1794111169962,
+      "endTime": 1794186455378,
       "status": "live",
       "timeMode": "reset24",
       "autoRelistIfNoBids": true,
@@ -199,15 +221,6 @@
           "line": "guess_chen1981",
           "phone": "0931849482",
           "question": "請問高雄小港區桂林哪個時段方便約現場看機自取呢？",
-          "replies": [
-            {
-              "author": "建生工坊 - 利用 AI 協助打造了一款全新的「多商品線上拍賣網頁」，  為了確保系統在正式上線前流暢穩定，想邀請各位朋友抽空幫忙進行壓力測試！",
-              "isSeller": true,
-              "phone": "",
-              "text": "您好，歡迎透過問答或得標後私訊與我們約定方便的時段前來小港桂林現場看機自取！",
-              "time": 1794098801589
-            }
-          ],
           "reply": "您好，歡迎透過問答或得標後私訊與我們約定方便的時段前來小港桂林現場看機自取！",
           "replyTime": 1794098784061,
           "time": 1794098770501,
@@ -223,5 +236,21 @@
   "agy_studio_name": "建生工坊 - 利用 AI 協助打造了一款全新的「多商品線上拍賣網頁」，  為了確保系統在正式上線前流暢穩定，想邀請各位朋友抽空幫忙進行壓力測試！",
   "agy_active_currency": "TWD",
   "agy_last_auction_id": "item-local-recovered",
-  "buyers": []
+  "buyers": [
+    {
+      "createdAt": 1794100648314,
+      "fb": "",
+      "ig": "",
+      "lastBidAmount": 10150,
+      "lastBidItem": "item-local-recovered",
+      "lastQuestion": "請問高雄小港區桂林哪個時段方便約現場看機自取呢？",
+      "lastQuestionItem": "item-local-recovered",
+      "line": "guess_chen1981",
+      "name": "小建",
+      "phone": "0931849482",
+      "retentionDays": 15,
+      "retentionExpiresAt": 1795396648314,
+      "updatedAt": 1794100648314
+    }
+  ]
 }
