@@ -693,10 +693,11 @@ function validatePhoneNumber(rawPhone, userName) {
     };
   }
 
-  // 重複帳號衝突檢驗
+  // 重複帳號衝突檢驗（最高權限管理者進行多組測試買家分身切換時享有豁免特權）
   try {
+    const isSuperAdmin = !!(AppState.isAdmin && AppState.isAdminAuthenticated);
     const boundPhones = SafeStorage.get('agy_registered_users', {}) || {};
-    if (boundPhones[clean] && userName && boundPhones[clean] !== userName.trim()) {
+    if (!isSuperAdmin && boundPhones[clean] && userName && boundPhones[clean] !== userName.trim()) {
       return {
         valid: false,
         message: `⚠️ 該電話已綁定買家帳號「${boundPhones[clean]}」，為防身分冒用，腳本已拒絕本次出價。`
@@ -1549,7 +1550,23 @@ function handleIncomingAuctionItems(remoteItems) {
     const id = rItem.id || key;
     const local = AppState.items.find(i => i.id === id);
     if (local) {
-      if (rItem.currentPrice !== undefined && rItem.currentPrice > (local.currentPrice || local.currentBid || 0)) {
+      const remoteHasBids = !!(rItem.bids && Object.keys(rItem.bids).length > 0) || !!(rItem.topBidder && (rItem.topBidder.name || typeof rItem.topBidder === 'string'));
+      if (!remoteHasBids && rItem.currentPrice !== undefined && Number(rItem.currentPrice) <= Number(rItem.startPrice || local.startPrice || 10000)) {
+        // 偵測到管理員已清除測試出價並重置回初始起標價
+        const resetPrice = Number(rItem.startPrice || local.startPrice || 10000);
+        if (local.currentPrice !== resetPrice || local.topBidder || (local.bidHistory && local.bidHistory.length > 0)) {
+          local.currentPrice = resetPrice;
+          local.currentBid = resetPrice;
+          local.topBidder = '';
+          local.topBidderContact = null;
+          local.bids = {};
+          local.bidHistory = [];
+          local.backupOffer = null;
+          local.finalDealPrice = null;
+          local.defaultedBidders = [];
+          changed = true;
+        }
+      } else if (rItem.currentPrice !== undefined && rItem.currentPrice > (local.currentPrice || local.currentBid || 0)) {
         const bidderName = rItem.topBidder?.name || rItem.topBidder || '';
         checkOutbidNotice(id, bidderName, rItem.currentPrice);
         local.currentPrice = rItem.currentPrice;
@@ -1639,7 +1656,22 @@ function handleIncomingAuctionData(data) {
     incomingItems.forEach(rItem => {
       const local = AppState.items.find(i => i.id === rItem.id);
       if (local) {
-        if (rItem.currentBid > (local.currentPrice || local.currentBid || 0)) {
+        const rHasBids = !!(rItem.bids && Object.keys(rItem.bids).length > 0) || !!(rItem.bidHistory && rItem.bidHistory.length > 0) || !!rItem.topBidder;
+        if (!rHasBids && Number(rItem.currentBid || rItem.startPrice) <= Number(rItem.startPrice || local.startPrice || 10000)) {
+          const resetP = Number(rItem.startPrice || local.startPrice || 10000);
+          if (local.currentPrice !== resetP || local.topBidder || (local.bidHistory && local.bidHistory.length > 0)) {
+            local.currentPrice = resetP;
+            local.currentBid = resetP;
+            local.topBidder = '';
+            local.topBidderContact = null;
+            local.bids = {};
+            local.bidHistory = [];
+            local.backupOffer = null;
+            local.finalDealPrice = null;
+            local.defaultedBidders = [];
+            changed = true;
+          }
+        } else if (rItem.currentBid > (local.currentPrice || local.currentBid || 0)) {
           checkOutbidNotice(rItem.id, rItem.topBidder, rItem.currentBid);
           local.currentPrice = rItem.currentBid;
           local.currentBid = rItem.currentBid;
@@ -4007,6 +4039,13 @@ async function handleBidSubmit() {
     return;
   }
 
+  // 🛡️ 模式 A 防誤觸出價保護：當管理員處於「🛡️ 官方管理者」身分時，攔截出價並引導切換為「🧪 測試買家分身」
+  if (AppState.isAdmin && AppState.isAdminAuthenticated && AppState.activeIdentityRole === 'seller') {
+    showToast('🛡️ 您目前處於「官方管理者」身分（防誤觸出價保護中）！請先選擇一組「🧪 測試買家分身」再進行競標測試。', 4200);
+    openBuyerProfileModal();
+    return;
+  }
+
   if (!AppState.userProfile.name || !AppState.userProfile.phone) {
     openBuyerProfileModal();
     return;
@@ -4117,6 +4156,12 @@ function syncAdminUIState() {
   if (navFbBtn) navFbBtn.style.display = isAuth ? 'flex' : 'none';
   const adminFbBtn = el('btn-fb-config');
   if (adminFbBtn) adminFbBtn.style.display = isAuth ? 'inline-flex' : 'none';
+  const navIdSwitcher = el('nav-dropdown-identity-switcher');
+  if (navIdSwitcher) navIdSwitcher.style.display = isAuth ? 'block' : 'none';
+  const navUnlockBtn = el('btn-nav-unlock-admin-switcher');
+  if (navUnlockBtn) navUnlockBtn.style.display = isAuth ? 'none' : 'flex';
+  const buyerModalUnlockBar = el('buyer-modal-admin-unlock-bar');
+  if (buyerModalUnlockBar) buyerModalUnlockBar.style.display = isAuth ? 'none' : 'flex';
   if (!isAuth) {
     el('modal-fb-setup')?.classList.remove('show');
   }
@@ -4639,7 +4684,8 @@ function renderAdminItemsList() {
             <div class="item-manage-meta">起標：${formatMoney(item.startPrice)} ｜ 最高：${formatMoney(item.currentBid)}</div>
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;">
+          <button class="tbtn tbtn-purple tbtn-xs btn-clear-item-test" data-id="${item.id}" title="一鍵清除此商品的測試出價與測試問答，恢復為初始起標價">🧹 清除測試出價/問答</button>
           <button class="tbtn tbtn-gold tbtn-xs btn-relist-toggle" data-id="${item.id}" title="重新開啟此商品競標">🔄 重開</button>
           <button class="tbtn tbtn-ghost tbtn-xs btn-edit-item" data-id="${item.id}">✏️ 編輯</button>
           <button class="tbtn tbtn-danger tbtn-xs btn-del-item" data-id="${item.id}" title="刪除此商品">🗑️</button>
@@ -4670,7 +4716,8 @@ function renderAdminItemsList() {
       </div>
     `;
 
-    // 綁定編輯與刪除
+    // 綁定清除測試數據、編輯與刪除
+    card.querySelector('.btn-clear-item-test')?.addEventListener('click', () => handleAdminClearTestData(item.id));
     card.querySelector('.btn-edit-item').addEventListener('click', () => openEditFormForItem(item.id));
     card.querySelector('.btn-del-item').addEventListener('click', () => handleAdminDeleteItem(item.id));
 
@@ -5303,22 +5350,339 @@ function lookupCloudBuyerByPhone(rawPhone) {
 }
 
 /**
+ * 預設多組測試買家分身清單（完整保留「小建 0931849482」，並提供測試買家 B、測試買家 C 供超標與順位遞補測試）
+ */
+const DEFAULT_TEST_BUYER_PERSONAS = [
+  {
+    id: 'persona_a',
+    label: '測試買家 A（小建）',
+    name: '小建',
+    phone: '0931849482',
+    line: 'guess_chen1981',
+    ig: '',
+    fb: '',
+    retentionDays: 'forever',
+    isPermanent: true
+  },
+  {
+    id: 'persona_b',
+    label: '測試買家 B（阿明）',
+    name: '測試買家B-阿明',
+    phone: '0922168888',
+    line: 'test_buyer_b',
+    ig: '',
+    fb: '',
+    retentionDays: 'forever',
+    isPermanent: true
+  },
+  {
+    id: 'persona_c',
+    label: '測試買家 C（大華）',
+    name: '測試買家C-大華',
+    phone: '0955168999',
+    line: 'test_buyer_c',
+    ig: '',
+    fb: '',
+    retentionDays: 'forever',
+    isPermanent: true
+  }
+];
+
+/**
+ * 取得目前已儲存的多組測試買家分身清單（自動合併預設 A/B/C 與使用者自訂輸入的測試帳號）
+ */
+function getTestBuyerPersonas() {
+  let list = [];
+  try {
+    const saved = SafeStorage.get('agy_test_buyer_personas');
+    if (Array.isArray(saved) && saved.length > 0) {
+      list = saved.filter(p => p && p.name && p.phone);
+    }
+  } catch (e) {}
+
+  // 確保預設三組測試分身（含小建 0931849482、測試買家 B、測試買家 C）皆存在
+  DEFAULT_TEST_BUYER_PERSONAS.forEach(defP => {
+    const cleanDefPhone = String(defP.phone).replace(/[^0-9]/g, '');
+    const exists = list.some(p => String(p.phone || '').replace(/[^0-9]/g, '') === cleanDefPhone);
+    if (!exists) {
+      list.push(Object.assign({}, defP));
+    }
+  });
+
+  // 若目前登入中的買家帳號（或備份帳號）不在清單中，自動保留進測試分身庫
+  const cur = AppState.userProfile;
+  if (cur && cur.name && cur.phone) {
+    const cleanCur = String(cur.phone).replace(/[^0-9]/g, '');
+    if (cleanCur.length >= 9 && !list.some(p => String(p.phone || '').replace(/[^0-9]/g, '') === cleanCur)) {
+      list.unshift({
+        id: 'persona_' + cleanCur,
+        label: `自訂測試買家（${cur.name}）`,
+        name: cur.name,
+        phone: cur.phone,
+        line: cur.line || '',
+        ig: cur.ig || '',
+        fb: cur.fb || '',
+        retentionDays: cur.retentionDays || 'forever',
+        isPermanent: true
+      });
+    }
+  }
+
+  SafeStorage.set('agy_test_buyer_personas', list);
+  return list;
+}
+
+/**
+ * 新增或更新一組自訂測試買家分身至分身庫
+ */
+function upsertTestBuyerPersona(profileObj) {
+  if (!profileObj || !profileObj.name || !profileObj.phone) return;
+  const cleanPhone = String(profileObj.phone).replace(/[^0-9]/g, '');
+  if (!cleanPhone) return;
+
+  const list = getTestBuyerPersonas();
+  const idx = list.findIndex(p => String(p.phone || '').replace(/[^0-9]/g, '') === cleanPhone);
+  const entry = {
+    id: idx >= 0 ? list[idx].id : ('persona_' + cleanPhone),
+    label: `測試買家（${profileObj.name}）`,
+    name: profileObj.name,
+    phone: profileObj.phone,
+    line: profileObj.line || '',
+    ig: profileObj.ig || '',
+    fb: profileObj.fb || '',
+    retentionDays: profileObj.retentionDays || 'forever',
+    isPermanent: true
+  };
+
+  if (idx >= 0) {
+    list[idx] = Object.assign({}, list[idx], entry);
+  } else {
+    list.push(entry);
+  }
+  SafeStorage.set('agy_test_buyer_personas', list);
+}
+
+/**
+ * 渲染右上角「⋯ 更多選單」與「👤 買家身分視窗」內的多組測試買家分身按鈕清單
+ */
+function renderTestBuyerPersonasUI() {
+  const personas = getTestBuyerPersonas();
+  const isSellerMode = Boolean(AppState.isAdmin && AppState.activeIdentityRole === 'seller');
+  const curPhone = String(AppState.userProfile?.phone || '').replace(/[^0-9]/g, '');
+  const curName = String(AppState.userProfile?.name || '').trim();
+
+  // 1. 渲染買家身分彈窗內的分身卡片列表 (#test-buyer-personas-list)
+  const modalListEl = el('test-buyer-personas-list');
+  if (modalListEl) {
+    modalListEl.innerHTML = '';
+    personas.forEach((p, idx) => {
+      const pPhone = String(p.phone || '').replace(/[^0-9]/g, '');
+      const isCurrent = !isSellerMode && ((pPhone && pPhone === curPhone) || (p.name === curName));
+      const card = document.createElement('div');
+      card.className = `persona-card-item ${isCurrent ? 'active' : ''}`;
+      const isDefault = ['0931849482', '0922168888', '0955168999'].includes(pPhone);
+
+      card.innerHTML = `
+        <div class="persona-card-main" title="點擊立即切換為【${escapeHtml(p.name)} (${escapeHtml(p.phone)})】">
+          <div class="persona-card-name">${isCurrent ? '🟢 ' : '🧪 '}#${idx + 1} ${escapeHtml(p.name)}</div>
+          <div class="persona-card-phone">📞 ${escapeHtml(p.phone)}${p.line ? ' · Line: ' + escapeHtml(p.line) : ''}</div>
+        </div>
+        <div class="persona-card-actions">
+          <button type="button" class="tbtn ${isCurrent ? 'tbtn-success' : 'tbtn-gold'} tbtn-xs btn-select-persona" style="padding:4px 8px;font-size:.72rem;">
+            ${isCurrent ? '✓ 使用中' : '⚡ 切換'}
+          </button>
+          ${!isDefault ? `<button type="button" class="tbtn tbtn-danger tbtn-xs btn-del-persona" title="刪除此自訂分身" style="padding:4px 6px;font-size:.7rem;">✕</button>` : ''}
+        </div>
+      `;
+
+      card.querySelector('.persona-card-main')?.addEventListener('click', () => {
+        switchToTestBuyerPersona(p);
+      });
+      card.querySelector('.btn-select-persona')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchToTestBuyerPersona(p);
+      });
+      card.querySelector('.btn-del-persona')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const filtered = getTestBuyerPersonas().filter(item => String(item.phone).replace(/[^0-9]/g, '') !== pPhone);
+        SafeStorage.set('agy_test_buyer_personas', filtered);
+        renderTestBuyerPersonasUI();
+        showToast(`🗑️ 已移除測試買家分身「${p.name}」`);
+      });
+
+      modalListEl.appendChild(card);
+    });
+  }
+
+  // 2. 渲染右上角「⋯ 更多選單」內的分身按鈕列表 (#nav-dropdown-personas-list)
+  const navListEl = el('nav-dropdown-personas-list');
+  if (navListEl) {
+    navListEl.innerHTML = '';
+    personas.forEach((p, idx) => {
+      const pPhone = String(p.phone || '').replace(/[^0-9]/g, '');
+      const isCurrent = !isSellerMode && ((pPhone && pPhone === curPhone) || (p.name === curName));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `nav-persona-item-btn ${isCurrent ? 'active-persona' : ''}`;
+      btn.innerHTML = `
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${isCurrent ? '🟢' : '🧪'} 分身 ${idx + 1}：<strong>${escapeHtml(p.name)}</strong> (${escapeHtml(p.phone)})
+        </span>
+        <span style="font-size:.68rem;flex-shrink:0;color:${isCurrent ? '#6ee7b7' : '#fde68a'};">
+          ${isCurrent ? '✓ 目前身分' : '切換 ›'}
+        </span>
+      `;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        el('nav-more-dropdown')?.classList.remove('show');
+        switchToTestBuyerPersona(p);
+      });
+      navListEl.appendChild(btn);
+    });
+  }
+}
+
+/**
+ * ⚡ 最高管理者專屬：一鍵切換為指定的「🧪 測試買家分身」（完全不受最高出價者防棄標鎖定限制！）
+ */
+function switchToTestBuyerPersona(personaObj) {
+  if (!requireAdminAuth(() => switchToTestBuyerPersona(personaObj))) return;
+  if (!personaObj || !personaObj.name || !personaObj.phone) return;
+
+  // 備份切換前之買家資料
+  if (AppState.userProfile && (AppState.userProfile.name || AppState.userProfile.phone)) {
+    SafeStorage.set('agy_test_buyer_backup', JSON.parse(JSON.stringify(AppState.userProfile)));
+    upsertTestBuyerPersona(AppState.userProfile);
+  }
+
+  const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
+  const cleanPhone = String(personaObj.phone).replace(/[^0-9]/g, '');
+
+  AppState.activeIdentityRole = 'buyer';
+  SafeStorage.set('agy_active_identity_role', 'buyer');
+
+  AppState.userProfile = {
+    name: String(personaObj.name).trim(),
+    phone: cleanPhone,
+    line: personaObj.line || '',
+    ig: personaObj.ig || '',
+    fb: personaObj.fb || '',
+    retentionDays: 'forever',
+    retentionExpiresAt: null,
+    isPermanent: true
+  };
+
+  SafeStorage.set('agy_buyer_profile', AppState.userProfile);
+  upsertTestBuyerPersona(AppState.userProfile);
+
+  // 更新手機號碼綁定表，避免防偽檢驗誤判衝突
+  try {
+    const boundPhones = SafeStorage.get('agy_registered_users', {}) || {};
+    boundPhones[cleanPhone] = AppState.userProfile.name;
+    SafeStorage.set('agy_registered_users', boundPhones);
+  } catch (e) {}
+
+  // 同步寫入買家名冊與 Firebase，確保順位遞補清單中具備完整聯絡方式
+  const buyerData = {
+    name: AppState.userProfile.name,
+    phone: cleanPhone,
+    line: AppState.userProfile.line || '',
+    ig: AppState.userProfile.ig || '',
+    fb: AppState.userProfile.fb || '',
+    retentionDays: 'forever',
+    retentionExpiresAt: null,
+    isPermanent: true,
+    updatedAt: now,
+    createdAt: now
+  };
+  const existingIdx = (AppState.registeredBuyers || []).findIndex(
+    b => String(b.phone || '').replace(/[^0-9]/g, '') === cleanPhone
+  );
+  if (existingIdx >= 0) {
+    AppState.registeredBuyers[existingIdx] = Object.assign({}, AppState.registeredBuyers[existingIdx], buyerData);
+  } else {
+    AppState.registeredBuyers.unshift(buyerData);
+  }
+  const db = FirebaseManager.getDb();
+  if (db) {
+    db.ref('settings/buyers/' + cleanPhone).update(buyerData).catch(() => {});
+    db.ref('buyers/' + cleanPhone).update(buyerData).catch(() => {});
+  }
+
+  // 同步更新彈窗輸入框與全站顯示
+  if (el('inp-buyer-name')) el('inp-buyer-name').value = AppState.userProfile.name;
+  if (el('inp-buyer-phone')) {
+    el('inp-buyer-phone').readOnly = false;
+    el('inp-buyer-phone').style.opacity = '1';
+    el('inp-buyer-phone').value = AppState.userProfile.phone;
+  }
+  if (el('inp-buyer-line')) el('inp-buyer-line').value = AppState.userProfile.line;
+  if (el('inp-buyer-ig')) el('inp-buyer-ig').value = AppState.userProfile.ig;
+  if (el('inp-buyer-fb')) el('inp-buyer-fb').value = AppState.userProfile.fb;
+
+  // 自動將前台出價輸入框帶入下一口最低可出價金額，方便立即超標測試
+  const activeItem = getActiveItem();
+  if (activeItem && el('inp-bid-val')) {
+    const curP = Number(activeItem.currentPrice ?? activeItem.currentBid ?? activeItem.startPrice ?? 10000);
+    const inc = Number(activeItem.increment || 10);
+    const hasBids = hasItemBids(activeItem);
+    el('inp-bid-val').value = hasBids ? (curP + inc) : Math.max(Number(activeItem.startPrice || 10000), inc);
+  }
+
+  updateBuyerRetentionUI('forever', null);
+  refreshBuyerLockModalUI();
+  syncIdentityDisplayUI();
+  renderActiveItemDisplay();
+  renderBidHistory();
+  renderQA(true, null);
+  renderWinnerStatus();
+  renderAdminBuyersRoster();
+  closeBuyerProfileModal();
+  el('nav-more-dropdown')?.classList.remove('show');
+
+  showToast(`🧪 已一鍵切換為測試買家分身【${AppState.userProfile.name} (${AppState.userProfile.phone})】！可立即測試超標出價或順位遞補同意。`, 3800);
+}
+
+/**
+ * ⚡ 一鍵產生並切換為預設測試買家 A（小建） / B（阿明） / C（大華）
+ */
+function quickSwitchPresetPersona(slotKey) {
+  const map = {
+    a: DEFAULT_TEST_BUYER_PERSONAS[0],
+    b: DEFAULT_TEST_BUYER_PERSONAS[1],
+    c: DEFAULT_TEST_BUYER_PERSONAS[2]
+  };
+  const target = map[slotKey] || DEFAULT_TEST_BUYER_PERSONAS[0];
+  switchToTestBuyerPersona(target);
+}
+
+/**
  * 同步買家防棄標鎖定橫幅與電話欄位唯讀保護狀態
+ * ★ 關鍵特權：只要裝置具備最高管理者權限 (AppState.isAdmin && AppState.isAdminAuthenticated)，完全不受最高出價者防棄標鎖定限制！
  */
 function refreshBuyerLockModalUI() {
   const banner = el('buyer-lock-status-banner');
   const bannerTxt = el('buyer-lock-status-text');
   const phoneInp = el('inp-buyer-phone');
   const logoutBtn = el('btn-logout-profile');
+  const unlockBar = el('buyer-modal-admin-unlock-bar');
 
+  const isSuperAdmin = Boolean(AppState.isAdmin && AppState.isAdminAuthenticated);
   const hasLoggedBuyer = !!(AppState.userProfile.phone || AppState.userProfile.name);
   const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
 
+  if (unlockBar) {
+    unlockBar.style.display = isSuperAdmin ? 'none' : 'flex';
+  }
+
   if (banner && bannerTxt) {
     banner.style.display = 'block';
-    if (lockInfo.locked) {
+    if (lockInfo.locked && isSuperAdmin) {
+      banner.className = 'buyer-lock-banner admin-bypass';
+      bannerTxt.textContent = `👑 最高管理者免鎖定特權生效中：雖然「${AppState.userProfile.name}」目前是【${lockInfo.itemName.slice(0, 18)}…】的最高出價者，但您具備管理員權限，可無限制自由切換為「🛡️ 官方管理者」或「🧪 測試買家 B / C」進行超標與遞補測試！（一般真實買家則維持嚴格防棄標鎖定）`;
+    } else if (lockInfo.locked) {
       banner.className = 'buyer-lock-banner locked';
-      bannerTxt.textContent = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！`;
+      bannerTxt.textContent = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！（若您是管理員，請點上方「🔑 驗證管理員解鎖」即可自由切換分身）`;
     } else if (hasLoggedBuyer) {
       banner.className = 'buyer-lock-banner unlocked';
       bannerTxt.textContent = '🟢 目前無領先標案鎖定，您可隨時變更保留期限（含永久保留）、修改聯絡資料或點擊下方「立即登出」。';
@@ -5329,7 +5693,8 @@ function refreshBuyerLockModalUI() {
   }
 
   if (phoneInp) {
-    if (lockInfo.locked) {
+    // 最高管理者永遠不鎖死電話輸入框
+    if (lockInfo.locked && !isSuperAdmin) {
       phoneInp.readOnly = true;
       phoneInp.style.opacity = '0.78';
       phoneInp.title = `您目前是【${lockInfo.itemName}】最高出價領先者，防棄標保護期間禁止竄改聯絡電話`;
@@ -5341,12 +5706,12 @@ function refreshBuyerLockModalUI() {
   }
 
   if (logoutBtn) {
-    logoutBtn.style.opacity = lockInfo.locked ? '0.65' : '1';
+    logoutBtn.style.opacity = (lockInfo.locked && !isSuperAdmin) ? '0.65' : '1';
   }
 }
 
 /**
- * 同步更新右上角身分按鈕 (#btn-user-profile)、問答區官方模式橫幅與買家彈窗內雙軌切換面板
+ * 同步更新右上角身分按鈕 (#btn-user-profile)、右上角「⋯ 選單」身分切換器、問答區官方模式橫幅與買家彈窗雙軌切換面板
  */
 function syncIdentityDisplayUI() {
   const userBtn = el('btn-user-profile');
@@ -5356,27 +5721,37 @@ function syncIdentityDisplayUI() {
   const askInput = el('qa-ask-input');
   const sendQBtn = el('btn-send-question');
   const dualPanel = el('admin-dual-identity-panel');
+  const unlockBar = el('buyer-modal-admin-unlock-bar');
   const dualBadge = el('dual-identity-current-badge');
   const btnSellerRole = el('btn-switch-to-seller-identity');
   const btnRestoreBuyer = el('btn-restore-backup-buyer');
   const restoreBuyerTxt = el('restore-backup-buyer-text');
 
+  // 右上角「⋯ 更多選單」內之切換器元件
+  const navIdBox = el('nav-dropdown-identity-switcher');
+  const navIdPill = el('nav-id-active-pill');
+  const navSellerBtn = el('btn-nav-role-seller');
+  const navSellerTxt = el('nav-role-seller-text');
+  const navUnlockBtn = el('btn-nav-unlock-admin-switcher');
+
+  const isSuperAdmin = Boolean(AppState.isAdmin && AppState.isAdminAuthenticated);
+
   // 若未通過最高管理者驗證，強制維持一般買家模式
-  if (!AppState.isAdmin || !AppState.isAdminAuthenticated) {
+  if (!isSuperAdmin) {
     AppState.activeIdentityRole = 'buyer';
   }
 
-  const isSellerMode = Boolean(AppState.isAdmin && AppState.activeIdentityRole === 'seller');
+  const isSellerMode = Boolean(isSuperAdmin && AppState.activeIdentityRole === 'seller');
 
   if (userBtn) {
     userBtn.classList.toggle('is-seller-identity', isSellerMode);
   }
   if (userIcon) {
-    userIcon.textContent = isSellerMode ? '👑' : '👤';
+    userIcon.textContent = isSellerMode ? '🛡️' : '👤';
   }
   if (userNameEl) {
     if (isSellerMode) {
-      userNameEl.textContent = '官方賣家（建生工坊）';
+      userNameEl.textContent = '官方管理者';
     } else {
       userNameEl.textContent = AppState.userProfile?.name ? AppState.userProfile.name : '登入';
     }
@@ -5387,31 +5762,59 @@ function syncIdentityDisplayUI() {
   }
   if (askInput) {
     askInput.placeholder = isSellerMode
-      ? '🛡️ 目前為【官方賣家身分（建生工坊）】：在此輸入可針對最新提問直接發佈藍色標章官方回覆…'
+      ? '🛡️ 目前為【官方管理者（建生工坊）】：在此輸入可針對最新提問直接發佈藍色標章官方回覆…'
       : '對本商品有疑問嗎？歡迎在此留言提問（Ctrl + Enter 快速送出）…';
   }
   if (sendQBtn) {
-    sendQBtn.innerHTML = isSellerMode ? '🛡️ 官方賣家回覆' : '💬 送出提問';
+    sendQBtn.innerHTML = isSellerMode ? '🛡️ 官方管理者回覆' : '💬 送出提問';
   }
 
   if (dualPanel) {
-    dualPanel.style.display = (AppState.isAdmin && AppState.isAdminAuthenticated) ? 'block' : 'none';
+    dualPanel.style.display = isSuperAdmin ? 'block' : 'none';
   }
+  if (unlockBar) {
+    unlockBar.style.display = isSuperAdmin ? 'none' : 'flex';
+  }
+  if (navIdBox) {
+    navIdBox.style.display = isSuperAdmin ? 'block' : 'none';
+  }
+  if (navUnlockBtn) {
+    navUnlockBtn.style.display = isSuperAdmin ? 'none' : 'flex';
+  }
+
   if (dualBadge) {
     if (isSellerMode) {
-      dualBadge.textContent = '🛡️ 目前：官方賣家身分（建生工坊）';
+      dualBadge.textContent = '🛡️ 目前：官方管理者（建生工坊）';
       dualBadge.className = 'dual-identity-badge mode-seller';
     } else {
-      const bName = AppState.userProfile?.name ? `測試買家（${AppState.userProfile.name}）` : '尚未登入測試買家';
+      const bName = AppState.userProfile?.name ? `測試買家（${AppState.userProfile.name}）` : '尚未選擇測試買家';
       dualBadge.textContent = `🧪 目前：${bName}`;
       dualBadge.className = 'dual-identity-badge mode-buyer';
     }
   }
+  if (navIdPill) {
+    if (isSellerMode) {
+      navIdPill.textContent = '🛡️ 官方管理者';
+      navIdPill.className = 'nav-id-active-pill is-seller';
+    } else {
+      navIdPill.textContent = `🧪 ${AppState.userProfile?.name || '測試買家'}`;
+      navIdPill.className = 'nav-id-active-pill';
+    }
+  }
+
   if (btnSellerRole) {
     btnSellerRole.classList.toggle('is-active-role', isSellerMode);
     btnSellerRole.innerHTML = isSellerMode
-      ? '<span>👑</span><span>目前已鎖定為：官方賣家身分（建生工坊）✓</span>'
-      : '<span>👑</span><span>切換為官方賣家身分（建生工坊）</span>';
+      ? '<span>🛡️</span><span>目前已鎖定為：【官方管理者】身分（建生工坊）✓</span>'
+      : '<span>🛡️</span><span>切換為「🛡️ 官方管理者」身分（專注管理與官方回覆・防誤觸出價）</span>';
+  }
+  if (navSellerBtn) {
+    navSellerBtn.classList.toggle('active-role', isSellerMode);
+  }
+  if (navSellerTxt) {
+    navSellerTxt.textContent = isSellerMode
+      ? '目前已是：官方管理者（建生工坊）✓'
+      : '切換為：官方管理者（建生工坊）';
   }
 
   // 檢查是否有備份之測試買家可供一鍵切回
@@ -5424,18 +5827,24 @@ function syncIdentityDisplayUI() {
       btnRestoreBuyer.style.display = 'none';
     }
   }
+
+  // 同步渲染多組測試買家分身按鈕列表
+  try {
+    renderTestBuyerPersonasUI();
+  } catch (e) {}
 }
 
 /**
- * 👑 最高管理者專屬：一鍵切換為「官方賣家身分（建生工坊）」
- * 自動將現有測試買家（如小建）備份保存，並將全站發言與回覆鎖定為賣家官方藍標身分
+ * 🛡️ 最高管理者專屬：一鍵切換為「模式 A：🛡️ 官方管理者身分（建生工坊）」
+ * 自動將現有測試買家（如小建）完整保存至分身庫，右上角直接顯示「🛡️ 官方管理者」，並開啟防誤觸出價保護
  */
 function switchToOfficialSellerIdentity() {
   if (!requireAdminAuth(() => switchToOfficialSellerIdentity())) return;
 
-  // 若目前有登入測試買家資料，先完整備份至 agy_test_buyer_backup
+  // 若目前有登入測試買家資料，先完整備份至 agy_test_buyer_backup 與多組測試分身庫
   if (AppState.userProfile && (AppState.userProfile.name || AppState.userProfile.phone)) {
     SafeStorage.set('agy_test_buyer_backup', JSON.parse(JSON.stringify(AppState.userProfile)));
+    upsertTestBuyerPersona(AppState.userProfile);
   }
 
   AppState.activeIdentityRole = 'seller';
@@ -5443,19 +5852,22 @@ function switchToOfficialSellerIdentity() {
 
   syncIdentityDisplayUI();
   renderQA(true, null);
+  renderWinnerStatus();
   closeBuyerProfileModal();
-  showToast('👑 已切換為「官方賣家身分（建生工坊）」！問答回覆已鎖定為賣家官方藍色標章。');
+  el('nav-more-dropdown')?.classList.remove('show');
+  showToast('🛡️ 已切換為「官方管理者」身分！右上角已標示為「🛡️ 官方管理者」，問答回覆鎖定為官方藍標，並啟用防誤觸出價保護。', 4000);
 }
 
 /**
- * 🔄 最高管理者專屬：清除目前測試買家身分並重新登入新買家（支援隨時切換測試者角色進行壓力與競標測試）
+ * ➕ 最高管理者專屬：清空下方表單欄位以輸入/新增自訂測試買家分身（完全不受最高出價防棄標鎖定限制）
  */
 function resetTestBuyerAndLoginNew() {
   if (!requireAdminAuth(() => resetTestBuyerAndLoginNew())) return;
 
-  // 將前一個測試買家備份起來，方便需要時還能一鍵切回
+  // 將前一個測試買家備份並存入測試分身庫，方便隨時一鍵切回
   if (AppState.userProfile && (AppState.userProfile.name || AppState.userProfile.phone)) {
     SafeStorage.set('agy_test_buyer_backup', JSON.parse(JSON.stringify(AppState.userProfile)));
+    upsertTestBuyerPersona(AppState.userProfile);
   }
 
   AppState.activeIdentityRole = 'buyer';
@@ -5468,9 +5880,9 @@ function resetTestBuyerAndLoginNew() {
     line: '',
     ig: '',
     fb: '',
-    retentionDays: 7,
+    retentionDays: 'forever',
     retentionExpiresAt: null,
-    isPermanent: false
+    isPermanent: true
   };
 
   if (el('inp-buyer-phone')) {
@@ -5484,7 +5896,7 @@ function resetTestBuyerAndLoginNew() {
   if (el('inp-buyer-fb')) el('inp-buyer-fb').value = '';
   if (el('buyer-cloud-match-hint')) el('buyer-cloud-match-hint').style.display = 'none';
 
-  updateBuyerRetentionUI(7, null);
+  updateBuyerRetentionUI('forever', null);
   refreshBuyerLockModalUI();
   syncIdentityDisplayUI();
   renderQA(true, null);
@@ -5493,38 +5905,119 @@ function resetTestBuyerAndLoginNew() {
   setTimeout(() => {
     el('inp-buyer-phone')?.focus();
   }, 60);
-  showToast('🔄 已清除原測試買家綁定！請直接輸入新測試買家的手機與稱呼進行測試。');
+  showToast('➕ 已解鎖並清空下方表單！請輸入新測試買家的電話與稱呼，儲存後將自動加入上方測試分身清單。', 3800);
 }
 
 /**
  * 🧪 最高管理者專屬：一鍵切回先前儲存的測試買家身分（如：小建）
  */
 function restoreBackupTestBuyer() {
-  const backup = SafeStorage.get('agy_test_buyer_backup');
+  const backup = SafeStorage.get('agy_test_buyer_backup') || DEFAULT_TEST_BUYER_PERSONAS[0];
   if (!backup || !backup.name) {
     showToast('目前尚無已備份的測試買家資料');
     return;
   }
+  switchToTestBuyerPersona(backup);
+}
 
-  AppState.activeIdentityRole = 'buyer';
-  SafeStorage.set('agy_active_identity_role', 'buyer');
-  AppState.userProfile = Object.assign({}, AppState.userProfile, backup);
-  SafeStorage.set('agy_buyer_profile', AppState.userProfile);
+/**
+ * 🧹 管理員專屬：「一鍵清除測試出價與測試問答」功能
+ * 清除測試買家（如小建、買家 B、買家 C）的測試出價紀錄、棄標遞補邀請、測試問答與黑名單，並將商品恢復為初始起標價
+ */
+function handleAdminClearTestData(targetItemId = null) {
+  el('nav-more-dropdown')?.classList.remove('show');
+  if (!requireAdminAuth(() => handleAdminClearTestData(targetItemId))) return;
 
-  if (el('inp-buyer-name')) el('inp-buyer-name').value = AppState.userProfile.name || '';
-  if (el('inp-buyer-phone')) el('inp-buyer-phone').value = AppState.userProfile.phone || '';
-  if (el('inp-buyer-line')) el('inp-buyer-line').value = AppState.userProfile.line || '';
-  if (el('inp-buyer-ig')) el('inp-buyer-ig').value = AppState.userProfile.ig || '';
-  if (el('inp-buyer-fb')) el('inp-buyer-fb').value = AppState.userProfile.fb || '';
+  const targetItem = targetItemId
+    ? AppState.items.find(i => i.id === targetItemId)
+    : getActiveItem();
+  if (!targetItem) {
+    showToast('⚠️ 目前無商品可清理');
+    return;
+  }
 
-  const isPerm = isPermanentRetention(AppState.userProfile.retentionDays) || Boolean(AppState.userProfile.isPermanent);
-  updateBuyerRetentionUI(isPerm ? 'forever' : (AppState.userProfile.retentionDays || 7), isPerm ? null : AppState.userProfile.retentionExpiresAt);
+  const startP = Number(targetItem.startPrice || 10000);
+  const confirmMsg = `🧹 確定要一鍵清除【${targetItem.name.slice(0, 28)}…】的所有測試出價紀錄、遞補測試狀態與測試問答，並將商品恢復為初始起標價（NT$ ${startP.toLocaleString()}）嗎？
+
+✅ 清除後將同步更新雲端與本機資料庫，方便隨時清理乾淨給真實客人競標！`;
+  if (!confirm(confirmMsg)) return;
+
+  const now = getServerNow();
+  const itemsToReset = targetItemId ? [targetItem] : AppState.items;
+
+  itemsToReset.forEach(it => {
+    if (!it) return;
+    const initPrice = Number(it.startPrice || 10000);
+    it.currentPrice = initPrice;
+    it.currentBid = initPrice;
+    it.topBidder = '';
+    it.topBidderContact = null;
+    it.topBidTime = null;
+    it.bids = {};
+    it.bidHistory = [];
+    it.backupOffer = null;
+    it.finalDealPrice = null;
+    it.defaultedBidders = [];
+    it.qa = {};
+    it.winnerMsgs = [];
+    it.status = 'live';
+    if (it.timeMode === 'reset24' || it.endTime <= now) {
+      it.endTime = now + 24 * 3600 * 1000;
+    }
+  });
+
+  // 清除測試過程產生的黑名單封鎖與門號衝突綁定快取
+  AppState.blacklist = {};
+  AppState.prevTopBidders = {};
+  SafeStorage.remove('agy_blacklist');
+  SafeStorage.remove('agy_registered_users');
+  SafeStorage.set('agy_items', AppState.items);
+
+  // 重置前台出價輸入框為起標價
+  if (el('inp-bid-val')) {
+    el('inp-bid-val').value = startP;
+  }
+
+  // 即時同步清除雲端 Firebase 節點（明確將 bids / qa / topBidder / backupOffer 設為 null 移除）
+  const db = FirebaseManager.getDb();
+  if (db) {
+    db.ref('settings/blacklist').remove().catch(() => {});
+    itemsToReset.forEach(it => {
+      if (it && it.id) {
+        db.ref(`auction/items/${it.id}`).update({
+          currentPrice: Number(it.startPrice || 10000),
+          currentBid: Number(it.startPrice || 10000),
+          topBidder: null,
+          topBidderContact: null,
+          bids: null,
+          bidHistory: null,
+          backupOffer: null,
+          finalDealPrice: null,
+          defaultedBidders: null,
+          qa: null,
+          winnerMsgs: null,
+          status: 'live',
+          endTime: it.endTime
+        }).catch(() => {});
+      }
+    });
+  }
+  syncToFirebase();
+  syncToLocalServer(true);
+
   refreshBuyerLockModalUI();
   syncIdentityDisplayUI();
+  renderItemTabs();
+  renderActiveItemDisplay();
+  renderBidHistory();
   renderQA(true, null);
   renderWinnerStatus();
-  closeBuyerProfileModal();
-  showToast(`🧪 已切回測試買家身分「${AppState.userProfile.name}」！`);
+  renderAdminItemsList();
+  renderAdminAllQA();
+  renderAdminBuyersRoster();
+  updateAuctionTimerUI();
+
+  showToast(`🧹 已成功清除測試出價紀錄與測試問答！商品已恢復為初始起標價 NT$ ${startP.toLocaleString()}。`, 4200);
 }
 
 function openBuyerProfileModal() {
@@ -5557,11 +6050,12 @@ function saveBuyerProfile() {
     return;
   }
 
-  // 防棄標鎖定檢查：若目前為最高出價領先者，禁止更改或刪除原綁定之手機號碼
+  // 防棄標鎖定檢查：一般買家若為最高出價領先者，禁止更改或刪除原綁定之手機號碼；最高管理者則完全不受此限制！
+  const isSuperAdmin = Boolean(AppState.isAdmin && AppState.isAdminAuthenticated);
   const currentLock = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
   const oldCleanPhone = String(AppState.userProfile.phone || '').replace(/[^0-9]/g, '');
   const newCleanPhone = String(phone || '').replace(/[^0-9]/g, '');
-  if (currentLock.locked && oldCleanPhone && oldCleanPhone !== newCleanPhone) {
+  if (!isSuperAdmin && currentLock.locked && oldCleanPhone && oldCleanPhone !== newCleanPhone) {
     alert(`🔒 防棄標保護生效中：您目前是【${currentLock.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出或更改聯絡電話！`);
     if (el('inp-buyer-phone')) el('inp-buyer-phone').value = AppState.userProfile.phone;
     return;
@@ -5597,6 +6091,9 @@ function saveBuyerProfile() {
   SafeStorage.set('agy_active_identity_role', 'buyer');
   SafeStorage.set('agy_buyer_profile', AppState.userProfile);
   SafeStorage.set('agy_test_buyer_backup', AppState.userProfile);
+  if (isSuperAdmin) {
+    upsertTestBuyerPersona(AppState.userProfile);
+  }
 
   syncIdentityDisplayUI();
 
@@ -5633,18 +6130,20 @@ function saveBuyerProfile() {
   syncToLocalServer();
 
   closeBuyerProfileModal();
+  renderWinnerStatus();
   const retLabel = isForever ? '♾️ 永久保留（免重複登入）' : `資料保留 ${retentionDays} 天`;
   showToast(`✅ 買家身分「${name}」已儲存（${retLabel}）並同步至雲端名冊！`);
 }
 
 /**
  * 買家點擊「🚪 立即登出（清除本機保留資料）」
- * 嚴格檢查全站最高出價者防棄標鎖定規則（只要無領先鎖定，包含永久保留買家皆可隨時手動登出）
+ * ★ 關鍵特權：最高管理者 (guess_chen1981) 完全不受最高出價者防棄標鎖定限制，即使小建是最高出價者也能隨時登出或切換分身！
  */
 function handleBuyerLogout() {
+  const isSuperAdmin = Boolean(AppState.isAdmin && AppState.isAdminAuthenticated);
   const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
-  if (lockInfo.locked) {
-    const lockMsg = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！`;
+  if (!isSuperAdmin && lockInfo.locked) {
+    const lockMsg = `🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】的最高出價領先者，在有人超過您的競標價格前無法登出！（若您是管理員，請先點選視窗上方「🔑 驗證管理員解鎖」即可免除限制）`;
     refreshBuyerLockModalUI();
     alert(lockMsg);
     showToast(lockMsg, 4200);
@@ -5655,6 +6154,12 @@ function handleBuyerLogout() {
     closeBuyerProfileModal();
     showToast('您目前尚未登入買家資料');
     return;
+  }
+
+  // 若為管理員登出測試買家，自動先將該測試買家存入分身庫方便日後一鍵切回
+  if (isSuperAdmin && (AppState.userProfile.name || AppState.userProfile.phone)) {
+    SafeStorage.set('agy_test_buyer_backup', JSON.parse(JSON.stringify(AppState.userProfile)));
+    upsertTestBuyerPersona(AppState.userProfile);
   }
 
   SafeStorage.remove('agy_buyer_profile');
@@ -5670,17 +6175,22 @@ function handleBuyerLogout() {
   };
 
   if (el('user-profile-name')) {
-    el('user-profile-name').textContent = '登入';
+    el('user-profile-name').textContent = (isSuperAdmin && AppState.activeIdentityRole === 'seller') ? '官方管理者' : '登入';
   }
   if (el('inp-buyer-name')) el('inp-buyer-name').value = '';
-  if (el('inp-buyer-phone')) el('inp-buyer-phone').value = '';
+  if (el('inp-buyer-phone')) {
+    el('inp-buyer-phone').readOnly = false;
+    el('inp-buyer-phone').style.opacity = '1';
+    el('inp-buyer-phone').value = '';
+  }
   if (el('inp-buyer-line')) el('inp-buyer-line').value = '';
   if (el('inp-buyer-ig')) el('inp-buyer-ig').value = '';
   if (el('inp-buyer-fb')) el('inp-buyer-fb').value = '';
 
+  syncIdentityDisplayUI();
   closeBuyerProfileModal();
   renderWinnerStatus();
-  showToast('🚪 已成功登出並清除本機買家保留資料！');
+  showToast('🚪 已成功登出並清除目前買家綁定狀態！');
 }
 
 /**
@@ -6638,7 +7148,7 @@ function populateFbSetupModal() {
   }
   if (title) {
     if (isReady) {
-      title.textContent = `目前已成功連線至 ${projId} 雲端即時資料庫`;
+      title.textContent = `🟢 目前已正常連線至雲端資料庫（${projId}）`;
     } else {
       title.textContent = `預設綁定 ${projId} 雲端資料庫（本機安全同步模式就緒）`;
     }
@@ -6967,11 +7477,70 @@ function bindEvents() {
   el('btn-nav-admin-logout')?.addEventListener('click', handleAdminLogout);
   el('btn-admin-to-front')?.addEventListener('click', switchToAuctionPage);
 
-  // 12. 買家身分彈窗、自選 7/10/15 天保留期限、門號雲端自動帶入與防棄標登出檢驗
+  // 12. 買家身分彈窗、官方管理者 ⇄ 多組測試買家分身切換器、自選保留期限與防棄標登出檢驗
   el('btn-user-profile')?.addEventListener('click', openBuyerProfileModal);
   el('btn-cancel-profile')?.addEventListener('click', closeBuyerProfileModal);
   el('btn-save-profile')?.addEventListener('click', saveBuyerProfile);
   el('btn-logout-profile')?.addEventListener('click', handleBuyerLogout);
+
+  // 12-0. 👑 身分與測試分身切換器（買家視窗與右上角 ⋯ 選單雙向同步綁定）
+  el('btn-switch-to-seller-identity')?.addEventListener('click', switchToOfficialSellerIdentity);
+  el('btn-reset-test-buyer-identity')?.addEventListener('click', resetTestBuyerAndLoginNew);
+  el('btn-restore-backup-buyer')?.addEventListener('click', restoreBackupTestBuyer);
+  el('btn-qa-quick-to-buyer')?.addEventListener('click', () => {
+    openBuyerProfileModal();
+  });
+
+  // 彈窗內一鍵切換測試買家 A（小建）/ B（阿明）/ C（大華）
+  el('btn-quick-persona-a')?.addEventListener('click', () => quickSwitchPresetPersona('a'));
+  el('btn-quick-persona-b')?.addEventListener('click', () => quickSwitchPresetPersona('b'));
+  el('btn-quick-persona-c')?.addEventListener('click', () => quickSwitchPresetPersona('c'));
+
+  // 右上角「⋯ 更多選單」內之身分與測試分身一鍵切換綁定
+  el('btn-nav-role-seller')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    switchToOfficialSellerIdentity();
+  });
+  el('btn-nav-gen-buyer-a')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    quickSwitchPresetPersona('a');
+  });
+  el('btn-nav-gen-buyer-b')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    quickSwitchPresetPersona('b');
+  });
+  el('btn-nav-gen-buyer-c')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    quickSwitchPresetPersona('c');
+  });
+  el('btn-nav-manage-personas')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    el('nav-more-dropdown')?.classList.remove('show');
+    openBuyerProfileModal();
+  });
+
+  // 未登入管理員時，從買家視窗或 ⋯ 選單一鍵開啟管理員驗證解鎖分身切換器
+  el('btn-unlock-admin-from-buyer')?.addEventListener('click', () => {
+    closeBuyerProfileModal();
+    openAdminLoginModal(() => {
+      syncAdminUIState();
+      openBuyerProfileModal();
+      showToast('👑 已驗證最高管理者身分！已為您解鎖「官方管理者 ⇄ 多組測試買家分身切換器」與免防棄標鎖定特權！', 4200);
+    });
+  });
+  el('btn-nav-unlock-admin-switcher')?.addEventListener('click', () => {
+    el('nav-more-dropdown')?.classList.remove('show');
+    openAdminLoginModal(() => {
+      syncAdminUIState();
+      openBuyerProfileModal();
+      showToast('👑 已驗證最高管理者身分！已為您解鎖「官方管理者 ⇄ 多組測試買家分身切換器」！', 4200);
+    });
+  });
+
+  // 🧹 一鍵清除測試出價與測試問答按鈕綁定（後台頂部、前台管理列、⋯ 更多選單）
+  el('btn-admin-clear-test-data')?.addEventListener('click', () => handleAdminClearTestData(null));
+  el('btn-front-clear-test-data')?.addEventListener('click', () => handleAdminClearTestData(AppState.activeItemId));
+  el('btn-nav-clear-test-data')?.addEventListener('click', () => handleAdminClearTestData(null));
 
   // 點選 7 / 10 / 15 天 或 ∞ 永久保留 即時更新預計到期時間
   document.querySelectorAll('input[name="buyer-retention-days"]').forEach(rad => {
@@ -6991,8 +7560,9 @@ function bindEvents() {
     lookupCloudBuyerByPhone(e.target.value);
   });
   el('inp-buyer-phone')?.addEventListener('click', () => {
+    const isSuperAdmin = Boolean(AppState.isAdmin && AppState.isAdminAuthenticated);
     const lockInfo = checkBuyerHighBidderLock(AppState.userProfile.phone, AppState.userProfile.name);
-    if (lockInfo.locked) {
+    if (lockInfo.locked && !isSuperAdmin) {
       showToast(`🔒 防棄標保護生效中：您目前是【${lockInfo.itemName}】最高出價領先者，無法更改聯絡電話！`);
     }
   });
@@ -7183,6 +7753,15 @@ function bindEvents() {
   el('modal-fb-setup')?.addEventListener('click', e => {
     if (e.target === el('modal-fb-setup')) el('modal-fb-setup')?.classList.remove('show');
   });
+  const fbModalEl = el('modal-fb-setup');
+  if (fbModalEl && typeof MutationObserver !== 'undefined') {
+    const obs = new MutationObserver(() => {
+      if (fbModalEl.classList.contains('show')) {
+        populateFbSetupModal();
+      }
+    });
+    obs.observe(fbModalEl, { attributes: true, attributeFilter: ['class'] });
+  }
 
   // 18-1. 📱 手機觀看模式 / 💻 電腦觀看模式 直覺雙按鈕與單鍵切換綁定
   el('btn-view-desktop')?.addEventListener('click', () => {

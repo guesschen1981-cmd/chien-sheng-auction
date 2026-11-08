@@ -1,12 +1,12 @@
 /* ============================================================
    建生工坊拍賣系統  –  sw.js (Service Worker 腳本)
    ============================================================ */
-const CACHE_NAME = 'jiansheng-auction-v35';
+const CACHE_NAME = 'jiansheng-auction-v37';
 const ASSETS = [
   './',
   './index.html',
-  './style.css?v=6.8&t=20261107_desktop_grid',
-  './app.js?v=6.8&t=20261107_desktop_grid',
+  './style.css?v=7.5&t=20261108_role_hub',
+  './app.js?v=7.5&t=20261108_role_hub',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -34,13 +34,17 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // 對於 Firebase 與外部 CDN 走網絡優先
-  if (event.request.url.includes('firebaseio.com') || event.request.url.includes('googleapis.com')) {
+  if (
+    event.request.url.includes('firebaseio.com') ||
+    event.request.url.includes('firebasedatabase.app') ||
+    event.request.url.includes('googleapis.com') ||
+    event.request.url.includes('my_auction_data.json')
+  ) {
     return;
   }
-  // 網絡優先 (Network First)，網路異常時才回退至快取，確保即時取得最新代碼
+  // 網路優先 (Network First)，確保即時載入最新 HTML/CSS/腳本，離線時才回退快取
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-store' })
       .then(res => {
         if (res && res.status === 200) {
           const resClone = res.clone();

@@ -4654,3 +4654,210 @@ body.view-mode-desktop .btn-submit-bid {
   margin-top: 3px;
   line-height: 1.4;
 }
+
+/* ── 👑 右上角「⋯ 選單」與「👤 買家彈窗」內：官方管理者 ⇄ 多組測試買家分身快速切換器 ── */
+.nav-dropdown-identity-box {
+  background: linear-gradient(145deg, rgba(30, 27, 75, 0.96), rgba(15, 23, 42, 0.96));
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 12px;
+  padding: 9px;
+  margin-bottom: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.nav-id-box-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 900;
+  color: #fde68a;
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.22);
+}
+.nav-id-active-pill {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.2);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  white-space: nowrap;
+}
+.nav-id-active-pill.is-seller {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.5);
+}
+.nav-role-btn.role-seller {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.32), rgba(29, 78, 216, 0.2));
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 8px;
+  color: #dbeafe !important;
+  font-weight: 800;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+}
+.nav-role-btn.role-seller.active-role {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.45);
+}
+.nav-id-sub-lbl {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 700;
+  margin: 5px 0 4px;
+}
+.nav-dropdown-personas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.nav-persona-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.nav-persona-item-btn:hover {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fff;
+}
+.nav-persona-item-btn.active-persona {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(52, 211, 153, 0.55);
+  color: #a7f3d0;
+}
+.nav-id-quick-gen-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.nav-id-quick-gen-row .tbtn {
+  padding: 5px 4px;
+  font-size: 0.7rem;
+  justify-content: center;
+}
+
+.buyer-admin-unlock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px dashed rgba(251, 191, 36, 0.45);
+  font-size: 0.76rem;
+  color: #fde68a;
+}
+.unlock-bar-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+  line-height: 1.4;
+}
+
+.dual-mode-box {
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+.dual-mode-box-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #fde68a;
+  margin-bottom: 6px;
+}
+.test-buyer-personas-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.persona-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: all 0.18s ease;
+}
+.persona-card-item.active {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.65), rgba(16, 185, 129, 0.22));
+  border-color: rgba(52, 211, 153, 0.65);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.22);
+}
+.persona-card-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+.persona-card-name {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.persona-card-phone {
+  font-size: 0.71rem;
+  color: #94a3b8;
+  font-family: var(--f-num);
+}
+.persona-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.dual-quick-personas-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 6px;
+}
+.dual-btn-persona-chip {
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.38);
+  color: #bfdbfe;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 7px 9px;
+  border-radius: 8px;
+  justify-content: center;
+}
+.dual-btn-persona-chip:hover {
+  background: rgba(59, 130, 246, 0.3);
+  color: #fff;
+}
+.buyer-lock-banner.admin-bypass {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.55), rgba(245, 158, 11, 0.18));
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fde68a;
+}
