@@ -73,7 +73,8 @@
           </button>
         </div>
         <!-- 窄螢幕單鍵快速切換按鈕 (手機小螢幕自動顯示) -->
-        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-viewmode" id="btn-toggle-view-mode" type="button" title="切換手機觀看模式 / 電腦觀看模式">
+        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-viewmode" id="btn-toggle-view-mode" type="button"
+          title="切換手機觀看模式 / 電腦觀看模式">
           <span id="view-mode-icon">💻</span>
           <span id="view-mode-text" class="nav-viewmode-text">電腦模式</span>
         </button>
@@ -126,7 +127,8 @@
             <button class="nav-dropdown-item" id="btn-nav-fb-config" type="button" style="display:none;">
               <span>☁️</span> Firebase 雲端設定
             </button>
-            <button class="nav-dropdown-item" id="btn-nav-admin-logout" type="button" style="display:none;color:#f87171;">
+            <button class="nav-dropdown-item" id="btn-nav-admin-logout" type="button"
+              style="display:none;color:#f87171;">
               <span>🔒</span> 登出 / 鎖定後台
             </button>
           </div>
@@ -170,79 +172,81 @@
 
     <div class="auction-container" id="auction-container">
 
-    <!-- ── 1. 結標「競價成功」得標專屬卡片 (結標時於最頂部醒目展示 - 核心功能 6) ── -->
-    <div class="winner-card" id="winner-card">
-      <div class="winner-banner-title">
-        <span class="winner-trophy-large" id="winner-trophy-icon">🏆</span>
-        <div>
-          <div class="winner-title-text" id="winner-headline">🎉 競價成功！恭喜得標！</div>
-          <div style="font-size:.82rem;color:var(--c-text-2);margin-top:2px;" id="winner-subline">本次得標者已出爐</div>
-        </div>
-      </div>
-
-      <!-- 得標金額與時間 -->
-      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;" id="winner-tags-row">
-        <span class="item-tab-badge badge-ended" style="font-size:.85rem;padding:4px 12px;" id="winner-amount-tag">NT$ 0</span>
-        <span class="item-tab-badge badge-live" style="font-size:.85rem;padding:4px 12px;" id="winner-name-tag">得標者：—</span>
-      </div>
-
-      <!-- ── 🎁 次高價買家專屬「遞補購買意願確認卡」（含賣家提供之遞補優惠價、邀請留言與買家回覆備註欄） ── -->
-      <div class="backup-offer-confirm-card" id="backup-offer-confirm-card" style="display:none;">
-        <div class="backup-card-hd">
-          <div class="backup-card-title">
-            <span>🎁</span>
-            <span id="backup-card-heading">賣家專屬遞補購買邀請確認卡</span>
-          </div>
-          <span class="item-tab-badge badge-live" id="backup-card-status-badge">⏳ 待確認意願</span>
-        </div>
-
-        <div class="backup-card-candidate-row" id="backup-card-buyer-info">
-          👤 受邀候選買家：<strong id="backup-card-buyer-name">—</strong>（<span id="backup-card-rank-label">第 2 順位</span>）
-        </div>
-
-        <!-- 價格對比與「遞補優惠價」醒目展示框 -->
-        <div class="backup-price-showcase">
-          <div class="backup-orig-price-col">
-            <span class="backup-price-lbl">您當初最高出價</span>
-            <span class="backup-orig-price-val" id="backup-card-orig-price">NT$ 0</span>
-          </div>
-          <div class="backup-price-arrow">➔</div>
-          <div class="backup-offer-price-col">
-            <span class="backup-price-lbl">💰 賣家提供遞補優惠價</span>
-            <span class="backup-offer-price-val" id="backup-card-offer-price">NT$ 0</span>
-            <span class="backup-discount-pill" id="backup-card-discount-tag" style="display:none;">🎉 已折減優惠</span>
+      <!-- ── 1. 結標「競價成功」得標專屬卡片 (結標時於最頂部醒目展示 - 核心功能 6) ── -->
+      <div class="winner-card" id="winner-card">
+        <div class="winner-banner-title">
+          <span class="winner-trophy-large" id="winner-trophy-icon">🏆</span>
+          <div>
+            <div class="winner-title-text" id="winner-headline">🎉 競價成功！恭喜得標！</div>
+            <div style="font-size:.82rem;color:var(--c-text-2);margin-top:2px;" id="winner-subline">本次得標者已出爐</div>
           </div>
         </div>
 
-        <!-- 賣家邀請留言 -->
-        <div class="backup-seller-msg-box">
-          <div class="backup-seller-msg-hd">💌 賣家專屬邀請留言：</div>
-          <div class="backup-seller-msg-body" id="backup-card-seller-msg"></div>
+        <!-- 得標金額與時間 -->
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;" id="winner-tags-row">
+          <span class="item-tab-badge badge-ended" style="font-size:.85rem;padding:4px 12px;" id="winner-amount-tag">NT$
+            0</span>
+          <span class="item-tab-badge badge-live" style="font-size:.85rem;padding:4px 12px;"
+            id="winner-name-tag">得標者：—</span>
         </div>
 
-        <!-- 買家回覆備註欄 -->
-        <div class="backup-buyer-reply-box" id="backup-buyer-reply-box">
-          <label class="form-label" for="inp-backup-buyer-note" style="font-size:.78rem;color:var(--c-gold-1);">
-            📝 您的回覆備註（可填寫預計自取時間、交割方式或留言給賣家）：
-          </label>
-          <textarea id="inp-backup-buyer-note" class="form-input" rows="2" maxlength="250"
-            style="height:64px;padding:8px 10px;font-size:.84rem;resize:vertical;"
-            placeholder="例：謝謝老闆提供遞補優惠價！我願意購買，預計本週六下午 3 點前往自取。"></textarea>
-        </div>
+        <!-- ── 🎁 次高價買家專屬「遞補購買意願確認卡」（含賣家提供之遞補優惠價、邀請留言與買家回覆備註欄） ── -->
+        <div class="backup-offer-confirm-card" id="backup-offer-confirm-card" style="display:none;">
+          <div class="backup-card-hd">
+            <div class="backup-card-title">
+              <span>🎁</span>
+              <span id="backup-card-heading">賣家專屬遞補購買邀請確認卡</span>
+            </div>
+            <span class="item-tab-badge badge-live" id="backup-card-status-badge">⏳ 待確認意願</span>
+          </div>
 
-        <!-- 同意 / 婉拒操作按鈕列 -->
-        <div class="backup-card-actions" id="backup-card-action-btns">
-          <button type="button" class="tbtn tbtn-gold tbtn-sm backup-accept-btn" id="btn-accept-backup-offer">
-            ✅ 我願意依此遞補優惠價購買
-          </button>
-          <button type="button" class="tbtn tbtn-ghost tbtn-sm backup-decline-btn" id="btn-decline-backup-offer">
-            ❌ 婉拒此次遞補邀請
-          </button>
-        </div>
+          <div class="backup-card-candidate-row" id="backup-card-buyer-info">
+            👤 受邀候選買家：<strong id="backup-card-buyer-name">—</strong>（<span id="backup-card-rank-label">第 2 順位</span>）
+          </div>
 
-        <!-- 已回覆後之狀態顯示 -->
-        <div class="backup-responded-summary" id="backup-responded-summary" style="display:none;"></div>
-      </div>
+          <!-- 價格對比與「遞補優惠價」醒目展示框 -->
+          <div class="backup-price-showcase">
+            <div class="backup-orig-price-col">
+              <span class="backup-price-lbl">您當初最高出價</span>
+              <span class="backup-orig-price-val" id="backup-card-orig-price">NT$ 0</span>
+            </div>
+            <div class="backup-price-arrow">➔</div>
+            <div class="backup-offer-price-col">
+              <span class="backup-price-lbl">💰 賣家提供遞補優惠價</span>
+              <span class="backup-offer-price-val" id="backup-card-offer-price">NT$ 0</span>
+              <span class="backup-discount-pill" id="backup-card-discount-tag" style="display:none;">🎉 已折減優惠</span>
+            </div>
+          </div>
+
+          <!-- 賣家邀請留言 -->
+          <div class="backup-seller-msg-box">
+            <div class="backup-seller-msg-hd">💌 賣家專屬邀請留言：</div>
+            <div class="backup-seller-msg-body" id="backup-card-seller-msg"></div>
+          </div>
+
+          <!-- 買家回覆備註欄 -->
+          <div class="backup-buyer-reply-box" id="backup-buyer-reply-box">
+            <label class="form-label" for="inp-backup-buyer-note" style="font-size:.78rem;color:var(--c-gold-1);">
+              📝 您的回覆備註（可填寫預計自取時間、交割方式或留言給賣家）：
+            </label>
+            <textarea id="inp-backup-buyer-note" class="form-input" rows="2" maxlength="250"
+              style="height:64px;padding:8px 10px;font-size:.84rem;resize:vertical;"
+              placeholder="例：謝謝老闆提供遞補優惠價！我願意購買，預計本週六下午 3 點前往自取。"></textarea>
+          </div>
+
+          <!-- 同意 / 婉拒操作按鈕列 -->
+          <div class="backup-card-actions" id="backup-card-action-btns">
+            <button type="button" class="tbtn tbtn-gold tbtn-sm backup-accept-btn" id="btn-accept-backup-offer">
+              ✅ 我願意依此遞補優惠價購買
+            </button>
+            <button type="button" class="tbtn tbtn-ghost tbtn-sm backup-decline-btn" id="btn-decline-backup-offer">
+              ❌ 婉拒此次遞補邀請
+            </button>
+          </div>
+
+          <!-- 已回覆後之狀態顯示 -->
+          <div class="backup-responded-summary" id="backup-responded-summary" style="display:none;"></div>
+        </div>
 
         <!-- 取貨期限警示 (核心功能 7) -->
         <div class="winner-deadline-alert" id="winner-deadline-alert">
@@ -255,163 +259,189 @@
           <div class="contact-chips-wrap" id="winner-contacts-list"></div>
         </div>
 
-      <!-- 買賣雙方一對一私訊留言板 -->
-      <div class="winner-chat-section" id="winner-chat-section">
-        <div class="winner-chat-title">💬 賣家與得標者專屬私訊留言板</div>
-        <div class="winner-chat-msgs" id="winner-chat-msgs"></div>
-        <div class="winner-chat-compose">
-          <input type="text" class="winner-chat-input" id="winner-msg-input" placeholder="傳送訊息確認取貨細節…" maxlength="200" />
-          <button class="tbtn tbtn-gold tbtn-sm" id="btn-send-winner-msg">送出</button>
-        </div>
-
-        <!-- 管理者已取貨標記按鈕 (核心功能 7) -->
-        <div id="winner-admin-actions" style="margin-top:12px;display:none;">
-          <button class="tbtn tbtn-success tbtn-sm" id="btn-mark-picked-up" style="width:100%;">
-            ✅ 確認客人已完成取貨（歸檔結案）
-          </button>
-        </div>
-      </div>
-
-      <!-- ── 🛡️ 後台「棄標黑名單封鎖 ＋ 第 2、第 3 順位遞補詢問＆遞補優惠價控制台」（僅限最高權限管理者顯示） ── -->
-      <div class="winner-backup-panel" id="winner-backup-panel" style="display:none;">
-        <div class="backup-panel-hd">
-          <div style="font-weight:900;color:var(--c-gold-1);font-size:.92rem;display:flex;align-items:center;gap:6px;">
-            <span>🔄</span> 棄標處理 ＆ 第 2、第 3 順位遞補優惠控制台
-          </div>
-          <span class="item-tab-badge badge-live" style="font-size:.7rem;">彈性遞補成交</span>
-        </div>
-
-        <p style="font-size:.78rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.5;">
-          若原得標買家棄標或未依期取貨，可一鍵將其列入封鎖黑名單，並向第 2、第 3 順位次高價買家發送<strong>「自訂遞補優惠價」</strong>專屬確認邀請：
-        </p>
-
-        <!-- 1. 判定當前得標者棄標並封鎖 -->
-        <div class="backup-default-action-bar">
-          <button type="button" class="tbtn tbtn-danger tbtn-xs" id="btn-mark-winner-default" style="width:100%;justify-content:center;padding:8px 12px;font-weight:800;">
-            🚫 判定當前得標者棄標（列入黑名單並啟動順位遞補）
-          </button>
-        </div>
-
-        <!-- 2. 次高價候選買家順位清單 (自動依出價排序：第 2 順位、第 3 順位...) -->
-        <div style="margin-top:12px;">
-          <div style="font-size:.78rem;font-weight:800;color:#fff;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
-            <span>📋 點選要詢問的次高價候選買家（自動帶入其原最高出價）：</span>
-            <span style="font-size:.7rem;color:var(--c-gold-1);">點擊買家自動帶入下方表單</span>
-          </div>
-          <div id="backup-candidates-list" class="backup-candidates-list"></div>
-        </div>
-
-        <!-- 3. 遞補邀請表單（含「💰 遞補優惠調整價」自訂欄位） -->
-        <div class="backup-offer-form-box">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(135px, 1fr));gap:8px;margin-bottom:10px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:.74rem;">遞補順位</label>
-              <input type="text" id="inp-backup-target-rank" class="form-input" value="第 2 順位" style="height:34px;font-size:.82rem;font-weight:700;color:var(--c-gold-1);" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:.74rem;">受邀買家稱呼 *</label>
-              <input type="text" id="inp-backup-target-name" class="form-input" placeholder="買家稱呼" style="height:34px;font-size:.82rem;" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:.74rem;">受邀買家電話 *</label>
-              <input type="tel" id="inp-backup-target-phone" class="form-input" placeholder="09xxxxxxxx" style="height:34px;font-size:.82rem;" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:.74rem;">買家 Line ID</label>
-              <input type="text" id="inp-backup-target-line" class="form-input" placeholder="選填" style="height:34px;font-size:.82rem;" />
-            </div>
+        <!-- 買賣雙方一對一私訊留言板 -->
+        <div class="winner-chat-section" id="winner-chat-section">
+          <div class="winner-chat-title">💬 賣家與得標者專屬私訊留言板</div>
+          <div class="winner-chat-msgs" id="winner-chat-msgs"></div>
+          <div class="winner-chat-compose">
+            <input type="text" class="winner-chat-input" id="winner-msg-input" placeholder="傳送訊息確認取貨細節…"
+              maxlength="200" />
+            <button class="tbtn tbtn-gold tbtn-sm" id="btn-send-winner-msg">送出</button>
           </div>
 
-          <!-- ★ 核心功能：原出價對照 ＋「💰 遞補優惠調整價」自訂調整欄位 -->
-          <div class="backup-price-adjust-panel">
-            <div class="backup-price-adjust-row">
-              <div class="backup-orig-bid-box">
-                <label class="form-label" style="font-size:.74rem;color:var(--c-text-3);margin-bottom:3px;">
-                  📊 該買家當初最高出價 (TWD)
+          <!-- 管理者已取貨標記按鈕 (核心功能 7) -->
+          <div id="winner-admin-actions" style="margin-top:12px;display:none;">
+            <button class="tbtn tbtn-success tbtn-sm" id="btn-mark-picked-up" style="width:100%;">
+              ✅ 確認客人已完成取貨（歸檔結案）
+            </button>
+          </div>
+        </div>
+
+        <!-- ── 🛡️ 後台「棄標黑名單封鎖 ＋ 第 2、第 3 順位遞補詢問＆遞補優惠價控制台」（僅限最高權限管理者顯示） ── -->
+        <div class="winner-backup-panel" id="winner-backup-panel" style="display:none;">
+          <div class="backup-panel-hd">
+            <div
+              style="font-weight:900;color:var(--c-gold-1);font-size:.92rem;display:flex;align-items:center;gap:6px;">
+              <span>🔄</span> 棄標處理 ＆ 第 2、第 3 順位遞補優惠控制台
+            </div>
+            <span class="item-tab-badge badge-live" style="font-size:.7rem;">彈性遞補成交</span>
+          </div>
+
+          <p style="font-size:.78rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.5;">
+            若原得標買家棄標或未依期取貨，可一鍵將其列入封鎖黑名單，並向第 2、第 3 順位次高價買家發送<strong>「自訂遞補優惠價」</strong>專屬確認邀請：
+          </p>
+
+          <!-- 1. 判定當前得標者棄標並封鎖 -->
+          <div class="backup-default-action-bar">
+            <button type="button" class="tbtn tbtn-danger tbtn-xs" id="btn-mark-winner-default"
+              style="width:100%;justify-content:center;padding:8px 12px;font-weight:800;">
+              🚫 判定當前得標者棄標（列入黑名單並啟動順位遞補）
+            </button>
+          </div>
+
+          <!-- 2. 次高價候選買家順位清單 (自動依出價排序：第 2 順位、第 3 順位...) -->
+          <div style="margin-top:12px;">
+            <div
+              style="font-size:.78rem;font-weight:800;color:#fff;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+              <span>📋 點選要詢問的次高價候選買家（自動帶入其原最高出價）：</span>
+              <span style="font-size:.7rem;color:var(--c-gold-1);">點擊買家自動帶入下方表單</span>
+            </div>
+            <div id="backup-candidates-list" class="backup-candidates-list"></div>
+          </div>
+
+          <!-- 3. 遞補邀請表單（含「💰 遞補優惠調整價」自訂欄位） -->
+          <div class="backup-offer-form-box">
+            <div
+              style="display:grid;grid-template-columns:repeat(auto-fit, minmax(135px, 1fr));gap:8px;margin-bottom:10px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:.74rem;">遞補順位</label>
+                <input type="text" id="inp-backup-target-rank" class="form-input" value="第 2 順位"
+                  style="height:34px;font-size:.82rem;font-weight:700;color:var(--c-gold-1);" />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:.74rem;">受邀買家稱呼 *</label>
+                <input type="text" id="inp-backup-target-name" class="form-input" placeholder="買家稱呼"
+                  style="height:34px;font-size:.82rem;" />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:.74rem;">受邀買家電話 *</label>
+                <input type="tel" id="inp-backup-target-phone" class="form-input" placeholder="09xxxxxxxx"
+                  style="height:34px;font-size:.82rem;" />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:.74rem;">買家 Line ID</label>
+                <input type="text" id="inp-backup-target-line" class="form-input" placeholder="選填"
+                  style="height:34px;font-size:.82rem;" />
+              </div>
+            </div>
+
+            <!-- ★ 核心功能：原出價對照 ＋「💰 遞補優惠調整價」自訂調整欄位 -->
+            <div class="backup-price-adjust-panel">
+              <div class="backup-price-adjust-row">
+                <div class="backup-orig-bid-box">
+                  <label class="form-label" style="font-size:.74rem;color:var(--c-text-3);margin-bottom:3px;">
+                    📊 該買家當初最高出價 (TWD)
+                  </label>
+                  <input type="number" id="inp-backup-orig-bid" class="form-input" value="10000"
+                    style="height:40px;font-family:var(--f-num);font-weight:700;font-size:.95rem;color:var(--c-text-2);background:rgba(255,255,255,0.03);" />
+                </div>
+
+                <div class="backup-custom-offer-box">
+                  <label class="form-label" for="inp-backup-offer-price"
+                    style="font-size:.78rem;color:var(--c-gold-1);font-weight:900;margin-bottom:3px;">
+                    💰 遞補優惠調整價 (TWD) <span style="font-size:.68rem;color:#6ee7b7;font-weight:700;">（正式成交價以此為準）</span>
+                  </label>
+                  <input type="number" id="inp-backup-offer-price" class="form-input backup-offer-price-input"
+                    value="10000" min="1" step="10" placeholder="輸入遞補優惠價" />
+                </div>
+              </div>
+
+              <!-- 快捷折價微調按鈕列 -->
+              <div class="backup-price-quick-btns">
+                <span style="font-size:.72rem;color:var(--c-text-3);">快速調價：</span>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-reset">🔄 帶入原出價</button>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-trim">✂️ 去百位尾數</button>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus100">➖ 折減 100</button>
+                <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus500">➖ 折減 500</button>
+              </div>
+            </div>
+
+            <!-- 賣家自訂邀請話術與快捷範本 -->
+            <div class="form-group" style="margin-top:10px;margin-bottom:8px;">
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
+                <label class="form-label" for="inp-backup-seller-msg"
+                  style="margin-bottom:0;font-size:.78rem;color:var(--c-gold-1);">
+                  💌 賣家遞補邀請話術（自動連動上方「遞補優惠價」）：
                 </label>
-                <input type="number" id="inp-backup-orig-bid" class="form-input" value="10000" style="height:40px;font-family:var(--f-num);font-weight:700;font-size:.95rem;color:var(--c-text-2);background:rgba(255,255,255,0.03);" />
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                  <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="standard"
+                    style="font-size:.68rem;padding:2px 6px;">💬 標準遞補</button>
+                  <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="discount"
+                    style="font-size:.68rem;padding:2px 6px;">🎁 折價優惠</button>
+                  <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="selfpickup"
+                    style="font-size:.68rem;padding:2px 6px;">🏠 自取特惠</button>
+                </div>
               </div>
-
-              <div class="backup-custom-offer-box">
-                <label class="form-label" for="inp-backup-offer-price" style="font-size:.78rem;color:var(--c-gold-1);font-weight:900;margin-bottom:3px;">
-                  💰 遞補優惠調整價 (TWD) <span style="font-size:.68rem;color:#6ee7b7;font-weight:700;">（正式成交價以此為準）</span>
-                </label>
-                <input type="number" id="inp-backup-offer-price" class="form-input backup-offer-price-input" value="10000" min="1" step="10" placeholder="輸入遞補優惠價" />
-              </div>
+              <textarea id="inp-backup-seller-msg" class="form-input" rows="3" maxlength="350"
+                style="height:76px;padding:8px 10px;font-size:.82rem;line-height:1.45;resize:vertical;"
+                placeholder="輸入要發送給次高價買家的邀請留言..."></textarea>
             </div>
 
-            <!-- 快捷折價微調按鈕列 -->
-            <div class="backup-price-quick-btns">
-              <span style="font-size:.72rem;color:var(--c-text-3);">快速調價：</span>
-              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-reset">🔄 帶入原出價</button>
-              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-trim">✂️ 去百位尾數</button>
-              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus100">➖ 折減 100</button>
-              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-offer-price-minus500">➖ 折減 500</button>
+            <!-- 一鍵複製邀請文案與專屬連結按鈕 -->
+            <button type="button" class="tbtn tbtn-gold tbtn-sm" id="btn-copy-backup-invite"
+              style="width:100%;min-height:42px;font-size:.86rem;font-weight:900;white-space:normal;line-height:1.35;padding:8px 12px;">
+              📋 複製邀請文案與專屬連結（同步送出遞補優惠邀請卡）
+            </button>
+
+            <!-- 目前已發送之遞補邀請即時狀態追蹤區 -->
+            <div id="admin-backup-offer-status-box" class="admin-backup-offer-status-box" style="display:none;"></div>
+          </div>
+        </div>
+
+        <!-- ── 🔄 一鍵重新開啟競標快捷面板（僅限最高權限管理者顯示） ── -->
+        <div class="winner-relist-panel" id="winner-relist-panel"
+          style="display:none;margin-top:14px;padding:14px;background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.25);border-radius:12px;">
+          <div
+            style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <div style="font-weight:800;color:var(--c-gold-1);font-size:.9rem;display:flex;align-items:center;gap:6px;">
+              <span>🔄</span> 重新開啟競標控制台
+            </div>
+            <span style="font-size:.72rem;color:var(--c-text-3);">調整起標價並選擇重開天數</span>
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:.76rem;color:var(--c-text-2);margin-bottom:4px;font-weight:600;">
+              💰 本次重新起標價 (TWD)：
+            </label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="number" id="winner-relist-price" class="form-input"
+                style="height:38px;font-family:var(--f-num);font-weight:800;font-size:1rem;color:var(--c-gold-1);max-width:180px;"
+                placeholder="輸入起標金額" />
+              <span style="font-size:.76rem;color:var(--c-text-3);">元起標</span>
             </div>
           </div>
 
-          <!-- 賣家自訂邀請話術與快捷範本 -->
-          <div class="form-group" style="margin-top:10px;margin-bottom:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
-              <label class="form-label" for="inp-backup-seller-msg" style="margin-bottom:0;font-size:.78rem;color:var(--c-gold-1);">
-                💌 賣家遞補邀請話術（自動連動上方「遞補優惠價」）：
-              </label>
-              <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="standard" style="font-size:.68rem;padding:2px 6px;">💬 標準遞補</button>
-                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="discount" style="font-size:.68rem;padding:2px 6px;">🎁 折價優惠</button>
-                <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-backup-msg-tpl" data-tpl="selfpickup" style="font-size:.68rem;padding:2px 6px;">🏠 自取特惠</button>
-              </div>
-            </div>
-            <textarea id="inp-backup-seller-msg" class="form-input" rows="3" maxlength="350"
-              style="height:76px;padding:8px 10px;font-size:.82rem;line-height:1.45;resize:vertical;"
-              placeholder="輸入要發送給次高價買家的邀請留言..."></textarea>
-          </div>
-
-          <!-- 一鍵複製邀請文案與專屬連結按鈕 -->
-          <button type="button" class="tbtn tbtn-gold tbtn-sm" id="btn-copy-backup-invite" style="width:100%;min-height:42px;font-size:.86rem;font-weight:900;white-space:normal;line-height:1.35;padding:8px 12px;">
-            📋 複製邀請文案與專屬連結（同步送出遞補優惠邀請卡）
-          </button>
-
-          <!-- 目前已發送之遞補邀請即時狀態追蹤區 -->
-          <div id="admin-backup-offer-status-box" class="admin-backup-offer-status-box" style="display:none;"></div>
-        </div>
-      </div>
-
-      <!-- ── 🔄 一鍵重新開啟競標快捷面板（僅限最高權限管理者顯示） ── -->
-      <div class="winner-relist-panel" id="winner-relist-panel" style="display:none;margin-top:14px;padding:14px;background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.25);border-radius:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <div style="font-weight:800;color:var(--c-gold-1);font-size:.9rem;display:flex;align-items:center;gap:6px;">
-            <span>🔄</span> 重新開啟競標控制台
-          </div>
-          <span style="font-size:.72rem;color:var(--c-text-3);">調整起標價並選擇重開天數</span>
-        </div>
-
-        <div style="margin-bottom:10px;">
-          <label style="display:block;font-size:.76rem;color:var(--c-text-2);margin-bottom:4px;font-weight:600;">
-            💰 本次重新起標價 (TWD)：
-          </label>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input type="number" id="winner-relist-price" class="form-input" style="height:38px;font-family:var(--f-num);font-weight:800;font-size:1rem;color:var(--c-gold-1);max-width:180px;" placeholder="輸入起標金額" />
-            <span style="font-size:.76rem;color:var(--c-text-3);">元起標</span>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
+            <button type="button" class="tbtn tbtn-gold tbtn-sm btn-relist-action" data-mode="reset24" data-hours="24"
+              style="padding:8px 10px;font-size:.78rem;font-weight:700;">
+              ⚡ 重開 24H (動態重置)
+            </button>
+            <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="24"
+              style="padding:8px 10px;font-size:.78rem;font-weight:700;">
+              🕒 重開 24H (固定期限)
+            </button>
+            <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="72"
+              style="padding:8px 10px;font-size:.78rem;font-weight:700;">
+              📅 重開 3 天
+            </button>
+            <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="168"
+              style="padding:8px 10px;font-size:.78rem;font-weight:700;">
+              📅 重開 7 天
+            </button>
           </div>
         </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
-          <button type="button" class="tbtn tbtn-gold tbtn-sm btn-relist-action" data-mode="reset24" data-hours="24" style="padding:8px 10px;font-size:.78rem;font-weight:700;">
-            ⚡ 重開 24H (動態重置)
-          </button>
-          <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="24" style="padding:8px 10px;font-size:.78rem;font-weight:700;">
-            🕒 重開 24H (固定期限)
-          </button>
-          <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="72" style="padding:8px 10px;font-size:.78rem;font-weight:700;">
-            📅 重開 3 天
-          </button>
-          <button type="button" class="tbtn tbtn-ghost tbtn-sm btn-relist-action" data-mode="fixed" data-hours="168" style="padding:8px 10px;font-size:.78rem;font-weight:700;">
-            📅 重開 7 天
-          </button>
-        </div>
-      </div>
-    </div><!-- /winner-card -->
+      </div><!-- /winner-card -->
 
       <!-- ════════════════════════════════════════════════════════
            【左側欄位：視覺展示區（電腦模式佔 55% 寬度）】
@@ -419,82 +449,86 @@
            ════════════════════════════════════════════════════════ -->
       <div class="auction-col-main" id="auction-col-main">
 
-      <!-- ── 2. 商品視覺展示主卡片 (大尺寸主圖輪播 + 滿版預覽 + 28 張實拍多欄網格縮圖 + 商品標題) ── -->
-      <div class="acard" id="product-card">
-        <!-- 圖片輪播主舞台 (支援左右切換箭頭與點擊滿版放大預覽) -->
-        <div class="gallery-wrap" id="gallery-wrap">
-          <img id="gallery-main-img" class="gallery-img" src="icon-192.png" alt="商品圖片" title="點擊開啟滿版高畫質大圖預覽" />
-          <button class="gallery-arrow gallery-prev" id="btn-gallery-prev" type="button" aria-label="上一張" title="上一張實拍照">‹</button>
-          <button class="gallery-arrow gallery-next" id="btn-gallery-next" type="button" aria-label="下一張" title="下一張實拍照">›</button>
-          <button class="gallery-zoom-btn" id="btn-gallery-zoom" type="button" title="點擊開啟全螢幕滿版預覽">
-            <span>🔍</span>
-            <span>滿版預覽</span>
-          </button>
-          <div class="gallery-counter" id="gallery-counter">1 / 1</div>
-        </div>
-
-        <!-- 電腦版縮圖網格導覽列標題 -->
-        <div class="gallery-thumbs-hd" id="gallery-thumbs-hd">
-          <span>🖼️ 實拍多圖總覽（點擊任一縮圖即時切換主圖）</span>
-          <span class="gallery-thumbs-count-badge" id="gallery-thumbs-count-badge">共 28 張實拍照</span>
-        </div>
-
-        <!-- 縮圖列表 (電腦模式為整齊多欄 Grid 網格，手機模式為 60x60 水平流暢滑動) -->
-        <div class="gallery-thumbs" id="gallery-thumbs"></div>
-
-        <!-- 商品主標題與店家識別徽章 -->
-        <div class="product-title-row">
-          <!-- 店家識別標籤 (在商品名稱正上方) -->
-          <div class="seller-identity-badge" id="product-seller-badge">
-            <img class="seller-badge-logo" id="product-seller-logo" src="icon-192.png" alt="店家Logo"
-              onerror="this.src='icon-192.png'" />
-            <span class="seller-badge-name" id="product-seller-name">建生工坊</span>
+        <!-- ── 2. 商品視覺展示主卡片 (大尺寸主圖輪播 + 滿版預覽 + 28 張實拍多欄網格縮圖 + 商品標題) ── -->
+        <div class="acard" id="product-card">
+          <!-- 圖片輪播主舞台 (支援左右切換箭頭與點擊滿版放大預覽) -->
+          <div class="gallery-wrap" id="gallery-wrap">
+            <img id="gallery-main-img" class="gallery-img" src="icon-192.png" alt="商品圖片" title="點擊開啟滿版高畫質大圖預覽" />
+            <button class="gallery-arrow gallery-prev" id="btn-gallery-prev" type="button" aria-label="上一張"
+              title="上一張實拍照">‹</button>
+            <button class="gallery-arrow gallery-next" id="btn-gallery-next" type="button" aria-label="下一張"
+              title="下一張實拍照">›</button>
+            <button class="gallery-zoom-btn" id="btn-gallery-zoom" type="button" title="點擊開啟全螢幕滿版預覽">
+              <span>🔍</span>
+              <span>滿版預覽</span>
+            </button>
+            <div class="gallery-counter" id="gallery-counter">1 / 1</div>
           </div>
 
-          <h1 class="product-name" id="product-name">正在連線載入商品…</h1>
-          <div class="product-subtitle" id="product-subtitle"></div>
-        </div>
-      </div>
-
-      <!-- ── 5. 多平台實拍影音播放器卡片 (緊接於縮圖網格下方展示 - 核心功能 3) ── -->
-      <div class="acard video-card" id="product-video-card" style="display:none;">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>🎬</span> 商品實拍實物影音</h2>
-          <span class="item-tab-badge badge-live" id="video-platform-badge">影音展示</span>
-        </div>
-        <div class="video-embed-container" id="video-embed-container"></div>
-      </div>
-
-      <!-- ── 2-B. 詳細規格文字說明、取貨方式、賣家備註與保固說明卡片 ── -->
-      <div class="acard product-specs-card" id="product-specs-card">
-        <div class="acard-hd" style="border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:10px;margin-bottom:10px;">
-          <h2 class="acard-title"><span>📋</span> 商品詳細規格與實測機況說明</h2>
-          <span class="item-tab-badge badge-live">完整實測資訊</span>
-        </div>
-
-        <!-- 取件說明標籤 (由腳本動態渲染自取、宅配、超商與自訂說明) -->
-        <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;" id="pickup-chips-container"></div>
-
-        <!-- 詳細規格文字說明 -->
-        <div class="product-desc" id="product-desc"></div>
-
-        <!-- 📋 額外備註說明與注意事項區塊 (賣家額外自訂說明) -->
-        <div id="product-extra-notes-box"
-          style="margin-top:14px;padding:12px;background:rgba(255,255,255,0.04);border:1px dashed var(--c-border);border-radius:var(--r-md);display:none;">
-          <div
-            style="font-size:.78rem;font-weight:700;color:var(--c-gold-1);margin-bottom:4px;display:flex;align-items:center;gap:6px;">
-            <span>📋</span> 賣家額外備註說明 / 注意事項
+          <!-- 電腦版縮圖網格導覽列標題 -->
+          <div class="gallery-thumbs-hd" id="gallery-thumbs-hd">
+            <span>🖼️ 實拍多圖總覽（點擊任一縮圖即時切換主圖）</span>
+            <span class="gallery-thumbs-count-badge" id="gallery-thumbs-count-badge">共 28 張實拍照</span>
           </div>
-          <div id="product-extra-notes-text"
-            style="font-size:.82rem;color:var(--c-text-2);white-space:pre-line;line-height:1.5;"></div>
+
+          <!-- 縮圖列表 (電腦模式為整齊多欄 Grid 網格，手機模式為 60x60 水平流暢滑動) -->
+          <div class="gallery-thumbs" id="gallery-thumbs"></div>
+
+          <!-- 商品主標題與店家識別徽章 -->
+          <div class="product-title-row">
+            <!-- 店家識別標籤 (在商品名稱正上方) -->
+            <div class="seller-identity-badge" id="product-seller-badge">
+              <img class="seller-badge-logo" id="product-seller-logo" src="icon-192.png" alt="店家Logo"
+                onerror="this.src='icon-192.png'" />
+              <span class="seller-badge-name" id="product-seller-name">建生工坊</span>
+            </div>
+
+            <h1 class="product-name" id="product-name">正在連線載入商品…</h1>
+            <div class="product-subtitle" id="product-subtitle"></div>
+          </div>
         </div>
 
-        <!-- 🛡️ 保固條件說明 -->
-        <div id="product-warranty-box" style="margin-top:10px;display:none;font-size:.78rem;color:var(--c-text-3);">
-          <span id="product-warranty-badge" class="item-tab-badge badge-live" style="margin-right:6px;">🛡️ 保固說明</span>
-          <span id="product-warranty-text">原件現況出售</span>
+        <!-- ── 5. 多平台實拍影音播放器卡片 (緊接於縮圖網格下方展示 - 核心功能 3) ── -->
+        <div class="acard video-card" id="product-video-card" style="display:none;">
+          <div class="acard-hd">
+            <h2 class="acard-title"><span>🎬</span> 商品實拍實物影音</h2>
+            <span class="item-tab-badge badge-live" id="video-platform-badge">影音展示</span>
+          </div>
+          <div class="video-embed-container" id="video-embed-container"></div>
         </div>
-      </div>
+
+        <!-- ── 2-B. 詳細規格文字說明、取貨方式、賣家備註與保固說明卡片 ── -->
+        <div class="acard product-specs-card" id="product-specs-card">
+          <div class="acard-hd"
+            style="border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:10px;margin-bottom:10px;">
+            <h2 class="acard-title"><span>📋</span> 商品詳細規格與實測機況說明</h2>
+            <span class="item-tab-badge badge-live">完整實測資訊</span>
+          </div>
+
+          <!-- 取件說明標籤 (由腳本動態渲染自取、宅配、超商與自訂說明) -->
+          <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;" id="pickup-chips-container"></div>
+
+          <!-- 詳細規格文字說明 -->
+          <div class="product-desc" id="product-desc"></div>
+
+          <!-- 📋 額外備註說明與注意事項區塊 (賣家額外自訂說明) -->
+          <div id="product-extra-notes-box"
+            style="margin-top:14px;padding:12px;background:rgba(255,255,255,0.04);border:1px dashed var(--c-border);border-radius:var(--r-md);display:none;">
+            <div
+              style="font-size:.78rem;font-weight:700;color:var(--c-gold-1);margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+              <span>📋</span> 賣家額外備註說明 / 注意事項
+            </div>
+            <div id="product-extra-notes-text"
+              style="font-size:.82rem;color:var(--c-text-2);white-space:pre-line;line-height:1.5;"></div>
+          </div>
+
+          <!-- 🛡️ 保固條件說明 -->
+          <div id="product-warranty-box" style="margin-top:10px;display:none;font-size:.78rem;color:var(--c-text-3);">
+            <span id="product-warranty-badge" class="item-tab-badge badge-live" style="margin-right:6px;">🛡️
+              保固說明</span>
+            <span id="product-warranty-text">原件現況出售</span>
+          </div>
+        </div>
 
       </div><!-- /auction-col-main -->
 
@@ -504,179 +538,221 @@
            ════════════════════════════════════════════════════════ -->
       <div class="auction-col-side" id="auction-col-side">
 
-      <!-- ── 3. 核心拍賣倒數計時器卡片 (醒目大字版倒數計時器 - 核心功能 1) ── -->
-      <div class="timer-card" id="timer-card">
-        <span class="timer-status-chip live" id="timer-status-chip">
-          <span style="font-size:.75rem;">●</span>
-          <span id="timer-status-text">競標進行中</span>
-        </span>
+        <!-- ── 3. 核心拍賣倒數計時器卡片 (醒目大字版倒數計時器 - 核心功能 1) ── -->
+        <div class="timer-card" id="timer-card">
+          <span class="timer-status-chip live" id="timer-status-chip">
+            <span style="font-size:.75rem;">●</span>
+            <span id="timer-status-text">競標進行中</span>
+          </span>
 
-        <!-- 數字計時器 -->
-        <div class="timer-digits-box">
-          <div class="time-unit-box">
-            <div class="time-unit-val" id="t-days">00</div>
-            <div class="time-unit-lbl">天</div>
-          </div>
-          <div class="time-unit-sep">:</div>
-          <div class="time-unit-box">
-            <div class="time-unit-val" id="t-hours">00</div>
-            <div class="time-unit-lbl">時</div>
-          </div>
-          <div class="time-unit-sep">:</div>
-          <div class="time-unit-box">
-            <div class="time-unit-val" id="t-mins">00</div>
-            <div class="time-unit-lbl">分</div>
-          </div>
-          <div class="time-unit-sep">:</div>
-          <div class="time-unit-box">
-            <div class="time-unit-val" id="t-secs">00</div>
-            <div class="time-unit-lbl">秒</div>
-          </div>
-        </div>
-
-        <!-- 防壓標提示 -->
-        <div class="anti-snipe-pill" id="anti-snipe-pill">
-          🛡️ 防壓標保護機制生效中
-        </div>
-
-        <!-- 管理者應變控制列 (核心功能 7) -->
-        <div id="admin-item-controls"
-          style="margin-top:12px;padding-top:10px;border-top:1px solid var(--c-border);display:none;gap:8px;flex-wrap:wrap;justify-content:center;">
-          <button class="tbtn tbtn-danger tbtn-xs" id="btn-admin-end-early" title="立即提前結束本商品競標">
-            🛑 手動提前結標
-          </button>
-          <button class="tbtn tbtn-ghost tbtn-xs" id="btn-admin-delete-item" style="color:#f87171;" title="自雲端一鍵刪除此商品">
-            🗑️ 刪除此品項
-          </button>
-        </div>
-      </div>
-
-      <!-- ── 4. 目前最高出價卡片 (即時同步最高價與領先者資訊 - 核心功能 2 & 3) ── -->
-      <div class="bid-current-card" id="bid-current-card">
-        <div class="bid-row-header">
-          <span>目前最高價（即時同步）</span>
-          <span id="active-currency-badge" class="item-tab-badge badge-live">TWD NT$</span>
-        </div>
-
-        <!-- 大字最高價 -->
-        <div class="bid-price-huge" id="cur-bid-amount">NT$ 0</div>
-
-        <!-- 最高出價者 -->
-        <div class="top-bidder-row">
-          <span>領先買家</span>
-          <span class="top-bidder-name" id="cur-top-bidder">尚無出價</span>
-        </div>
-
-        <!-- 下一口最低提示 (嚴格大於檢驗) -->
-        <div class="next-bid-hint">
-          <span>下一口最低出價：</span>
-          <strong id="next-min-bid-val" style="color:var(--c-gold-1);">NT$ 100</strong>
-        </div>
-      </div>
-
-      <!-- ── 4-B. 快捷出價面板 (電腦模式直接固定於右欄核心區，手機模式懸浮於螢幕底部) ── -->
-      <aside class="mobile-bid-bar" id="mobile-bid-bar" aria-label="競標操作欄">
-        <div class="mobile-bid-inner">
-          <div class="desktop-bid-console-hd" id="desktop-bid-console-hd">
-            <span>🔨 快捷出價控制面板</span>
-            <span class="item-tab-badge badge-live">一鍵加價出標</span>
-          </div>
-          <!-- 快速加價按鈕列 (支援 +10 / +50 / +100 / +150 / +200 / +500 一鍵加價) -->
-          <div class="quick-chips-row" id="quick-chips-row">
-            <button class="quick-chip" type="button" data-add="10">+10</button>
-            <button class="quick-chip" type="button" data-add="50">+50</button>
-            <button class="quick-chip" type="button" data-add="100">+100</button>
-            <button class="quick-chip" type="button" data-add="150">+150</button>
-            <button class="quick-chip" type="button" data-add="200">+200</button>
-            <button class="quick-chip" type="button" data-add="500">+500</button>
+          <!-- 數字計時器 -->
+          <div class="timer-digits-box">
+            <div class="time-unit-box">
+              <div class="time-unit-val" id="t-days">00</div>
+              <div class="time-unit-lbl">天</div>
+            </div>
+            <div class="time-unit-sep">:</div>
+            <div class="time-unit-box">
+              <div class="time-unit-val" id="t-hours">00</div>
+              <div class="time-unit-lbl">時</div>
+            </div>
+            <div class="time-unit-sep">:</div>
+            <div class="time-unit-box">
+              <div class="time-unit-val" id="t-mins">00</div>
+              <div class="time-unit-lbl">分</div>
+            </div>
+            <div class="time-unit-sep">:</div>
+            <div class="time-unit-box">
+              <div class="time-unit-val" id="t-secs">00</div>
+              <div class="time-unit-lbl">秒</div>
+            </div>
           </div>
 
-          <!-- 微調按鈕與送出欄 -->
-          <div class="bid-input-row">
-            <button class="stepper-btn" id="btn-bid-minus" type="button" aria-label="減少出價金額">−</button>
-            <input type="text" class="bid-amount-input" id="inp-bid-val" placeholder="0" inputmode="numeric"
-              pattern="[0-9]*" autocomplete="off" />
-            <button class="stepper-btn" id="btn-bid-plus" type="button" aria-label="增加出價金額">＋</button>
-            <button class="btn-submit-bid" id="btn-submit-bid" type="button">
-              <span>🔨</span>
-              <span id="btn-submit-text">立即出標</span>
+          <!-- 防壓標提示 -->
+          <div class="anti-snipe-pill" id="anti-snipe-pill">
+            🛡️ 防壓標保護機制生效中
+          </div>
+
+          <!-- 管理者應變控制列 (核心功能 7) -->
+          <div id="admin-item-controls"
+            style="margin-top:12px;padding-top:10px;border-top:1px solid var(--c-border);display:none;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button class="tbtn tbtn-danger tbtn-xs" id="btn-admin-end-early" title="立即提前結束本商品競標">
+              🛑 手動提前結標
+            </button>
+            <button class="tbtn tbtn-ghost tbtn-xs" id="btn-admin-delete-item" style="color:#f87171;"
+              title="自雲端一鍵刪除此商品">
+              🗑️ 刪除此品項
             </button>
           </div>
         </div>
-      </aside>
 
-      <!-- ── 6. 即時出價紀錄卡片 (折疊式清單) ── -->
-      <div class="acard history-card" id="history-card" style="padding:14px;">
-        <div class="history-toggle-bar" id="history-toggle-bar">
-          <span>📋 即時出價紀錄 (<span id="history-count">0</span> 筆)</span>
-          <span id="history-arrow">▼</span>
-        </div>
-        <div class="history-list" id="history-list">
-          <div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無出價紀錄，成為第一位出標者！</div>
-        </div>
-      </div>
+        <!-- ── 4. 目前最高出價卡片 (即時同步最高價與領先者資訊 - 核心功能 2 & 3) ── -->
+        <div class="bid-current-card" id="bid-current-card">
+          <div class="bid-row-header">
+            <span>目前最高價（即時同步）</span>
+            <span id="active-currency-badge" class="item-tab-badge badge-live">TWD NT$</span>
+          </div>
 
-      <!-- ── 7. 結構化樹狀 Q&A 一對一問答討論串 (核心功能 8) ── -->
-      <div class="acard qa-section" id="qa-section">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>💬</span> 一對一結構化問答討論串</h2>
-          <span class="item-tab-badge badge-live">即時解答</span>
-        </div>
+          <!-- 大字最高價 -->
+          <div class="bid-price-huge" id="cur-bid-amount">NT$ 0</div>
 
-        <!-- 買家發問輸入框 -->
-        <div class="qa-ask-box">
-          <textarea id="qa-ask-input" class="qa-ask-input" placeholder="對本商品外觀、保固或取貨有疑問嗎？歡迎在此提問…" rows="2"
-            maxlength="300"></textarea>
-          <div class="qa-ask-bar">
-            <button class="tbtn tbtn-purple tbtn-sm" id="btn-send-question" type="button">送出提問</button>
+          <!-- 最高出價者 -->
+          <div class="top-bidder-row">
+            <span>領先買家</span>
+            <span class="top-bidder-name" id="cur-top-bidder">尚無出價</span>
+          </div>
+
+          <!-- 下一口最低提示 (嚴格大於檢驗) -->
+          <div class="next-bid-hint">
+            <span>下一口最低出價：</span>
+            <strong id="next-min-bid-val" style="color:var(--c-gold-1);">NT$ 100</strong>
           </div>
         </div>
 
-        <!-- 問答卡片列表 -->
-        <div class="qa-list" id="qa-list">
-          <div style="text-align:center;padding:18px 0;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">
-            目前本品項尚無問答，若有任何問題歡迎提問！
-          </div>
-        </div>
-      </div>
+        <!-- ── 4-B. 快捷出價面板 (電腦模式直接固定於右欄核心區，手機模式懸浮於螢幕底部) ── -->
+        <aside class="mobile-bid-bar" id="mobile-bid-bar" aria-label="競標操作欄">
+          <div class="mobile-bid-inner">
+            <div class="desktop-bid-console-hd" id="desktop-bid-console-hd">
+              <span>🔨 快捷出價控制面板</span>
+              <span class="item-tab-badge badge-live">一鍵加價出標</span>
+            </div>
+            <!-- 快速加價按鈕列 (支援 +10 / +50 / +100 / +150 / +200 / +500 一鍵加價) -->
+            <div class="quick-chips-row" id="quick-chips-row">
+              <button class="quick-chip" type="button" data-add="10">+10</button>
+              <button class="quick-chip" type="button" data-add="50">+50</button>
+              <button class="quick-chip" type="button" data-add="100">+100</button>
+              <button class="quick-chip" type="button" data-add="150">+150</button>
+              <button class="quick-chip" type="button" data-add="200">+200</button>
+              <button class="quick-chip" type="button" data-add="500">+500</button>
+            </div>
 
-      <!-- ── 8. 分享與 QR Code 卡片 (單品專屬鎖定 + 帶品名 QR 圖卡下載) ── -->
-      <div class="acard share-card" id="share-card">
-        <div class="acard-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-          <h2 class="acard-title"><span>🔗</span> 分享此拍賣品項</h2>
-          <span style="font-size:.74rem;color:var(--c-gold-1);font-weight:700;" id="share-item-badge">📱 專屬單品獨立連結</span>
-        </div>
-        <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">
-          掃描專屬 QR Code 或發送獨立連結，客人進入後直接鎖定本商品競標。
-        </p>
-
-        <!-- 單品專屬模式 / 賣場大廳模式切換 -->
-        <div class="share-mode-radios">
-          <label class="share-mode-radio-card">
-            <input type="radio" name="share-link-mode" id="share-mode-single" value="single" checked style="accent-color:var(--c-gold-1);" />
-            <span>🎯 <strong>單品專屬頁</strong><br><small style="color:var(--c-text-3);">推薦：只看此商品</small></span>
-          </label>
-          <label class="share-mode-radio-card share-mode-radio-alt">
-            <input type="radio" name="share-link-mode" id="share-mode-all" value="all" style="accent-color:var(--c-gold-1);" />
-            <span>🏬 <strong>賣場總覽</strong><br><small style="color:var(--c-text-3);">保留頂端商品分頁</small></span>
-          </label>
-        </div>
-
-        <div class="share-body-layout">
-          <div id="qr-container" class="share-qr-box"></div>
-          <div class="share-actions-col">
-            <input type="text" id="share-url-input" class="form-input share-url-input" readonly />
-            <div class="share-btns-stack">
-              <button class="tbtn tbtn-gold tbtn-sm share-btn-full" id="btn-copy-share" type="button">
-                📋 複製專屬連結
-              </button>
-              <button class="tbtn tbtn-purple tbtn-sm share-btn-full" id="btn-download-qr-card" type="button">
-                📥 下載此商品專屬 QR 圖卡（含品名標籤）
+            <!-- 微調按鈕與送出欄 -->
+            <div class="bid-input-row">
+              <button class="stepper-btn" id="btn-bid-minus" type="button" aria-label="減少出價金額">−</button>
+              <input type="text" class="bid-amount-input" id="inp-bid-val" placeholder="0" inputmode="numeric"
+                pattern="[0-9]*" autocomplete="off" />
+              <button class="stepper-btn" id="btn-bid-plus" type="button" aria-label="增加出價金額">＋</button>
+              <button class="btn-submit-bid" id="btn-submit-bid" type="button">
+                <span>🔨</span>
+                <span id="btn-submit-text">立即出標</span>
               </button>
             </div>
           </div>
+        </aside>
+
+        <!-- ── 6. 即時出價紀錄卡片 (折疊式清單) ── -->
+        <div class="acard history-card" id="history-card" style="padding:14px;">
+          <div class="history-toggle-bar" id="history-toggle-bar">
+            <span>📋 即時出價紀錄 (<span id="history-count">0</span> 筆)</span>
+            <span id="history-arrow">▼</span>
+          </div>
+          <div class="history-list" id="history-list">
+            <div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無出價紀錄，成為第一位出標者！</div>
+          </div>
         </div>
-      </div>
+
+        <!-- ── 7. 現代化流水式 Q&A 問答討論串 ＋ 多維度排序過濾 (核心功能 8 升級) ── -->
+        <div class="acard qa-section" id="qa-section">
+          <div class="acard-hd qa-section-hd">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <h2 class="acard-title"><span>💬</span> 問答討論串</h2>
+              <span class="qa-summary-pill" id="qa-summary-badge">共 0 則討論</span>
+            </div>
+            <span class="item-tab-badge badge-live" id="qa-unanswered-top-pill">即時互動解答</span>
+          </div>
+
+          <!-- 買家發問輸入框 ＋ 快速提問引導膠囊 -->
+          <div class="qa-ask-box" id="qa-ask-box">
+            <div class="qa-buyer-prompts-bar" id="qa-buyer-quick-prompts">
+              <span class="qa-prompts-lbl">💡 快速提問：</span>
+              <button type="button" class="qa-prompt-chip" data-prompt="請問這台商品目前還有現貨嗎？可以直接出標嗎？">📦 還有現貨嗎？</button>
+              <button type="button" class="qa-prompt-chip" data-prompt="請問高雄小港區桂林哪個時段方便約現場看機自取呢？">🏠 何時可自取？</button>
+              <button type="button" class="qa-prompt-chip" data-prompt="請問目前電池蓄電、散熱與各項功能都正常嗎？有附原廠變壓器嗎？">💻 機況與配件？</button>
+              <button type="button" class="qa-prompt-chip" data-prompt="請問除了高雄小港自取外，外縣市得標可以協助寄送嗎？">🚚 可否寄送？</button>
+            </div>
+            <div class="qa-compose-row">
+              <textarea id="qa-ask-input" class="qa-ask-input" placeholder="對本商品外觀、保固或取貨有疑問嗎？歡迎在此留言提問（Ctrl + Enter 快速送出）…" rows="2"
+                maxlength="350"></textarea>
+            </div>
+            <div class="qa-ask-bar">
+              <span class="qa-ask-hint">🔒 您的聯絡電話僅賣家可見，公開留言自動遮罩保護隱私</span>
+              <button class="tbtn tbtn-purple tbtn-sm" id="btn-send-question" type="button">💬 送出提問</button>
+            </div>
+          </div>
+
+          <!-- 排序與篩選切換列 (Sorting & Filtering Bar) -->
+          <div class="qa-filter-bar" id="qa-filter-bar" role="tablist" aria-label="問答排序與篩選">
+            <button type="button" class="qa-filter-tab active" id="qa-tab-latest" data-qa-filter="latest" role="tab" aria-selected="true">
+              <span>🕒</span>
+              <span>最新留言</span>
+              <span class="qa-tab-count" id="qa-count-latest">0</span>
+            </button>
+            <button type="button" class="qa-filter-tab" id="qa-tab-hot" data-qa-filter="hot" role="tab" aria-selected="false">
+              <span>🔥</span>
+              <span>最熱門</span>
+              <span class="qa-tab-count" id="qa-count-hot">0</span>
+            </button>
+            <button type="button" class="qa-filter-tab qa-tab-unanswered" id="qa-tab-unanswered" data-qa-filter="unanswered" role="tab" aria-selected="false" title="篩選尚未回覆或買家有新追問的留言">
+              <span>❓</span>
+              <span>待回覆專區</span>
+              <span class="qa-tab-count qa-badge-urgent" id="qa-count-unanswered">0</span>
+            </button>
+            <button type="button" class="qa-filter-tab" id="qa-tab-mine" data-qa-filter="mine" role="tab" aria-selected="false">
+              <span>💬</span>
+              <span>我的發問</span>
+              <span class="qa-tab-count" id="qa-count-mine">0</span>
+            </button>
+          </div>
+
+          <!-- 流水式留言串容器 (Timeline Stream) -->
+          <div class="qa-list qa-timeline-stream" id="qa-list">
+            <div style="text-align:center;padding:22px 12px;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">
+              目前本品項尚無問答，若有任何問題歡迎上方留言提問！
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 8. 分享與 QR Code 卡片 (單品專屬鎖定 + 帶品名 QR 圖卡下載) ── -->
+        <div class="acard share-card" id="share-card">
+          <div class="acard-hd"
+            style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <h2 class="acard-title"><span>🔗</span> 分享此拍賣品項</h2>
+            <span style="font-size:.74rem;color:var(--c-gold-1);font-weight:700;" id="share-item-badge">📱
+              專屬單品獨立連結</span>
+          </div>
+          <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">
+            掃描專屬 QR Code 或發送獨立連結，客人進入後直接鎖定本商品競標。
+          </p>
+
+          <!-- 單品專屬模式 / 賣場大廳模式切換 -->
+          <div class="share-mode-radios">
+            <label class="share-mode-radio-card">
+              <input type="radio" name="share-link-mode" id="share-mode-single" value="single" checked
+                style="accent-color:var(--c-gold-1);" />
+              <span>🎯 <strong>單品專屬頁</strong><br><small style="color:var(--c-text-3);">推薦：只看此商品</small></span>
+            </label>
+            <label class="share-mode-radio-card share-mode-radio-alt">
+              <input type="radio" name="share-link-mode" id="share-mode-all" value="all"
+                style="accent-color:var(--c-gold-1);" />
+              <span>🏬 <strong>賣場總覽</strong><br><small style="color:var(--c-text-3);">保留頂端商品分頁</small></span>
+            </label>
+          </div>
+
+          <div class="share-body-layout">
+            <div id="qr-container" class="share-qr-box"></div>
+            <div class="share-actions-col">
+              <input type="text" id="share-url-input" class="form-input share-url-input" readonly />
+              <div class="share-btns-stack">
+                <button class="tbtn tbtn-gold tbtn-sm share-btn-full" id="btn-copy-share" type="button">
+                  📋 複製專屬連結
+                </button>
+                <button class="tbtn tbtn-purple tbtn-sm share-btn-full" id="btn-download-qr-card" type="button">
+                  📥 下載此商品專屬 QR 圖卡（含品名標籤）
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
       </div><!-- /auction-col-side -->
 
@@ -700,494 +776,517 @@
           <p class="admin-top-sub">支援多商品同時開拍、多幣別切換、全員即時廣播與客製化取貨期限管理</p>
         </div>
         <div class="admin-top-actions">
-          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-view-mode" type="button" title="切換手機或電腦觀看模式">💻 電腦寬版模式</button>
+          <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-view-mode" type="button" title="切換手機或電腦觀看模式">💻
+            電腦寬版模式</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-to-front" type="button">👁️ 前台預覽</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button">☁️ Firebase 連線</button>
           <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all" type="button">🚀 全面發布拍賣</button>
-          <button class="tbtn tbtn-danger tbtn-sm" id="btn-admin-logout" type="button" title="安全登出並鎖定管理後台">🔒 登出/鎖定後台</button>
+          <button class="tbtn tbtn-danger tbtn-sm" id="btn-admin-logout" type="button" title="安全登出並鎖定管理後台">🔒
+            登出/鎖定後台</button>
         </div>
       </div>
 
       <div class="admin-workspace-grid" id="admin-workspace-grid">
-      <div class="admin-col-main" id="admin-col-main">
+        <div class="admin-col-main" id="admin-col-main">
 
-      <!-- ── 1. 拍賣商品品項列表卡片 (多商品同時開拍) ── -->
-      <section class="acard admin-sec-items" id="admin-items-section" style="margin-bottom:14px;">
-        <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
-          <h2 class="acard-title"><span>📦</span> 拍賣商品品項列表 (多商品同時管理)</h2>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="tbtn tbtn-gold tbtn-sm" id="btn-copy-all-urls">📋 一鍵複製全部商品獨立網址清單</button>
-            <button class="tbtn tbtn-purple tbtn-sm" id="btn-add-new-item">➕ 新增商品品項</button>
-          </div>
-        </div>
-        <div id="admin-items-list-container">
-          <!-- 由腳本動態渲染 -->
-        </div>
-      </section>
-
-      </div><!-- /admin-col-main -->
-      <div class="admin-col-side" id="admin-col-side">
-
-      <!-- ── 2. 當前選定品項編輯表單 (折疊式收納，支援一鍵收合) ── -->
-      <section class="acard admin-edit-collapsible admin-sec-edit" id="admin-item-edit-section" style="margin-bottom:14px;">
-        <div class="acard-hd" style="border-bottom:1px solid var(--c-border);padding-bottom:12px;margin-bottom:14px;">
-          <h2 class="acard-title">
-            <span>✏️</span> 編輯商品設定：<span id="edit-item-name-preview" style="color:var(--c-gold-1);">商品一</span>
-          </h2>
-          <button class="tbtn tbtn-ghost tbtn-xs" type="button" id="btn-toggle-edit-fold" title="收合或展開編輯面板">
-            收合 ▲
-          </button>
-        </div>
-
-        <div class="admin-edit-form-inner" id="admin-edit-form-inner">
-          <!-- 折疊區塊 1：基本資料 (整合賣家名片、店鋪設定與商品說明) -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>📝 基本資料 (店家名片、商品名稱、說明)</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <!-- 賣家/店家/企業名稱 (即時連動全站與前台名片) -->
-              <div class="form-group">
-                <label class="form-label">賣家 / 店家 / 企業名稱 <span
-                    style="font-size:.72rem;color:var(--c-gold-1);">（即時連動頂端標題、分頁 Title 與全站商品名片）</span></label>
-                <div style="display:flex;gap:8px;">
-                  <input type="text" id="edit-item-seller-name" class="form-input" placeholder="例：建生工坊、XX企業"
-                    value="建生工坊" />
-                  <button type="button" class="tbtn tbtn-gold tbtn-sm" id="btn-save-seller-name-quick"
-                    style="flex-shrink:0;">💾 儲存店名</button>
-                </div>
-              </div>
-
-              <!-- 店家 Logo / 商標 / 企業名片貼圖 -->
-              <div class="form-group">
-                <label class="form-label">店家 Logo / 商標 / 企業名片貼圖 <span
-                    style="font-size:.72rem;color:var(--c-gold-1);">（支援拖曳上傳、填寫網址與點選拉伸縮放適配）</span></label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                  <!-- 預覽圖 -->
-                  <div class="seller-logo-preview-box interactive-logo-box" id="seller-logo-preview-box"
-                    title="點選進入自由拉伸/調整大小，或直接拖曳圖片至此上傳">
-                    <img id="seller-logo-preview-img" src="icon-192.png" alt="Logo" onerror="this.src='icon-192.png'" />
-                    <div class="logo-box-hover-hint"><span>📐 拉伸</span></div>
-                  </div>
-                  <!-- 網址輸入與上傳按鈕 -->
-                  <div style="flex:1;display:flex;gap:6px;">
-                    <input type="text" id="edit-item-seller-logo" class="form-input"
-                      placeholder="圖片網址或拖曳圖片（支援各種格式：JPG/PNG/WEBP/GIF/SVG 等）" value="icon-192.png"
-                      style="height:38px;font-size:.82rem;" />
-                    <button type="button" class="tbtn tbtn-gold tbtn-xs" id="btn-edit-item-logo-fit"
-                      title="點選自由拉伸與顯示適配設定" style="flex-shrink:0;">
-                      📐 拉伸適配
-                    </button>
-                    <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-upload-seller-logo"
-                      style="flex-shrink:0;">
-                      📷 上傳圖檔
-                    </button>
-                    <input type="file" id="input-seller-logo-file"
-                      accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg,.avif,.bmp,.ico" style="display:none;" />
-                  </div>
-                </div>
-                <div class="logo-drag-drop-hint">
-                  💡 可直接將圖片檔案拖曳至上方預覽圖或輸入框替換；點選預覽圖或「📐 拉伸適配」可自由縮放、拉伸形狀與完美適配！
-                </div>
-              </div>
-
-              <!-- 基準計價貨幣與預設時限 -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label">基準計價貨幣</label>
-                  <select id="cfg-base-currency" class="form-input" style="height:38px;">
-                    <option value="TWD" selected>🇹🇼 新台幣 (TWD)</option>
-                    <option value="USD">🇺🇸 美金 (USD)</option>
-                    <option value="JPY">🇯🇵 日圓 (JPY)</option>
-                    <option value="VND">🇻🇳 越南盾 (VND)</option>
-                    <option value="IDR">🇮🇩 印尼盾 (IDR)</option>
-                    <option value="THB">🇹🇭 泰銖 (THB)</option>
-                  </select>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label">預設取件時限（小時）</label>
-                  <input type="number" id="cfg-pickup-hours" class="form-input" value="48" min="1" max="720"
-                    style="height:38px;" />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">商品名稱 *</label>
-                <input type="text" id="edit-item-name" class="form-input" placeholder="例：Acer Aspire 7 電競筆電" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">副標題 / 重點特色</label>
-                <input type="text" id="edit-item-subtitle" class="form-input" placeholder="例：老件榫接手工・天然樟腦香" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">詳細說明</label>
-                <textarea id="edit-item-desc" class="form-input" style="height:80px;padding:8px 12px;resize:vertical;"
-                  placeholder="材質、尺寸、年代、現況說明…"></textarea>
+          <!-- ── 1. 拍賣商品品項列表卡片 (多商品同時開拍) ── -->
+          <section class="acard admin-sec-items" id="admin-items-section" style="margin-bottom:14px;">
+            <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
+              <h2 class="acard-title"><span>📦</span> 拍賣商品品項列表 (多商品同時管理)</h2>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="tbtn tbtn-gold tbtn-sm" id="btn-copy-all-urls">📋 一鍵複製全部商品獨立網址清單</button>
+                <button class="tbtn tbtn-purple tbtn-sm" id="btn-add-new-item">➕ 新增商品品項</button>
               </div>
             </div>
-          </details>
+            <div id="admin-items-list-container">
+              <!-- 由腳本動態渲染 -->
+            </div>
+          </section>
 
-          <!-- 折疊區塊 2：起標底價與倒數時間 (支援 +/- 步進調整與 5 個快捷預設值) -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>💰 起標價格與競標時間</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <!-- 起標價與每口加價單位 (含 +/- 快捷調整) -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                <div class="form-group">
-                  <label class="form-label">起標價</label>
-                  <div class="admin-stepper-row">
-                    <button type="button" class="admin-step-btn" id="btn-admin-sp-minus" aria-label="減少起標價">−</button>
-                    <input type="number" id="edit-item-start-price" class="form-input admin-step-input" value="500"
-                      min="0" />
-                    <button type="button" class="admin-step-btn" id="btn-admin-sp-plus" aria-label="增加起標價">＋</button>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">每口加價單位 (預設 10)</label>
-                  <div class="admin-stepper-row">
-                    <button type="button" class="admin-step-btn" id="btn-admin-inc-minus" aria-label="減少加價單位">−</button>
-                    <input type="number" id="edit-item-increment" class="form-input admin-step-input" value="10"
-                      min="1" />
-                    <button type="button" class="admin-step-btn" id="btn-admin-inc-plus" aria-label="增加加價單位">＋</button>
-                  </div>
-                </div>
-              </div>
+        </div><!-- /admin-col-main -->
+        <div class="admin-col-side" id="admin-col-side">
 
-              <!-- 快捷加價單位預設值按鈕列 (+10, +50, +100, +150, +200) -->
-              <div class="form-group" style="margin-top:8px;">
-                <label class="form-label" style="font-size:.76rem;color:var(--c-gold-1);">
-                  ⚡ 常用加價單位快捷預設（點擊直接填入）：
-                </label>
-                <div class="admin-inc-quick-row" id="admin-inc-quick-chips">
-                  <button type="button" class="admin-inc-chip" data-inc="10">10</button>
-                  <button type="button" class="admin-inc-chip" data-inc="50">50</button>
-                  <button type="button" class="admin-inc-chip" data-inc="100">100</button>
-                  <button type="button" class="admin-inc-chip" data-inc="150">150</button>
-                  <button type="button" class="admin-inc-chip" data-inc="200">200</button>
-                </div>
-              </div>
+          <!-- ── 2. 當前選定品項編輯表單 (折疊式收納，支援一鍵收合) ── -->
+          <section class="acard admin-edit-collapsible admin-sec-edit" id="admin-item-edit-section"
+            style="margin-bottom:14px;">
+            <div class="acard-hd"
+              style="border-bottom:1px solid var(--c-border);padding-bottom:12px;margin-bottom:14px;">
+              <h2 class="acard-title">
+                <span>✏️</span> 編輯商品設定：<span id="edit-item-name-preview" style="color:var(--c-gold-1);">商品一</span>
+              </h2>
+              <button class="tbtn tbtn-ghost tbtn-xs" type="button" id="btn-toggle-edit-fold" title="收合或展開編輯面板">
+                收合 ▲
+              </button>
+            </div>
 
-              <!-- ── 競標時間模式選擇（二選一） ── -->
-              <div class="form-group"
-                style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;">
-                <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
-                  <span>⏱️ 競標時間模式（二選一）</span>
-                  <span style="font-size:.72rem;color:var(--c-gold-1);">點選切換競標規則</span>
-                </label>
-
-                <!-- 模式選擇卡片 (選項 A / 選項 B) -->
-                <div class="time-mode-selector-grid">
-                  <label class="time-mode-card selected" id="card-mode-fixed">
-                    <input type="radio" name="admin-time-mode" id="mode-radio-fixed" value="fixed" checked />
-                    <div class="time-mode-content">
-                      <div class="time-mode-header">
-                        <span class="time-mode-radio-icon"></span>
-                        <strong>選項 A：固定期限模式</strong>
-                      </div>
-                      <p class="time-mode-desc">自訂天數/小時/分鐘，時間結束即結標。支援防最後一秒壓標延長機制。</p>
+            <div class="admin-edit-form-inner" id="admin-edit-form-inner">
+              <!-- 折疊區塊 1：基本資料 (整合賣家名片、店鋪設定與商品說明) -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>📝 基本資料 (店家名片、商品名稱、說明)</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <!-- 賣家/店家/企業名稱 (即時連動全站與前台名片) -->
+                  <div class="form-group">
+                    <label class="form-label">賣家 / 店家 / 企業名稱 <span
+                        style="font-size:.72rem;color:var(--c-gold-1);">（即時連動頂端標題、分頁 Title 與全站商品名片）</span></label>
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" id="edit-item-seller-name" class="form-input" placeholder="例：建生工坊、XX企業"
+                        value="建生工坊" />
+                      <button type="button" class="tbtn tbtn-gold tbtn-sm" id="btn-save-seller-name-quick"
+                        style="flex-shrink:0;">💾 儲存店名</button>
                     </div>
-                  </label>
+                  </div>
 
-                  <label class="time-mode-card" id="card-mode-reset24">
-                    <input type="radio" name="admin-time-mode" id="mode-radio-reset24" value="reset24" />
-                    <div class="time-mode-content">
-                      <div class="time-mode-header">
-                        <span class="time-mode-radio-icon"></span>
-                        <strong>選項 B：24 小時動態重置模式</strong>
+                  <!-- 店家 Logo / 商標 / 企業名片貼圖 -->
+                  <div class="form-group">
+                    <label class="form-label">店家 Logo / 商標 / 企業名片貼圖 <span
+                        style="font-size:.72rem;color:var(--c-gold-1);">（支援拖曳上傳、填寫網址與點選拉伸縮放適配）</span></label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                      <!-- 預覽圖 -->
+                      <div class="seller-logo-preview-box interactive-logo-box" id="seller-logo-preview-box"
+                        title="點選進入自由拉伸/調整大小，或直接拖曳圖片至此上傳">
+                        <img id="seller-logo-preview-img" src="icon-192.png" alt="Logo"
+                          onerror="this.src='icon-192.png'" />
+                        <div class="logo-box-hover-hint"><span>📐 拉伸</span></div>
                       </div>
-                      <p class="time-mode-desc">預設 24 小時倒數，任何買家出價成功立刻重新重置為 24 小時，滿 24 小時無人加價才結標。</p>
+                      <!-- 網址輸入與上傳按鈕 -->
+                      <div style="flex:1;display:flex;gap:6px;">
+                        <input type="text" id="edit-item-seller-logo" class="form-input"
+                          placeholder="圖片網址或拖曳圖片（支援各種格式：JPG/PNG/WEBP/GIF/SVG 等）" value="icon-192.png"
+                          style="height:38px;font-size:.82rem;" />
+                        <button type="button" class="tbtn tbtn-gold tbtn-xs" id="btn-edit-item-logo-fit"
+                          title="點選自由拉伸與顯示適配設定" style="flex-shrink:0;">
+                          📐 拉伸適配
+                        </button>
+                        <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-upload-seller-logo"
+                          style="flex-shrink:0;">
+                          📷 上傳圖檔
+                        </button>
+                        <input type="file" id="input-seller-logo-file"
+                          accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg,.avif,.bmp,.ico" style="display:none;" />
+                      </div>
                     </div>
-                  </label>
-                </div>
-              </div>
+                    <div class="logo-drag-drop-hint">
+                      💡 可直接將圖片檔案拖曳至上方預覽圖或輸入框替換；點選預覽圖或「📐 拉伸適配」可自由縮放、拉伸形狀與完美適配！
+                    </div>
+                  </div>
 
-              <!-- 子區塊 A：固定期限模式設定面板 -->
-              <div id="panel-mode-fixed" class="time-mode-panel active">
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
+                  <!-- 基準計價貨幣與預設時限 -->
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">基準計價貨幣</label>
+                      <select id="cfg-base-currency" class="form-input" style="height:38px;">
+                        <option value="TWD" selected>🇹🇼 新台幣 (TWD)</option>
+                        <option value="USD">🇺🇸 美金 (USD)</option>
+                        <option value="JPY">🇯🇵 日圓 (JPY)</option>
+                        <option value="VND">🇻🇳 越南盾 (VND)</option>
+                        <option value="IDR">🇮🇩 印尼盾 (IDR)</option>
+                        <option value="THB">🇹🇭 泰銖 (THB)</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">預設取件時限（小時）</label>
+                      <input type="number" id="cfg-pickup-hours" class="form-input" value="48" min="1" max="720"
+                        style="height:38px;" />
+                    </div>
+                  </div>
+
                   <div class="form-group">
-                    <label class="form-label">倒數天數</label>
-                    <input type="number" id="edit-item-days" class="form-input" value="0" min="0" />
+                    <label class="form-label">商品名稱 *</label>
+                    <input type="text" id="edit-item-name" class="form-input" placeholder="例：Acer Aspire 7 電競筆電" />
                   </div>
                   <div class="form-group">
-                    <label class="form-label">小時</label>
-                    <input type="number" id="edit-item-hours" class="form-input" value="1" min="0" max="23" />
+                    <label class="form-label">副標題 / 重點特色</label>
+                    <input type="text" id="edit-item-subtitle" class="form-input" placeholder="例：老件榫接手工・天然樟腦香" />
                   </div>
                   <div class="form-group">
-                    <label class="form-label">分鐘</label>
-                    <input type="number" id="edit-item-mins" class="form-input" value="0" min="0" max="59" />
+                    <label class="form-label">詳細說明</label>
+                    <textarea id="edit-item-desc" class="form-input"
+                      style="height:80px;padding:8px 12px;resize:vertical;" placeholder="材質、尺寸、年代、現況說明…"></textarea>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 折疊區塊 2：起標底價與倒數時間 (支援 +/- 步進調整與 5 個快捷預設值) -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>💰 起標價格與競標時間</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <!-- 起標價與每口加價單位 (含 +/- 快捷調整) -->
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group">
+                      <label class="form-label">起標價</label>
+                      <div class="admin-stepper-row">
+                        <button type="button" class="admin-step-btn" id="btn-admin-sp-minus"
+                          aria-label="減少起標價">−</button>
+                        <input type="number" id="edit-item-start-price" class="form-input admin-step-input" value="500"
+                          min="0" />
+                        <button type="button" class="admin-step-btn" id="btn-admin-sp-plus"
+                          aria-label="增加起標價">＋</button>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">每口加價單位 (預設 10)</label>
+                      <div class="admin-stepper-row">
+                        <button type="button" class="admin-step-btn" id="btn-admin-inc-minus"
+                          aria-label="減少加價單位">−</button>
+                        <input type="number" id="edit-item-increment" class="form-input admin-step-input" value="10"
+                          min="1" />
+                        <button type="button" class="admin-step-btn" id="btn-admin-inc-plus"
+                          aria-label="增加加價單位">＋</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 快捷加價單位預設值按鈕列 (+10, +50, +100, +150, +200) -->
+                  <div class="form-group" style="margin-top:8px;">
+                    <label class="form-label" style="font-size:.76rem;color:var(--c-gold-1);">
+                      ⚡ 常用加價單位快捷預設（點擊直接填入）：
+                    </label>
+                    <div class="admin-inc-quick-row" id="admin-inc-quick-chips">
+                      <button type="button" class="admin-inc-chip" data-inc="10">10</button>
+                      <button type="button" class="admin-inc-chip" data-inc="50">50</button>
+                      <button type="button" class="admin-inc-chip" data-inc="100">100</button>
+                      <button type="button" class="admin-inc-chip" data-inc="150">150</button>
+                      <button type="button" class="admin-inc-chip" data-inc="200">200</button>
+                    </div>
+                  </div>
+
+                  <!-- ── 競標時間模式選擇（二選一） ── -->
+                  <div class="form-group"
+                    style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;">
+                    <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                      <span>⏱️ 競標時間模式（二選一）</span>
+                      <span style="font-size:.72rem;color:var(--c-gold-1);">點選切換競標規則</span>
+                    </label>
+
+                    <!-- 模式選擇卡片 (選項 A / 選項 B) -->
+                    <div class="time-mode-selector-grid">
+                      <label class="time-mode-card selected" id="card-mode-fixed">
+                        <input type="radio" name="admin-time-mode" id="mode-radio-fixed" value="fixed" checked />
+                        <div class="time-mode-content">
+                          <div class="time-mode-header">
+                            <span class="time-mode-radio-icon"></span>
+                            <strong>選項 A：固定期限模式</strong>
+                          </div>
+                          <p class="time-mode-desc">自訂天數/小時/分鐘，時間結束即結標。支援防最後一秒壓標延長機制。</p>
+                        </div>
+                      </label>
+
+                      <label class="time-mode-card" id="card-mode-reset24">
+                        <input type="radio" name="admin-time-mode" id="mode-radio-reset24" value="reset24" />
+                        <div class="time-mode-content">
+                          <div class="time-mode-header">
+                            <span class="time-mode-radio-icon"></span>
+                            <strong>選項 B：24 小時動態重置模式</strong>
+                          </div>
+                          <p class="time-mode-desc">預設 24 小時倒數，任何買家出價成功立刻重新重置為 24 小時，滿 24 小時無人加價才結標。</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- 子區塊 A：固定期限模式設定面板 -->
+                  <div id="panel-mode-fixed" class="time-mode-panel active">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
+                      <div class="form-group">
+                        <label class="form-label">倒數天數</label>
+                        <input type="number" id="edit-item-days" class="form-input" value="0" min="0" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">小時</label>
+                        <input type="number" id="edit-item-hours" class="form-input" value="1" min="0" max="23" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">分鐘</label>
+                        <input type="number" id="edit-item-mins" class="form-input" value="0" min="0" max="59" />
+                      </div>
+                    </div>
+
+                    <!-- 防最後一秒壓標機制 -->
+                    <div class="anti-snipe-config-box">
+                      <label
+                        style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:.84rem;color:#fff;">
+                        <input type="checkbox" id="edit-antisnipe-enable" checked
+                          style="accent-color:var(--c-gold-1);width:16px;height:16px;" />
+                        <span>🛡️ 啟用防最後一秒壓標機制</span>
+                      </label>
+                      <div id="antisnipe-inputs-row"
+                        style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--c-text-2);flex-wrap:wrap;">
+                        <span>結標前</span>
+                        <input type="number" id="edit-antisnipe-mins" class="form-input" value="3" min="1" max="60"
+                          style="width:62px;height:34px;text-align:center;padding:0 4px;" />
+                        <span>分鐘內有人出價，自動延長</span>
+                        <input type="number" id="edit-antisnipe-ext" class="form-input" value="3" min="1" max="60"
+                          style="width:62px;height:34px;text-align:center;padding:0 4px;" />
+                        <span>分鐘</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 子區塊 B：24 小時動態重置模式說明面板 -->
+                  <div id="panel-mode-reset24" class="time-mode-panel">
+                    <div class="reset24-info-box">
+                      <div
+                        style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--c-gold-1);font-size:.88rem;margin-bottom:6px;">
+                        <span>⚡ 24 小時動態重置機制已啟用</span>
+                      </div>
+                      <ul style="margin:0;padding-left:18px;font-size:.78rem;color:var(--c-text-2);line-height:1.65;">
+                        <li>商品上架或重置時，預設倒數計時為 <strong>24 小時整</strong>。</li>
+                        <li>只要有任何買家出價成功，系統即刻將剩餘時間<strong>重新重置為 24 小時</strong>。</li>
+                        <li>直到滿 24 小時完全無人加價時，系統才會正式結標，確保競標最高熱度！</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
 
-                <!-- 防最後一秒壓標機制 -->
-                <div class="anti-snipe-config-box">
+                <!-- 🔄 無人出標自動續拍開關 -->
+                <div class="form-group"
+                  style="margin-top:14px;padding:12px;background:rgba(255,215,0,0.05);border:1px dashed rgba(255,215,0,0.25);border-radius:var(--r-md);">
                   <label
-                    style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:.84rem;color:#fff;">
-                    <input type="checkbox" id="edit-antisnipe-enable" checked
-                      style="accent-color:var(--c-gold-1);width:16px;height:16px;" />
-                    <span>🛡️ 啟用防最後一秒壓標機制</span>
-                  </label>
-                  <div id="antisnipe-inputs-row"
-                    style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--c-text-2);flex-wrap:wrap;">
-                    <span>結標前</span>
-                    <input type="number" id="edit-antisnipe-mins" class="form-input" value="3" min="1" max="60"
-                      style="width:62px;height:34px;text-align:center;padding:0 4px;" />
-                    <span>分鐘內有人出價，自動延長</span>
-                    <input type="number" id="edit-antisnipe-ext" class="form-input" value="3" min="1" max="60"
-                      style="width:62px;height:34px;text-align:center;padding:0 4px;" />
-                    <span>分鐘</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 子區塊 B：24 小時動態重置模式說明面板 -->
-              <div id="panel-mode-reset24" class="time-mode-panel">
-                <div class="reset24-info-box">
-                  <div
-                    style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--c-gold-1);font-size:.88rem;margin-bottom:6px;">
-                    <span>⚡ 24 小時動態重置機制已啟用</span>
-                  </div>
-                  <ul style="margin:0;padding-left:18px;font-size:.78rem;color:var(--c-text-2);line-height:1.65;">
-                    <li>商品上架或重置時，預設倒數計時為 <strong>24 小時整</strong>。</li>
-                    <li>只要有任何買家出價成功，系統即刻將剩餘時間<strong>重新重置為 24 小時</strong>。</li>
-                    <li>直到滿 24 小時完全無人加價時，系統才會正式結標，確保競標最高熱度！</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <!-- 🔄 無人出標自動續拍開關 -->
-            <div class="form-group" style="margin-top:14px;padding:12px;background:rgba(255,215,0,0.05);border:1px dashed rgba(255,215,0,0.25);border-radius:var(--r-md);">
-              <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:700;font-size:.84rem;color:#fff;">
-                <input type="checkbox" id="edit-item-auto-relist" checked style="accent-color:var(--c-gold-1);width:18px;height:18px;margin-top:2px;" />
-                <div>
-                  <span style="color:var(--c-gold-1);">🔄 若時間到無人出標，自動延長 24 小時繼續競標</span>
-                  <div style="font-size:.74rem;color:var(--c-text-2);font-weight:normal;margin-top:2px;line-height:1.4;">
-                    防止商品過期流標。只要倒數結束且無任何人出價，系統自動延長 24 小時，保持商品常態在線。
-                  </div>
-                </div>
-              </label>
-            </div>
-          </details>
-
-          <!-- 折疊區塊 3：圖片拖曳上傳與多平台影音 -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>🖼️ 圖片拖曳管理與多平台影音</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <!-- 🖼️ 拖曳與上傳圖片區 -->
-              <div class="form-group">
-                <label class="form-label">
-                  🖼️ 商品圖片管理 <span style="font-size:.72rem;color:var(--c-gold-1);">（支援拖曳多圖上傳 / 點擊設封面 / 刪除單圖）</span>
-                </label>
-                <div class="img-dropzone" id="img-dropzone" role="button" tabindex="0">
-                  <input type="file" id="edit-img-file-input" accept="image/*" multiple style="display:none;" />
-                  <div class="dropzone-icon">📷</div>
-                  <div class="dropzone-title">拖曳圖片至此，或點擊選取圖片</div>
-                  <div class="dropzone-desc">支援 JPG、PNG、WEBP、GIF，可同時選取多張圖片</div>
-                  <button class="tbtn tbtn-purple tbtn-sm" type="button" id="btn-browse-images" style="margin-top:8px;">
-                    📁 瀏覽選取本機圖片
-                  </button>
-                </div>
-
-                <!-- 已上傳圖片縮圖管理網格 -->
-                <div class="edit-thumbs-grid" id="edit-thumbs-grid"></div>
-
-                <!-- 備用手動網址輸入 -->
-                <details style="margin-top:10px;">
-                  <summary style="font-size:.78rem;color:var(--c-text-3);cursor:pointer;outline:none;">
-                    🔗 備用：手動輸入圖片網址（可多行）
-                  </summary>
-                  <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px;">
-                    <textarea id="edit-item-images" class="form-input"
-                      style="height:60px;padding:8px 12px;resize:vertical;"
-                      placeholder="https://example.com/item1.jpg&#10;https://example.com/item2.jpg"></textarea>
-                    <button class="tbtn tbtn-ghost tbtn-xs" type="button" id="btn-apply-img-urls"
-                      style="align-self:flex-start;">
-                      ➕ 套用圖片網址
-                    </button>
-                  </div>
-                </details>
-              </div>
-
-              <!-- 🎬 多平台影音連結輸入框 -->
-              <div class="form-group">
-                <label class="form-label">
-                  🎬 商品實拍影音連結 <span style="font-size:.72rem;color:var(--c-gold-1);">（支援 YouTube / TikTok / 抖音 / IG Reels
-                    / Threads / FB）</span>
-                </label>
-                <input type="url" id="edit-item-video-url" class="form-input"
-                  placeholder="例：https://www.youtube.com/watch?v=... 或 TikTok / IG / FB 影片網址" />
-                <div style="font-size:.72rem;color:var(--c-text-3);margin-top:3px;">
-                  腳本將自動識別平台並於前台展示高畫質嵌入播放器。
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <!-- 🚚 折疊區塊 4：取貨方式設定 (自取、宅配寄送、超商、自訂說明) -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>🚚 取貨方式設定 (自取、店面寄送、超商、自訂)</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <div class="form-group">
-                <label class="form-label">支援的取件/物流管道（可複選）</label>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">
-                  <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
-                    <input type="checkbox" id="edit-pickup-self" checked />
-                    <span>🏠 實體門市/現場自取</span>
-                  </label>
-                  <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
-                    <input type="checkbox" id="edit-pickup-delivery" />
-                    <span>📦 宅配/貨運寄送</span>
-                  </label>
-                  <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
-                    <input type="checkbox" id="edit-pickup-cvs" />
-                    <span>🏪 超商取貨</span>
+                    style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:700;font-size:.84rem;color:#fff;">
+                    <input type="checkbox" id="edit-item-auto-relist" checked
+                      style="accent-color:var(--c-gold-1);width:18px;height:18px;margin-top:2px;" />
+                    <div>
+                      <span style="color:var(--c-gold-1);">🔄 若時間到無人出標，自動延長 24 小時繼續競標</span>
+                      <div
+                        style="font-size:.74rem;color:var(--c-text-2);font-weight:normal;margin-top:2px;line-height:1.4;">
+                        防止商品過期流標。只要倒數結束且無任何人出價，系統自動延長 24 小時，保持商品常態在線。
+                      </div>
+                    </div>
                   </label>
                 </div>
-              </div>
-              <div class="form-group" style="margin-top:10px;">
-                <label class="form-label">自訂取件/運送說明（例：自取自搬透天1~3樓、高雄小港門市面交、運費另計）</label>
-                <input type="text" id="edit-item-pickup-custom" class="form-input"
-                  placeholder="例：自取自搬・透天1~3樓，或高雄小港門市現場檢驗面交" />
-              </div>
+              </details>
 
-              <!-- ⏳ 得標後取貨保留期限設定（保留天數 / 指定星期幾） -->
-              <div class="form-group" style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.1);">
-                <label class="form-label" style="color:var(--c-gold-1);">
-                  ⏳ 得標後取貨保留期限規則（支援指定保留天數或指定星期幾前取貨）
-                </label>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px;margin-top:6px;">
-                  <div>
-                    <label class="form-label" style="font-size:.74rem;">保留期限計算方式</label>
-                    <select id="edit-pickup-deadline-mode" class="form-input" style="height:36px;font-size:.82rem;">
-                      <option value="hours">⏱️ 依保留小時/天數計算</option>
-                      <option value="weekday">📅 指定星期幾前完成取貨</option>
-                      <option value="custom">✏️ 自訂取貨期限文字</option>
-                    </select>
+              <!-- 折疊區塊 3：圖片拖曳上傳與多平台影音 -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>🖼️ 圖片拖曳管理與多平台影音</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <!-- 🖼️ 拖曳與上傳圖片區 -->
+                  <div class="form-group">
+                    <label class="form-label">
+                      🖼️ 商品圖片管理 <span style="font-size:.72rem;color:var(--c-gold-1);">（支援拖曳多圖上傳 / 點擊設封面 / 刪除單圖）</span>
+                    </label>
+                    <div class="img-dropzone" id="img-dropzone" role="button" tabindex="0">
+                      <input type="file" id="edit-img-file-input" accept="image/*" multiple style="display:none;" />
+                      <div class="dropzone-icon">📷</div>
+                      <div class="dropzone-title">拖曳圖片至此，或點擊選取圖片</div>
+                      <div class="dropzone-desc">支援 JPG、PNG、WEBP、GIF，可同時選取多張圖片</div>
+                      <button class="tbtn tbtn-purple tbtn-sm" type="button" id="btn-browse-images"
+                        style="margin-top:8px;">
+                        📁 瀏覽選取本機圖片
+                      </button>
+                    </div>
+
+                    <!-- 已上傳圖片縮圖管理網格 -->
+                    <div class="edit-thumbs-grid" id="edit-thumbs-grid"></div>
+
+                    <!-- 備用手動網址輸入 -->
+                    <details style="margin-top:10px;">
+                      <summary style="font-size:.78rem;color:var(--c-text-3);cursor:pointer;outline:none;">
+                        🔗 備用：手動輸入圖片網址（可多行）
+                      </summary>
+                      <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px;">
+                        <textarea id="edit-item-images" class="form-input"
+                          style="height:60px;padding:8px 12px;resize:vertical;"
+                          placeholder="https://example.com/item1.jpg&#10;https://example.com/item2.jpg"></textarea>
+                        <button class="tbtn tbtn-ghost tbtn-xs" type="button" id="btn-apply-img-urls"
+                          style="align-self:flex-start;">
+                          ➕ 套用圖片網址
+                        </button>
+                      </div>
+                    </details>
                   </div>
-                  <div id="pickup-deadline-hours-box">
-                    <label class="form-label" style="font-size:.74rem;">得標保留小時數（例：48=2天、72=3天）</label>
-                    <input type="number" id="edit-item-pickup-hours" class="form-input" value="48" min="1" max="720" style="height:36px;font-size:.84rem;" />
-                  </div>
-                  <div id="pickup-deadline-weekday-box" style="display:none;">
-                    <label class="form-label" style="font-size:.74rem;">指定星期幾前完成取貨</label>
-                    <select id="edit-pickup-weekday" class="form-input" style="height:36px;font-size:.82rem;">
-                      <option value="6">📅 本週六 21:00 前</option>
-                      <option value="0">📅 本週日 21:00 前</option>
-                      <option value="1">📅 下週一 21:00 前</option>
-                      <option value="2">📅 星期二 21:00 前</option>
-                      <option value="3">📅 星期三 21:00 前</option>
-                      <option value="4">📅 星期四 21:00 前</option>
-                      <option value="5">📅 星期五 21:00 前</option>
-                    </select>
+
+                  <!-- 🎬 多平台影音連結輸入框 -->
+                  <div class="form-group">
+                    <label class="form-label">
+                      🎬 商品實拍影音連結 <span style="font-size:.72rem;color:var(--c-gold-1);">（支援 YouTube / TikTok / 抖音 / IG
+                        Reels
+                        / Threads / FB）</span>
+                    </label>
+                    <input type="url" id="edit-item-video-url" class="form-input"
+                      placeholder="例：https://www.youtube.com/watch?v=... 或 TikTok / IG / FB 影片網址" />
+                    <div style="font-size:.72rem;color:var(--c-text-3);margin-top:3px;">
+                      腳本將自動識別平台並於前台展示高畫質嵌入播放器。
+                    </div>
                   </div>
                 </div>
-                <div id="pickup-deadline-custom-box" style="margin-top:8px;">
-                  <input type="text" id="edit-pickup-deadline-custom" class="form-input"
-                    placeholder="選填補充說明（例：得標後保留 3 天，或約定本週日晚上 9 點前自取）" style="font-size:.8rem;height:36px;" />
+              </details>
+
+              <!-- 🚚 折疊區塊 4：取貨方式設定 (自取、宅配寄送、超商、自訂說明) -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>🚚 取貨方式設定 (自取、店面寄送、超商、自訂)</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <div class="form-group">
+                    <label class="form-label">支援的取件/物流管道（可複選）</label>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">
+                      <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+                        <input type="checkbox" id="edit-pickup-self" checked />
+                        <span>🏠 實體門市/現場自取</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+                        <input type="checkbox" id="edit-pickup-delivery" />
+                        <span>📦 宅配/貨運寄送</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+                        <input type="checkbox" id="edit-pickup-cvs" />
+                        <span>🏪 超商取貨</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin-top:10px;">
+                    <label class="form-label">自訂取件/運送說明（例：自取自搬透天1~3樓、高雄小港門市面交、運費另計）</label>
+                    <input type="text" id="edit-item-pickup-custom" class="form-input"
+                      placeholder="例：自取自搬・透天1~3樓，或高雄小港門市現場檢驗面交" />
+                  </div>
+
+                  <!-- ⏳ 得標後取貨保留期限設定（保留天數 / 指定星期幾） -->
+                  <div class="form-group"
+                    style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.1);">
+                    <label class="form-label" style="color:var(--c-gold-1);">
+                      ⏳ 得標後取貨保留期限規則（支援指定保留天數或指定星期幾前取貨）
+                    </label>
+                    <div
+                      style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px;margin-top:6px;">
+                      <div>
+                        <label class="form-label" style="font-size:.74rem;">保留期限計算方式</label>
+                        <select id="edit-pickup-deadline-mode" class="form-input" style="height:36px;font-size:.82rem;">
+                          <option value="hours">⏱️ 依保留小時/天數計算</option>
+                          <option value="weekday">📅 指定星期幾前完成取貨</option>
+                          <option value="custom">✏️ 自訂取貨期限文字</option>
+                        </select>
+                      </div>
+                      <div id="pickup-deadline-hours-box">
+                        <label class="form-label" style="font-size:.74rem;">得標保留小時數（例：48=2天、72=3天）</label>
+                        <input type="number" id="edit-item-pickup-hours" class="form-input" value="48" min="1" max="720"
+                          style="height:36px;font-size:.84rem;" />
+                      </div>
+                      <div id="pickup-deadline-weekday-box" style="display:none;">
+                        <label class="form-label" style="font-size:.74rem;">指定星期幾前完成取貨</label>
+                        <select id="edit-pickup-weekday" class="form-input" style="height:36px;font-size:.82rem;">
+                          <option value="6">📅 本週六 21:00 前</option>
+                          <option value="0">📅 本週日 21:00 前</option>
+                          <option value="1">📅 下週一 21:00 前</option>
+                          <option value="2">📅 星期二 21:00 前</option>
+                          <option value="3">📅 星期三 21:00 前</option>
+                          <option value="4">📅 星期四 21:00 前</option>
+                          <option value="5">📅 星期五 21:00 前</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div id="pickup-deadline-custom-box" style="margin-top:8px;">
+                      <input type="text" id="edit-pickup-deadline-custom" class="form-input"
+                        placeholder="選填補充說明（例：得標後保留 3 天，或約定本週日晚上 9 點前自取）" style="font-size:.8rem;height:36px;" />
+                    </div>
+                  </div>
                 </div>
+              </details>
+
+              <!-- 📋 折疊區塊 5：額外備註欄與注意事項 -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>📋 額外備註欄 (商品額外說明、注意事項、配件清單)</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <div class="form-group">
+                    <label class="form-label">額外備註說明 / 注意事項（將於前台專屬卡片清晰展示）</label>
+                    <textarea id="edit-item-extra-notes" class="form-input"
+                      style="height:85px;padding:8px 12px;resize:vertical;"
+                      placeholder="在此輸入額外補充說明，例如：&#10;1. 隨附原廠變壓器與電源線&#10;2. 機身底部有輕微使用痕跡，功能完全正常&#10;3. 現場提供插電測試，滿意再帶走"></textarea>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 🛡️ 折疊區塊 6：保固天數與條款說明 -->
+              <details class="admin-form-accordion" open>
+                <summary class="admin-accordion-summary">
+                  <span>🛡️ 保固天數與條款說明</span>
+                  <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="admin-accordion-body">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div class="form-group">
+                      <label class="form-label">保固天數（0 為現況出售）</label>
+                      <input type="number" id="edit-item-warranty-days" class="form-input" value="0" min="0" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">保固簡述標籤</label>
+                      <input type="text" id="edit-item-warranty-text" class="form-input" value="原件現況出售"
+                        placeholder="例：原件現況出售 / 非人為保固 7 天" />
+                    </div>
+                  </div>
+                </div>
+              </details>
+
+              <button class="tbtn tbtn-gold" id="btn-save-current-item"
+                style="width:100%;margin-top:14px;padding:12px;font-size:.95rem;">
+                💾 儲存並更新此商品設定
+              </button>
+            </div>
+          </section>
+
+          <!-- ── 3. 全員即時廣播公告發布區 ── -->
+          <section class="acard admin-sec-broadcast" id="admin-broadcast-section" style="margin-bottom:14px;">
+            <div class="acard-hd">
+              <h2 class="acard-title"><span>📢</span> 手動輸入全員廣播公告</h2>
+              <span class="item-tab-badge badge-live">即時推播</span>
+            </div>
+            <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:10px;">
+              輸入任意文字公告，發布後全體在線買家手機頂端即刻彈出動態漸層橫幅通知。
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <textarea id="admin-broadcast-input" class="form-input" style="height:70px;padding:8px 12px;resize:none;"
+                placeholder="例：📢 賣家公告：古董木箱已新增隨附原裝老銅匙一把！" maxlength="150"></textarea>
+              <button class="tbtn tbtn-gold" id="btn-admin-broadcast">🚀 立即全員廣播</button>
+            </div>
+            <div style="margin-top:16px;font-size:.8rem;color:var(--c-text-2);font-weight:700;">廣播發布歷史紀錄：</div>
+            <div id="admin-broadcast-history"
+              style="max-height:180px;overflow-y:auto;margin-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
+          </section>
+
+
+          <!-- ── 4. 👥 已登入/註冊買家即時名冊（最高權限總覽） ── -->
+          <section class="acard admin-sec-buyers" id="admin-buyers-section" style="margin-bottom:14px;">
+            <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
+              <h2 class="acard-title"><span>👥</span> 已登入/註冊買家即時名冊（最高權限總覽）</h2>
+              <span class="item-tab-badge badge-live" id="admin-buyers-count">0 位買家</span>
+            </div>
+            <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">
+              最高權限管理者即時解碼名冊：即時同步買家填寫之完整姓名、未遮蔽電話、Line ID、IG 與 FB 聯絡管道。
+            </p>
+            <div id="admin-buyers-list" class="admin-buyers-list">
+              <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:16px;">目前尚無買家登入資料</div>
+            </div>
+          </section>
+
+          <!-- ── 5. 各商品買家提問即時總覽（含待回覆篩選與罐頭快回） ── -->
+          <section class="acard admin-sec-qa" id="admin-qa-overview-section" style="margin-bottom:14px;">
+            <div class="acard-hd" style="flex-wrap:wrap;gap:8px;">
+              <h2 class="acard-title"><span>💬</span> 各商品買家提問即時總覽</h2>
+              <div class="qa-admin-filter-pills" id="admin-qa-filter-bar">
+                <button type="button" class="qa-admin-filter-btn active" data-admin-qa-filter="all">🕒 全部最新 <span id="admin-qa-count-all">0</span></button>
+                <button type="button" class="qa-admin-filter-btn" data-admin-qa-filter="unanswered">❓ 待回覆專區 <span id="admin-qa-count-unanswered" class="qa-badge-urgent">0</span></button>
+                <button type="button" class="qa-admin-filter-btn" data-admin-qa-filter="hot">🔥 最熱門 <span id="admin-qa-count-hot">0</span></button>
               </div>
             </div>
-          </details>
-
-          <!-- 📋 折疊區塊 5：額外備註欄與注意事項 -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>📋 額外備註欄 (商品額外說明、注意事項、配件清單)</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <div class="form-group">
-                <label class="form-label">額外備註說明 / 注意事項（將於前台專屬卡片清晰展示）</label>
-                <textarea id="edit-item-extra-notes" class="form-input"
-                  style="height:85px;padding:8px 12px;resize:vertical;"
-                  placeholder="在此輸入額外補充說明，例如：&#10;1. 隨附原廠變壓器與電源線&#10;2. 機身底部有輕微使用痕跡，功能完全正常&#10;3. 現場提供插電測試，滿意再帶走"></textarea>
-              </div>
+            <div id="admin-all-qa-list" class="qa-list qa-timeline-stream">
+              <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無買家提問</div>
             </div>
-          </details>
+          </section>
 
-          <!-- 🛡️ 折疊區塊 6：保固天數與條款說明 -->
-          <details class="admin-form-accordion" open>
-            <summary class="admin-accordion-summary">
-              <span>🛡️ 保固天數與條款說明</span>
-              <span class="accordion-arrow">▼</span>
-            </summary>
-            <div class="admin-accordion-body">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div class="form-group">
-                  <label class="form-label">保固天數（0 為現況出售）</label>
-                  <input type="number" id="edit-item-warranty-days" class="form-input" value="0" min="0" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">保固簡述標籤</label>
-                  <input type="text" id="edit-item-warranty-text" class="form-input" value="原件現況出售"
-                    placeholder="例：原件現況出售 / 非人為保固 7 天" />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <button class="tbtn tbtn-gold" id="btn-save-current-item"
-            style="width:100%;margin-top:14px;padding:12px;font-size:.95rem;">
-            💾 儲存並更新此商品設定
-          </button>
-        </div>
-      </section>
-
-      <!-- ── 3. 全員即時廣播公告發布區 ── -->
-      <section class="acard admin-sec-broadcast" id="admin-broadcast-section" style="margin-bottom:14px;">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>📢</span> 手動輸入全員廣播公告</h2>
-          <span class="item-tab-badge badge-live">即時推播</span>
-        </div>
-        <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:10px;">
-          輸入任意文字公告，發布後全體在線買家手機頂端即刻彈出動態漸層橫幅通知。
-        </p>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <textarea id="admin-broadcast-input" class="form-input" style="height:70px;padding:8px 12px;resize:none;"
-            placeholder="例：📢 賣家公告：古董木箱已新增隨附原裝老銅匙一把！" maxlength="150"></textarea>
-          <button class="tbtn tbtn-gold" id="btn-admin-broadcast">🚀 立即全員廣播</button>
-        </div>
-        <div style="margin-top:16px;font-size:.8rem;color:var(--c-text-2);font-weight:700;">廣播發布歷史紀錄：</div>
-        <div id="admin-broadcast-history"
-          style="max-height:180px;overflow-y:auto;margin-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
-      </section>
-
-
-      <!-- ── 4. 👥 已登入/註冊買家即時名冊（最高權限總覽） ── -->
-      <section class="acard admin-sec-buyers" id="admin-buyers-section" style="margin-bottom:14px;">
-        <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
-          <h2 class="acard-title"><span>👥</span> 已登入/註冊買家即時名冊（最高權限總覽）</h2>
-          <span class="item-tab-badge badge-live" id="admin-buyers-count">0 位買家</span>
-        </div>
-        <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:12px;">
-          最高權限管理者即時解碼名冊：即時同步買家填寫之完整姓名、未遮蔽電話、Line ID、IG 與 FB 聯絡管道。
-        </p>
-        <div id="admin-buyers-list" class="admin-buyers-list">
-          <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:16px;">目前尚無買家登入資料</div>
-        </div>
-      </section>
-
-      <!-- ── 5. 各商品買家提問即時總覽 ── -->
-      <section class="acard admin-sec-qa" id="admin-qa-overview-section" style="margin-bottom:14px;">
-        <div class="acard-hd">
-          <h2 class="acard-title"><span>💬</span> 各商品買家提問即時總覽</h2>
-        </div>
-        <div id="admin-all-qa-list" class="qa-list">
-          <div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:12px;">尚無買家提問</div>
-        </div>
-      </section>
-
-      </div><!-- /admin-col-side -->
+        </div><!-- /admin-col-side -->
       </div><!-- /admin-workspace-grid -->
 
     </main>
@@ -1197,7 +1296,8 @@
   <!-- ════════════════════════════════════════════════════════
      MODAL: 最高權限管理者登入驗證 (Super Admin Login & Full Site Control)
 ════════════════════════════════════════════════════════ -->
-  <div class="modal-backdrop" id="modal-admin-login" role="dialog" aria-modal="true" aria-labelledby="modal-admin-login-title">
+  <div class="modal-backdrop" id="modal-admin-login" role="dialog" aria-modal="true"
+    aria-labelledby="modal-admin-login-title">
     <div class="modal-sheet admin-login-sheet">
       <div class="modal-title" id="modal-admin-login-title">
         <span>🛡️</span> 最高權限管理者驗證
@@ -1212,13 +1312,15 @@
 
       <div class="form-group">
         <label class="form-label" for="inp-admin-account">最高管理者帳號 <em>*</em></label>
-        <input type="text" id="inp-admin-account" class="form-input" placeholder="請輸入最高管理者帳號" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <input type="text" id="inp-admin-account" class="form-input" placeholder="請輸入最高管理者帳號" autocomplete="username"
+          autocapitalize="none" autocorrect="off" spellcheck="false" />
       </div>
 
       <div class="form-group">
         <label class="form-label" for="inp-admin-password">最高管理者密碼 <em>*</em></label>
         <div class="admin-pwd-input-wrap">
-          <input type="password" id="inp-admin-password" class="form-input admin-pwd-input" placeholder="請輸入最高管理者密碼" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          <input type="password" id="inp-admin-password" class="form-input admin-pwd-input" placeholder="請輸入最高管理者密碼"
+            autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <button type="button" class="btn-toggle-pwd" id="btn-toggle-admin-pwd" aria-label="顯示或隱藏密碼" title="切換顯示/隱藏密碼">
             <span id="toggle-pwd-icon">👁️</span>
             <span id="toggle-pwd-text">顯示</span>
@@ -1262,7 +1364,8 @@
         <label class="form-label">聯絡手機號碼 <em>*</em> <span
             style="font-size:.72rem;color:var(--c-gold-1);">（輸入號碼可自動比對雲端記憶）</span></label>
         <input type="tel" id="inp-buyer-phone" class="form-input" placeholder="例：0912345679" maxlength="15" />
-        <div id="buyer-cloud-match-hint" style="display:none;font-size:.74rem;color:#34d399;margin-top:4px;font-weight:700;">
+        <div id="buyer-cloud-match-hint"
+          style="display:none;font-size:.74rem;color:#34d399;margin-top:4px;font-weight:700;">
           ✨ 已從雲端保留記憶自動帶入您的買家資料！
         </div>
       </div>
@@ -1280,7 +1383,8 @@
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div class="form-group">
-          <label class="form-label">Instagram 帳號 <span style="font-size:.7rem;color:var(--c-text-3);">（選填）</span></label>
+          <label class="form-label">Instagram 帳號 <span
+              style="font-size:.7rem;color:var(--c-text-3);">（選填）</span></label>
           <input type="text" id="inp-buyer-ig" class="form-input" placeholder="例：ming_antique" />
         </div>
 
@@ -1292,7 +1396,8 @@
 
       <!-- 📅 買家自選資料保留天數（7 天 / 10 天 / 15 天） -->
       <div class="form-group buyer-retention-group">
-        <label class="form-label" style="color:var(--c-gold-1);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+        <label class="form-label"
+          style="color:var(--c-gold-1);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
           <span>📅 資料保留期限（自選天數，期間內免重複輸入）</span>
           <span style="font-size:.7rem;color:var(--c-text-3);">可隨時點開變更</span>
         </label>
@@ -1325,7 +1430,8 @@
 
       <!-- 🚪 隨時登出按鈕（受最高出價者防棄標鎖定機制保護） -->
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-        <button type="button" class="tbtn tbtn-danger tbtn-sm" id="btn-logout-profile" style="width:100%;justify-content:center;padding:9px 12px;font-weight:800;">
+        <button type="button" class="tbtn tbtn-danger tbtn-sm" id="btn-logout-profile"
+          style="width:100%;justify-content:center;padding:9px 12px;font-weight:800;">
           🚪 立即登出（清除本機保留資料）
         </button>
       </div>
@@ -1530,7 +1636,8 @@
   <!-- ════════════════════════════════════════════════════════
      MODAL: 商品實拍照全螢幕滿版放大預覽器 (Fullscreen Gallery Lightbox)
 ════════════════════════════════════════════════════════ -->
-  <div class="gallery-lightbox-backdrop" id="modal-gallery-lightbox" role="dialog" aria-modal="true" aria-label="商品實拍照滿版預覽" style="display:none;">
+  <div class="gallery-lightbox-backdrop" id="modal-gallery-lightbox" role="dialog" aria-modal="true"
+    aria-label="商品實拍照滿版預覽" style="display:none;">
     <div class="lightbox-top-bar">
       <div class="lightbox-counter-pill" id="lightbox-counter">1 / 28</div>
       <div class="lightbox-title-text" id="lightbox-title">商品實拍照滿版預覽</div>
@@ -1551,8 +1658,8 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-<!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-<script src="app.js?v=6.8&t=20261107_desktop_grid"></script>
+  <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
+  <script src="app.js?v=6.9&t=20261108_qa_stream"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1564,19 +1671,10 @@
         window.location.reload();
       });
 
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=20').then(reg => {
-        if (reg.waiting) {
-          reg.waiting.postMessage({ action: 'skipWaiting' });
-        }
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                newWorker.postMessage({ action: 'skipWaiting' });
-              }
-            });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=21').then(reg => {
+          if (reg.waiting) {
+            reg.waiting.postMessage({ action: 'skipWaiting' });
           }
           reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
@@ -1587,10 +1685,19 @@
                 }
               });
             }
-          });
-        }).catch(() => { });
-      });
-    }
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    newWorker.postMessage({ action: 'skipWaiting' });
+                  }
+                });
+              }
+            });
+          }).catch(() => { });
+        });
+      }
   </script>
 </body>
 
