@@ -98,9 +98,9 @@
           <span id="switch-mode-text">後台</span>
         </button>
 
-        <!-- 使用者登入狀態標籤 -->
-        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-user" id="btn-user-profile" title="管理個人買家聯絡身分">
-          <span>👤</span>
+        <!-- 使用者登入狀態標籤（支援最高管理者「👑 官方賣家」與「👤 測試買家」雙軌顯示） -->
+        <button class="tbtn tbtn-ghost tbtn-sm nav-btn-user" id="btn-user-profile" title="切換官方賣家身分或管理買家聯絡身分">
+          <span id="user-profile-icon">👤</span>
           <span id="user-profile-name" class="nav-user-text">登入</span>
         </button>
 
@@ -663,6 +663,10 @@
 
           <!-- 買家發問輸入框 ＋ 快速提問引導膠囊 -->
           <div class="qa-ask-box" id="qa-ask-box">
+            <div class="qa-seller-mode-banner" id="qa-seller-mode-banner" style="display:none;">
+              <span>👑 目前鎖定為<strong>「官方賣家身分（建生工坊）」</strong>：請展開下方各提問的「💬 回覆此提問」發佈藍色標章官方回覆。</span>
+              <button type="button" class="tbtn tbtn-ghost tbtn-xs" id="btn-qa-quick-to-buyer" style="padding:2px 8px;font-size:.7rem;border-color:rgba(96,165,250,0.45);color:#93c5fd;">🧪 切換為測試買家發問</button>
+            </div>
             <div class="qa-buyer-prompts-bar" id="qa-buyer-quick-prompts">
               <span class="qa-prompts-lbl">💡 快速提問：</span>
               <button type="button" class="qa-prompt-chip" data-prompt="請問這台商品目前還有現貨嗎？可以直接出標嗎？">📦 還有現貨嗎？</button>
@@ -1349,7 +1353,33 @@
   <div class="modal-backdrop" id="modal-buyer-profile" role="dialog" aria-modal="true">
     <div class="modal-sheet">
       <div class="modal-title">
-        <span>👤</span> 買家身分與資料保留設定
+        <span id="modal-profile-title-icon">👤</span>
+        <span id="modal-profile-title-text">買家身分與資料保留設定</span>
+      </div>
+
+      <!-- 👑 最高管理者專屬：官方賣家身分 vs 測試買家身分「雙軌獨立切換控制台」 -->
+      <div id="admin-dual-identity-panel" class="admin-dual-identity-panel" style="display:none;">
+        <div class="dual-identity-hd">
+          <span class="dual-identity-title">👑 最高管理者（guess_chen1981）雙軌身分切換器</span>
+          <span class="dual-identity-badge" id="dual-identity-current-badge">目前：測試買家模式</span>
+        </div>
+        <p class="dual-identity-desc">
+          可一鍵將此裝置鎖定為「賣家官方身分（建生工坊）」進行藍標官方回覆，或隨時重置切換為新買家進行競標壓力測試：
+        </p>
+        <div class="dual-identity-actions">
+          <button type="button" class="tbtn dual-btn-seller" id="btn-switch-to-seller-identity">
+            <span>👑</span>
+            <span>切換為官方賣家身分（建生工坊）</span>
+          </button>
+          <button type="button" class="tbtn dual-btn-reset-buyer" id="btn-reset-test-buyer-identity">
+            <span>🔄</span>
+            <span>清除測試身分並重新登入新買家</span>
+          </button>
+          <button type="button" class="tbtn dual-btn-restore-buyer" id="btn-restore-backup-buyer" style="display:none;">
+            <span>🧪</span>
+            <span id="restore-backup-buyer-text">切回已儲存測試買家（小建）</span>
+          </button>
+        </div>
       </div>
       <p style="font-size:.8rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.45;">
         為維護拍賣公平與得標交割效率，腳本將自動執行嚴格防偽檢驗。輸入曾註冊之手機號碼可自動從雲端帶入您的聯絡資料：
@@ -1664,7 +1694,7 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
   <!-- 主程式腳本 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <script src="app.js?v=7.1&t=20261108_forever_retention"></script>
+  <script src="app.js?v=7.2&t=20261108_dual_identity"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
@@ -1677,7 +1707,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=23').then(reg => {
+        navigator.serviceWorker.register('./sw.js?v=24').then(reg => {
           if (reg.waiting) {
             reg.waiting.postMessage({ action: 'skipWaiting' });
           }

@@ -114,54 +114,54 @@
       "topBidTime": 1794100056246,
       "bidHistory": [
         {
+          "user": "小建",
           "amount": 10150,
-          "fb": "",
-          "ig": "",
-          "line": "guess_chen1981",
-          "phone": "0931849482",
-          "phoneMasked": "0931***482",
           "time": 1794100055378,
-          "user": "小建"
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
         },
         {
+          "user": "小建",
           "amount": 10140,
-          "fb": "",
-          "ig": "",
-          "line": "guess_chen1981",
-          "phone": "0931849482",
-          "phoneMasked": "0931***482",
           "time": 1794024769962,
-          "user": "小建"
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
         },
         {
+          "user": "小建",
           "amount": 10130,
-          "fb": "",
-          "ig": "",
-          "line": "guess_chen1981",
-          "phone": "0931849482",
-          "phoneMasked": "0931***482",
           "time": 1794024609988,
-          "user": "小建"
-        },
-        {
-          "amount": 10120,
-          "fb": "",
-          "ig": "",
-          "line": "guess_chen1981",
           "phone": "0931849482",
           "phoneMasked": "0931***482",
-          "time": 1794024599354,
-          "user": "小建"
+          "line": "guess_chen1981",
+          "ig": "",
+          "fb": ""
         },
         {
-          "amount": 10050,
-          "fb": "",
+          "user": "小建",
+          "amount": 10120,
+          "time": 1794024599354,
+          "phone": "0931849482",
+          "phoneMasked": "0931***482",
+          "line": "guess_chen1981",
           "ig": "",
-          "line": "",
+          "fb": ""
+        },
+        {
+          "user": "小建",
+          "amount": 10050,
+          "time": 1794013645376,
           "phone": "",
           "phoneMasked": "0931***482",
-          "time": 1794013645376,
-          "user": "小建"
+          "line": "",
+          "ig": "",
+          "fb": ""
         }
       ],
       "endTime": 1794186455378,
@@ -236,21 +236,5 @@
   "agy_studio_name": "建生工坊 - 利用 AI 協助打造了一款全新的「多商品線上拍賣網頁」，  為了確保系統在正式上線前流暢穩定，想邀請各位朋友抽空幫忙進行壓力測試！",
   "agy_active_currency": "TWD",
   "agy_last_auction_id": "item-local-recovered",
-  "buyers": [
-    {
-      "createdAt": 1794100648314,
-      "fb": "",
-      "ig": "",
-      "lastBidAmount": 10150,
-      "lastBidItem": "item-local-recovered",
-      "lastQuestion": "請問高雄小港區桂林哪個時段方便約現場看機自取呢？",
-      "lastQuestionItem": "item-local-recovered",
-      "line": "guess_chen1981",
-      "name": "小建",
-      "phone": "0931849482",
-      "retentionDays": 15,
-      "retentionExpiresAt": 1795396648314,
-      "updatedAt": 1794100648314
-    }
-  ]
+  "buyers": []
 }

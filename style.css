@@ -4249,8 +4249,9 @@ body.view-mode-desktop .btn-submit-bid {
   position: relative;
 }
 .qa-reply-floor.is-seller {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(79, 70, 229, 0.08));
-  border: 1px solid rgba(168, 85, 247, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(30, 64, 175, 0.1));
+  border: 1px solid rgba(59, 130, 246, 0.42);
+  border-left: 3px solid #3b82f6;
 }
 .qa-reply-floor.is-buyer {
   background: rgba(255, 255, 255, 0.035);
@@ -4272,17 +4273,19 @@ body.view-mode-desktop .btn-submit-bid {
   gap: 6px;
   margin-left: auto;
 }
+/* 賣家官方回覆專屬藍色認證標章 (Official Blue Verified Badge) */
 .qa-seller-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   font-weight: 800;
-  color: #e9d5ff;
-  background: rgba(147, 51, 234, 0.32);
-  border: 1px solid rgba(192, 132, 252, 0.4);
-  padding: 0 6px;
+  color: #eff6ff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: 1px solid #60a5fa;
+  padding: 1px 8px;
   border-radius: 999px;
-  font-size: .65rem;
+  font-size: .66rem;
+  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.4);
 }
 .qa-buyer-floor-badge {
   display: inline-flex;
@@ -4466,3 +4469,147 @@ body.view-mode-desktop .btn-submit-bid {
   gap: 4px;
   flex-shrink: 0;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   25. 最高管理者「官方賣家身分 vs 測試買家身分」雙軌獨立切換機制樣式
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nav-btn-user.is-seller-identity {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.32), rgba(245, 158, 11, 0.24)) !important;
+  border-color: #60a5fa !important;
+  color: #eff6ff !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+}
+
+.qa-seller-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(30, 58, 138, 0.28));
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  color: #dbeafe;
+  font-size: .74rem;
+  line-height: 1.4;
+}
+
+.admin-dual-identity-panel {
+  margin-bottom: 14px;
+  padding: 12px 13px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.28));
+  border: 1.5px solid rgba(96, 165, 250, 0.5);
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.2);
+}
+
+.dual-identity-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.dual-identity-title {
+  font-size: .82rem;
+  font-weight: 900;
+  color: #93c5fd;
+}
+
+.dual-identity-badge {
+  font-size: .68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.25);
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  color: #dbeafe;
+}
+.dual-identity-badge.mode-seller {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-color: #93c5fd;
+  color: #fff;
+}
+.dual-identity-badge.mode-buyer {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fde68a;
+}
+
+.dual-identity-desc {
+  font-size: .74rem;
+  color: var(--c-text-2);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.dual-identity-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dual-btn-seller {
+  width: 100%;
+  justify-content: center;
+  padding: 9px 12px !important;
+  font-size: .83rem !important;
+  font-weight: 900 !important;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border: 1px solid #60a5fa !important;
+  color: #fff !important;
+  border-radius: 9px !important;
+  box-shadow: 0 3px 12px rgba(37, 99, 235, 0.4);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.dual-btn-seller:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.dual-btn-seller.is-active-role {
+  background: linear-gradient(135deg, #1e40af, #1e3a8a) !important;
+  border-color: var(--c-gold-1) !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+}
+
+.dual-btn-reset-buyer {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 12px !important;
+  font-size: .8rem !important;
+  font-weight: 800 !important;
+  background: rgba(245, 158, 11, 0.14) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  color: #fde68a !important;
+  border-radius: 9px !important;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.dual-btn-reset-buyer:hover {
+  background: rgba(245, 158, 11, 0.26) !important;
+  color: #fff !important;
+}
+
+.dual-btn-restore-buyer {
+  width: 100%;
+  justify-content: center;
+  padding: 7px 12px !important;
+  font-size: .78rem !important;
+  font-weight: 800 !important;
+  background: rgba(16, 185, 129, 0.14) !important;
+  border: 1px solid rgba(16, 185, 129, 0.42) !important;
+  color: #6ee7b7 !important;
+  border-radius: 9px !important;
+  cursor: pointer;
+}
+.dual-btn-restore-buyer:hover {
+  background: rgba(16, 185, 129, 0.25) !important;
+  color: #fff !important;
+}
+
