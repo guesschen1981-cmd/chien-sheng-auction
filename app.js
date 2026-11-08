@@ -2380,7 +2380,7 @@ function renderWinnerMessages(item) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   8. 現代化流水式 Q&A 問答討論串模組 (Timeline Stream + 多維度排序過濾 + 罐頭快回)
+   8. 現代化流水式 Q&A 問答討論串模組 (輕量瘦身版 + 單則回覆獨立刪除 + 收合式罐頭快回)
    ───────────────────────────────────────────────────────────── */
 
 /** 賣家常用罐頭快捷回覆詞庫 */
@@ -2396,21 +2396,21 @@ const QA_CANNED_REPLIES = [
 /** 判斷一則提問是否處於「待賣家回覆」狀態（含買家後續追問但賣家尚未回覆） */
 function isQuestionUnanswered(q) {
   if (!q) return false;
-  const replies = Array.isArray(q.replies) ? q.replies : [];
+  const replies = Array.isArray(q.replies) ? q.replies.filter(r => r && r.text) : [];
+  const hasMainReply = Boolean(q.reply && String(q.reply).trim());
   if (replies.length > 0) {
     const lastFloor = replies[replies.length - 1];
     if (!lastFloor.isSeller) {
-      // 若最新一樓是買家追問，且比賣家主回覆時間更新，視為待回覆
-      if (!q.reply || Number(lastFloor.time || 0) > Number(q.replyTime || 0)) {
+      if (!hasMainReply || Number(lastFloor.time || 0) > Number(q.replyTime || 0)) {
         return true;
       }
     }
     const hasSellerFloor = replies.some(r => r.isSeller);
-    if (hasSellerFloor || (q.reply && String(q.reply).trim())) {
+    if (hasSellerFloor || hasMainReply) {
       return false;
     }
   }
-  return !(q.reply && String(q.reply).trim());
+  return !hasMainReply;
 }
 
 /** 計算單則留言的熱門討論度分數（依按讚數、回覆樓層數與官方回覆加權） */
@@ -2477,16 +2477,264 @@ function setAdminQAFilterMode(mode) {
   window.scrollTo({ top: prevScroll, behavior: 'instant' });
 }
 
-/** 渲染商品頁「流水式留言串（Timeline Stream）」與四維度排序過濾計數 */
+/** 建立單筆問答留言串 DOM 節點（支援主回覆與子樓層獨立刪除、收合式罐頭快答、歷史樓層摺疊） */
+function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, bidderSet, highlightKey) {
+  const isUnans = isQuestionUnanswered(q);
+  const isMine = isQuestionMine(q);
+  const isBlack = isBuyerBlacklisted(q.phone, q.user);
+  const authorRaw = String(q.user || '買家').trim();
+  const isTopBidder = Boolean(topBidderName && authorRaw === topBidderName);
+  const isHistoryBidder = bidderSet.has(authorRaw);
+
+  const streamItem = document.createElement('div');
+  streamItem.className = `qa-stream-item ${isUnans ? 'is-unanswered' : ''} ${highlightKey === k ? 'qa-just-updated' : ''}`;
+  streamItem.dataset.qaKey = k;
+  streamItem.id = `qa-item-${k}`;
+
+  // 1. 左側頭像與身分標示
+  const avatarChar = authorRaw ? authorRaw.charAt(0).toUpperCase() : '買';
+  const avatarClass = isBlack
+    ? 'is-blacklisted'
+    : (isTopBidder ? 'is-top-bidder' : (isMine ? 'is-mine' : ''));
+
+  // 2. 身分徽章與狀態標籤
+  let roleBadgesHtml = '';
+  if (isTopBidder) {
+    roleBadgesHtml += `<span class="qa-role-badge role-top">👑 最高出價</span>`;
+  } else if (isHistoryBidder) {
+    roleBadgesHtml += `<span class="qa-role-badge role-bidder">🔨 競標買家</span>`;
+  }
+  if (isMine) {
+    roleBadgesHtml += `<span class="qa-role-badge role-mine">🙋 我的提問</span>`;
+  }
+  if (isBlack && AppState.isAdmin) {
+    roleBadgesHtml += `<span class="item-tab-badge" style="background:#ef4444;color:#fff;font-size:.62rem;padding:0 5px;">🚫 黑名單</span>`;
+  }
+  roleBadgesHtml += isUnans
+    ? `<span class="qa-role-badge role-pending">⏳ 待回覆</span>`
+    : `<span class="qa-role-badge role-replied">✅ 已回覆</span>`;
+
+  // 3. 發問者顯示名稱（管理者可見完整真實姓名，一般買家自動遮罩）
+  const displayAuthorName = AppState.isAdmin ? escapeHtml(authorRaw) : escapeHtml(maskBuyerName(authorRaw));
+
+  // 4. 管理者專屬解碼個資條（超緊湊單列）
+  let adminContactStripHtml = '';
+  if (AppState.isAdmin) {
+    const phoneHtml = q.phone
+      ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:0 5px;font-size:.68rem;">📞 ${escapeHtml(q.phone)}</a>
+         <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-phone" data-phone="${escapeHtml(q.phone)}" style="padding:0 4px;font-size:.64rem;">📋</button>`
+      : '<span style="color:var(--c-text-3);">未留電話</span>';
+    const lineHtml = q.line
+      ? `<span class="buyer-contact-badge badge-line" style="font-size:.64rem;padding:0 5px;">Line: ${escapeHtml(q.line)}</span>
+         <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-line" data-line="${escapeHtml(q.line)}" style="padding:0 4px;font-size:.64rem;">📋</button>`
+      : '';
+    const igHtml = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.64rem;padding:0 5px;">IG: ${escapeHtml(q.ig)}</span>` : '';
+    const fbHtml = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.64rem;padding:0 5px;">FB: ${escapeHtml(q.fb)}</span>` : '';
+    const blackBtnHtml = q.phone
+      ? `<button type="button" class="tbtn ${isBlack ? 'tbtn-gold' : 'tbtn-danger'} tbtn-xs btn-toggle-blacklist" data-phone="${escapeHtml(q.phone)}" data-name="${escapeHtml(authorRaw)}" style="padding:0 5px;font-size:.64rem;">${isBlack ? '🔓 解封' : '🚫 封鎖'}</button>`
+      : '';
+    const delBtnHtml = `<button type="button" class="btn-del-qa" data-qa-key="${k}" title="刪除此整筆提問" style="margin-left:auto;font-size:.65rem;padding:0 5px;">🗑️ 刪除提問</button>`;
+
+    adminContactStripHtml = `
+      <div class="qa-admin-contact-strip">
+        <span style="color:var(--c-gold-1);font-weight:800;">🔓 個資：</span>
+        ${phoneHtml}
+        ${lineHtml}
+        ${igHtml}
+        ${fbHtml}
+        ${blackBtnHtml}
+        ${delBtnHtml}
+      </div>
+    `;
+  }
+
+  // 5. 組裝「賣家官方回覆」與「多樓層對話串 (q.replies)」，並賦予每一筆回覆獨立刪除座標 (floorType, replyIdx)
+  const floors = [];
+  if (q.reply && String(q.reply).trim()) {
+    floors.push({
+      floorType: 'main',
+      replyIdx: -1,
+      isSeller: true,
+      author: AppState.studioName || '建生工坊賣家',
+      text: q.reply,
+      time: q.replyTime || q.time,
+      isMainReply: true
+    });
+  }
+  if (Array.isArray(q.replies)) {
+    q.replies.forEach((rep, rIdx) => {
+      if (rep && rep.text) {
+        floors.push({
+          floorType: 'sub',
+          replyIdx: rIdx,
+          isSeller: Boolean(rep.isSeller),
+          author: rep.author || (rep.isSeller ? (AppState.studioName || '建生工坊賣家') : authorRaw),
+          text: rep.text,
+          time: rep.time
+        });
+      }
+    });
+  }
+
+  let repliesHtml = '';
+  if (floors.length > 0) {
+    const isHistoryExpanded = Boolean(AppState.expandedHistoryFloorsMap && AppState.expandedHistoryFloorsMap[k]);
+    const shouldCollapseOlderFloors = floors.length > 2 && !isHistoryExpanded;
+    const visibleFloors = shouldCollapseOlderFloors ? floors.slice(floors.length - 1) : floors;
+    const hiddenFloorCount = floors.length - visibleFloors.length;
+
+    const collapseFloorsBtnHtml = floors.length > 2
+      ? `<button type="button" class="qa-collapse-toggle-bar btn-toggle-floor-history" data-qa-key="${k}">
+           <span>${shouldCollapseOlderFloors ? `📂 展開較早的 ${hiddenFloorCount} 則歷史回覆 ▼` : `🔼 收合較早的回覆對話（共 ${floors.length} 則）`}</span>
+         </button>`
+      : '';
+
+    const floorsInner = visibleFloors.map((fl) => {
+      const dispIdx = floors.indexOf(fl) + 1;
+      const badgeHtml = fl.isSeller
+        ? `<span class="qa-seller-badge">🛡️ 賣家官方回覆${floors.length > 1 ? ` #${dispIdx}` : ''}</span>`
+        : `<span class="qa-buyer-floor-badge">💬 ${AppState.isAdmin ? escapeHtml(fl.author) : escapeHtml(maskBuyerName(fl.author))} 追問 #${dispIdx}</span>`;
+
+      // 👑 最高權限管理者專屬：每一筆回覆旁皆具備獨立「🗑️ 刪除此回覆」按鈕（一般買家不可見）
+      const delSingleReplyBtnHtml = AppState.isAdmin
+        ? `<button type="button" class="btn-del-single-reply"
+             data-item-id="${escapeHtml(item.id)}"
+             data-qa-key="${escapeHtml(k)}"
+             data-floor-type="${fl.floorType}"
+             data-reply-idx="${fl.replyIdx}"
+             title="僅刪除此筆回覆記錄（保留買家原提問）">
+             🗑️ 刪除此回覆
+           </button>`
+        : '';
+
+      return `
+        <div class="qa-reply-floor ${fl.isSeller ? 'is-seller' : 'is-buyer'}">
+          <div class="qa-reply-floor-hd">
+            ${badgeHtml}
+            <div class="qa-reply-floor-meta-right">
+              <span class="qa-stream-time">${formatQAStreamTime(fl.time)}</span>
+              ${delSingleReplyBtnHtml}
+            </div>
+          </div>
+          <div class="qa-reply-floor-text">${escapeHtml(fl.text)}</div>
+        </div>
+      `;
+    }).join('');
+
+    repliesHtml = `
+      <div class="qa-thread-replies">
+        ${collapseFloorsBtnHtml}
+        ${floorsInner}
+      </div>
+    `;
+  }
+
+  // 6. 互動列（按讚熱度、買家追問按鈕、以及管理者專屬「💬 回覆此提問」收合開關按鈕）
+  const likeCount = Number(q.likes || 0);
+  const isLiked = Boolean(likedMap[k]);
+  const isAdminBoxOpen = Boolean(AppState.expandedAdminReplyMap && AppState.expandedAdminReplyMap[k]);
+
+  const adminReplyToggleBtnHtml = AppState.isAdmin
+    ? `<button type="button" class="qa-action-btn btn-qa-admin-reply-toggle ${isUnans ? 'is-unanswered-btn' : ''} ${isAdminBoxOpen ? 'active' : ''}" data-qa-key="${k}" title="展開或收合賣家罐頭快答與回覆面板">
+         <span>💬</span>
+         <span>${isAdminBoxOpen ? '收合回覆面板 ▲' : (isUnans ? '回覆此提問 ▼' : '回覆 / 罐頭快答 ▼')}</span>
+       </button>`
+    : '';
+
+  const actionsHtml = `
+    <div class="qa-stream-actions">
+      <button type="button" class="qa-action-btn btn-qa-like ${isLiked ? 'liked' : ''}" data-qa-key="${k}" title="對此問題按讚或表示同問">
+        <span>👍</span>
+        <span>讚 (${likeCount})</span>
+      </button>
+      <button type="button" class="qa-action-btn btn-qa-followup-toggle" data-qa-key="${k}" title="在此討論串下方追加提問或補充">
+        <span>💬</span>
+        <span>追問 (${floors.length})</span>
+      </button>
+      ${adminReplyToggleBtnHtml}
+    </div>
+  `;
+
+  // 7. 買家樓中樓追問輸入框
+  const buyerFollowupHtml = `
+    <div class="qa-buyer-followup-box" id="qa-followup-box-${k}">
+      <div style="display:flex;gap:5px;align-items:center;">
+        <input type="text" class="form-input" id="inp-qa-followup-${k}" maxlength="250"
+          placeholder="輸入您想繼續追問或補充的內容…" style="height:32px;font-size:.78rem;flex:1;" />
+        <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-followup" data-qa-key="${k}" style="height:32px;padding:0 10px;">
+          送出追問
+        </button>
+      </div>
+    </div>
+  `;
+
+  // 8. 管理者專屬：收合式「一鍵罐頭快捷回覆 ＋ 高效原地回覆面板」（預設隱藏，點擊「💬 回覆此提問」後才展開）
+  let adminReplyBoxHtml = '';
+  if (AppState.isAdmin) {
+    const cannedBtns = QA_CANNED_REPLIES.map(c =>
+      `<button type="button" class="btn-qa-canned" data-qa-key="${k}" data-reply-text="${escapeHtml(c.text)}">${escapeHtml(c.label)}</button>`
+    ).join('');
+
+    adminReplyBoxHtml = `
+      <div class="qa-admin-reply-box ${isAdminBoxOpen ? 'show' : ''}" id="qa-admin-reply-box-${k}">
+        <div class="qa-canned-toolbar">
+          <span class="qa-canned-title">⚡ 賣家一鍵罐頭快答：</span>
+          <label class="qa-instant-send-lbl" title="勾選後點擊罐頭按鈕將直接送出回覆；取消勾選則先帶入下方輸入框供微調">
+            <input type="checkbox" class="chk-qa-instant-canned" ${AppState.qaInstantCannedSend ? 'checked' : ''} style="accent-color:var(--c-gold-1);" />
+            <span>⚡ 點擊罐頭句立即送出</span>
+          </label>
+        </div>
+        <div class="qa-canned-chips-row">
+          ${cannedBtns}
+        </div>
+        <div class="qa-admin-input-row">
+          <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以更新主回覆，或點「➕ 加蓋樓層」新增回覆…' : '輸入賣家官方回覆內容（支援 Ctrl+Enter 送出）…'}" maxlength="350" id="inp-reply-${k}"></textarea>
+          <div class="qa-admin-btn-group">
+            <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply" data-qa-key="${k}" style="height:34px;padding:0 10px;font-weight:800;">
+              ${q.reply ? '✏️ 覆蓋主回覆' : '🚀 送出回覆'}
+            </button>
+            ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-qa-key="${k}" title="保留現有回覆並新增一樓官方補充回覆" style="height:34px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  streamItem.innerHTML = `
+    <div class="qa-avatar-col">
+      <div class="qa-avatar ${avatarClass}" title="${displayAuthorName}">${escapeHtml(avatarChar)}</div>
+      <div class="qa-timeline-line"></div>
+    </div>
+    <div class="qa-stream-main">
+      <div class="qa-stream-header">
+        <div class="qa-stream-user-group">
+          <span class="qa-floor-tag">#${floorNum}F</span>
+          <span class="qa-author-name">${displayAuthorName}</span>
+          ${roleBadgesHtml}
+        </div>
+        <span class="qa-stream-time">${formatQAStreamTime(q.time)}</span>
+      </div>
+      ${adminContactStripHtml}
+      <div class="qa-stream-question-body">${escapeHtml(q.question)}</div>
+      ${actionsHtml}
+      ${repliesHtml}
+      ${buyerFollowupHtml}
+      ${adminReplyBoxHtml}
+    </div>
+  `;
+
+  return streamItem;
+}
+
+/** 渲染商品頁「流水式留言串（Timeline Stream）」與四維度排序過濾計數（支援同一買家多則歷史提問摺疊） */
 function renderQA(preserveScroll = true, highlightKey = null) {
   const prevScroll = window.scrollY;
   const item = getActiveItem();
   const listEl = el('qa-list');
-  const emptyHint = el('qa-empty-hint');
   if (!listEl) return;
 
   if (!item) {
-    listEl.innerHTML = '<div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:14px;">目前尚無商品</div>';
+    listEl.innerHTML = '<div style="font-size:.8rem;color:var(--c-text-3);text-align:center;padding:12px;">目前尚無商品</div>';
     return;
   }
 
@@ -2551,7 +2799,6 @@ function renderQA(preserveScroll = true, highlightKey = null) {
   } else if (currentFilter === 'mine') {
     filteredKeys = mineKeys.slice().sort((a, b) => Number(qaData[b].time || 0) - Number(qaData[a].time || 0));
   } else {
-    // latest: 依發問時間由新到舊排序
     filteredKeys = allKeys.slice().sort((a, b) => Number(qaData[b].time || 0) - Number(qaData[a].time || 0));
   }
 
@@ -2566,7 +2813,7 @@ function renderQA(preserveScroll = true, highlightKey = null) {
           : '請先填寫買家稱呼與電話（或發表一則提問），即可在此快速檢視您的專屬發問紀錄！';
       }
     }
-    listEl.innerHTML = `<div style="text-align:center;padding:22px 12px;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">${emptyMsg}</div>`;
+    listEl.innerHTML = `<div style="text-align:center;padding:18px 10px;font-size:.8rem;color:var(--c-text-3);" id="qa-empty-hint">${emptyMsg}</div>`;
     if (preserveScroll) {
       window.scrollTo({ top: prevScroll, behavior: 'instant' });
     }
@@ -2579,207 +2826,66 @@ function renderQA(preserveScroll = true, highlightKey = null) {
 
   listEl.innerHTML = '';
 
+  // 依據買家識別 (電話或名稱) 將同一位買家的多則歷史提問自動分組摺疊（最新一則直接顯示，較舊的歸入可展開歷史夾）
+  const buyerGroupsMap = new Map();
+  const primaryOrder = [];
+
   filteredKeys.forEach(k => {
     const q = qaData[k];
-    const floorNum = floorMap[k] || 1;
-    const isUnans = isQuestionUnanswered(q);
-    const isMine = isQuestionMine(q);
-    const isBlack = isBuyerBlacklisted(q.phone, q.user);
-    const authorRaw = String(q.user || '買家').trim();
-    const isTopBidder = Boolean(topBidderName && authorRaw === topBidderName);
-    const isHistoryBidder = bidderSet.has(authorRaw);
+    const cleanPhone = String(q.phone || '').replace(/[^0-9]/g, '');
+    const cleanUser = String(q.user || '買家').trim();
+    const buyerGroupKey = cleanPhone || cleanUser || k;
 
-    const streamItem = document.createElement('div');
-    streamItem.className = `qa-stream-item ${isUnans ? 'is-unanswered' : ''} ${highlightKey === k ? 'qa-just-updated' : ''}`;
-    streamItem.dataset.qaKey = k;
-    streamItem.id = `qa-item-${k}`;
-
-    // 1. 左側頭像與身分標示
-    const avatarChar = authorRaw ? authorRaw.charAt(0).toUpperCase() : '買';
-    const avatarClass = isBlack
-      ? 'is-blacklisted'
-      : (isTopBidder ? 'is-top-bidder' : (isMine ? 'is-mine' : ''));
-
-    // 2. 身分徽章與狀態標籤
-    let roleBadgesHtml = '';
-    if (isTopBidder) {
-      roleBadgesHtml += `<span class="qa-role-badge role-top">👑 最高出價者</span>`;
-    } else if (isHistoryBidder) {
-      roleBadgesHtml += `<span class="qa-role-badge role-bidder">🔨 競標買家</span>`;
+    if (!buyerGroupsMap.has(buyerGroupKey)) {
+      buyerGroupsMap.set(buyerGroupKey, []);
+      primaryOrder.push(buyerGroupKey);
     }
-    if (isMine) {
-      roleBadgesHtml += `<span class="qa-role-badge role-mine">🙋 我的提問</span>`;
-    }
-    if (isBlack && AppState.isAdmin) {
-      roleBadgesHtml += `<span class="item-tab-badge" style="background:#ef4444;color:#fff;font-size:.65rem;">🚫 黑名單</span>`;
-    }
-    roleBadgesHtml += isUnans
-      ? `<span class="qa-role-badge role-pending">⏳ 待回覆</span>`
-      : `<span class="qa-role-badge role-replied">✅ 已回覆</span>`;
+    buyerGroupsMap.get(buyerGroupKey).push(k);
+  });
 
-    // 3. 發問者顯示名稱（管理者可見完整真實姓名，一般買家自動遮罩）
-    const displayAuthorName = AppState.isAdmin ? escapeHtml(authorRaw) : escapeHtml(maskBuyerName(authorRaw));
+  primaryOrder.forEach(buyerGroupKey => {
+    const groupKeys = buyerGroupsMap.get(buyerGroupKey);
+    const newestKey = groupKeys[0];
+    const newestQ = qaData[newestKey];
+    const primaryNode = buildSingleQAStreamNode(
+      item, newestKey, newestQ, floorMap[newestKey] || 1, likedMap, topBidderName, bidderSet, highlightKey
+    );
+    listEl.appendChild(primaryNode);
 
-    // 4. 管理者專屬解碼個資條
-    let adminContactStripHtml = '';
-    if (AppState.isAdmin) {
-      const phoneHtml = q.phone
-        ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:1px 6px;font-size:.71rem;">📞 ${escapeHtml(q.phone)}</a>
-           <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-phone" data-phone="${escapeHtml(q.phone)}" style="padding:1px 5px;font-size:.66rem;">📋 複製</button>`
-        : '<span style="color:var(--c-text-3);">未留電話</span>';
-      const lineHtml = q.line
-        ? `<span class="buyer-contact-badge badge-line" style="font-size:.66rem;">Line: ${escapeHtml(q.line)}</span>
-           <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-line" data-line="${escapeHtml(q.line)}" style="padding:1px 5px;font-size:.66rem;">📋</button>`
-        : '';
-      const igHtml = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.66rem;">IG: ${escapeHtml(q.ig)}</span>` : '';
-      const fbHtml = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.66rem;">FB: ${escapeHtml(q.fb)}</span>` : '';
-      const blackBtnHtml = q.phone
-        ? `<button type="button" class="tbtn ${isBlack ? 'tbtn-gold' : 'tbtn-danger'} tbtn-xs btn-toggle-blacklist" data-phone="${escapeHtml(q.phone)}" data-name="${escapeHtml(authorRaw)}" style="padding:1px 6px;font-size:.66rem;">${isBlack ? '🔓 解封' : '🚫 封鎖'}</button>`
-        : '';
-      const delBtnHtml = `<button type="button" class="btn-del-qa" data-qa-key="${k}" title="刪除此則提問" style="margin-left:auto;font-size:.68rem;padding:1px 6px;">🗑️ 刪除</button>`;
+    // 若同一位買家有超過 1 則提問，將較早的歷史提問收納至摺疊夾
+    if (groupKeys.length > 1) {
+      const olderKeys = groupKeys.slice(1);
+      const authorRaw = String(newestQ.user || '買家').trim();
+      const dispName = AppState.isAdmin ? escapeHtml(authorRaw) : escapeHtml(maskBuyerName(authorRaw));
+      const pendingOlderCount = olderKeys.filter(ok => isQuestionUnanswered(qaData[ok])).length;
+      const isGroupExpanded = Boolean(
+        (AppState.expandedBuyerGroupMap && AppState.expandedBuyerGroupMap[buyerGroupKey]) ||
+        (highlightKey && olderKeys.includes(highlightKey))
+      );
 
-      adminContactStripHtml = `
-        <div class="qa-admin-contact-strip">
-          <span style="color:var(--c-gold-1);font-weight:800;">🔓 個資解碼：</span>
-          ${phoneHtml}
-          ${lineHtml}
-          ${igHtml}
-          ${fbHtml}
-          ${blackBtnHtml}
-          ${delBtnHtml}
-        </div>
-      `;
-    }
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'qa-collapse-toggle-bar btn-toggle-buyer-history';
+      toggleBtn.style.marginLeft = '36px';
+      toggleBtn.style.marginBottom = '4px';
+      toggleBtn.dataset.buyerGroup = buyerGroupKey;
+      const pendingHint = pendingOlderCount > 0 ? ` · <span style="color:#fbbf24;">含 ${pendingOlderCount} 則待回覆</span>` : '';
+      toggleBtn.innerHTML = isGroupExpanded
+        ? `🔼 收合【${dispName}】另外 ${olderKeys.length} 則歷史提問`
+        : `📂 展開【${dispName}】另外 ${olderKeys.length} 則歷史提問${pendingHint} ▼`;
+      listEl.appendChild(toggleBtn);
 
-    // 5. 組裝「賣家官方回覆」與「多樓層對話串 (q.replies)」
-    const floors = [];
-    if (q.reply && String(q.reply).trim()) {
-      floors.push({
-        isSeller: true,
-        author: AppState.studioName || '建生工坊賣家',
-        text: q.reply,
-        time: q.replyTime || q.time,
-        isMainReply: true
+      const historyWrap = document.createElement('div');
+      historyWrap.className = `qa-buyer-history-group-wrap ${isGroupExpanded ? 'show' : ''}`;
+      historyWrap.id = `qa-buyer-group-${buyerGroupKey}`;
+      olderKeys.forEach(ok => {
+        const oNode = buildSingleQAStreamNode(
+          item, ok, qaData[ok], floorMap[ok] || 1, likedMap, topBidderName, bidderSet, highlightKey
+        );
+        historyWrap.appendChild(oNode);
       });
+      listEl.appendChild(historyWrap);
     }
-    if (Array.isArray(q.replies)) {
-      q.replies.forEach(rep => {
-        if (rep && rep.text) {
-          floors.push({
-            isSeller: Boolean(rep.isSeller),
-            author: rep.author || (rep.isSeller ? (AppState.studioName || '建生工坊賣家') : authorRaw),
-            text: rep.text,
-            time: rep.time
-          });
-        }
-      });
-    }
-
-    let repliesHtml = '';
-    if (floors.length > 0) {
-      const floorsInner = floors.map((fl, fIdx) => {
-        const badgeHtml = fl.isSeller
-          ? `<span class="qa-seller-badge">🛡️ 賣家官方回覆${fl.isMainReply && floors.length > 1 ? '' : (floors.length > 1 ? ` #${fIdx + 1}` : '')}</span>`
-          : `<span class="qa-buyer-floor-badge">💬 ${AppState.isAdmin ? escapeHtml(fl.author) : escapeHtml(maskBuyerName(fl.author))} 追問 #${fIdx + 1}</span>`;
-        return `
-          <div class="qa-reply-floor ${fl.isSeller ? 'is-seller' : 'is-buyer'}">
-            <div class="qa-reply-floor-hd">
-              ${badgeHtml}
-              <span class="qa-stream-time">${formatQAStreamTime(fl.time)}</span>
-            </div>
-            <div class="qa-reply-floor-text">${escapeHtml(fl.text)}</div>
-          </div>
-        `;
-      }).join('');
-      repliesHtml = `<div class="qa-thread-replies">${floorsInner}</div>`;
-    }
-
-    // 6. 互動列（按讚熱度、買家追問按鈕）
-    const likeCount = Number(q.likes || 0);
-    const isLiked = Boolean(likedMap[k]);
-    const actionsHtml = `
-      <div class="qa-stream-actions">
-        <button type="button" class="qa-action-btn btn-qa-like ${isLiked ? 'liked' : ''}" data-qa-key="${k}" title="對此問題按讚或表示同問">
-          <span>👍</span>
-          <span>同問 / 讚</span>
-          <span style="font-family:var(--f-num);">(${likeCount})</span>
-        </button>
-        <button type="button" class="qa-action-btn btn-qa-followup-toggle" data-qa-key="${k}" title="在此討論串下方追加提問或補充">
-          <span>💬</span>
-          <span>追問 / 回覆 (${floors.length})</span>
-        </button>
-      </div>
-    `;
-
-    // 7. 買家樓中樓追問輸入框
-    const buyerFollowupHtml = `
-      <div class="qa-buyer-followup-box" id="qa-followup-box-${k}">
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" class="form-input" id="inp-qa-followup-${k}" maxlength="250"
-            placeholder="輸入您想繼續追問或補充的內容…" style="height:34px;font-size:.8rem;flex:1;" />
-          <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-followup" data-qa-key="${k}" style="height:34px;padding:0 12px;">
-            送出追問
-          </button>
-        </div>
-      </div>
-    `;
-
-    // 8. 管理者專屬：一鍵罐頭快捷回覆 ＋ 高效原地回覆面板
-    let adminReplyBoxHtml = '';
-    if (AppState.isAdmin) {
-      const cannedBtns = QA_CANNED_REPLIES.map(c =>
-        `<button type="button" class="btn-qa-canned" data-qa-key="${k}" data-reply-text="${escapeHtml(c.text)}">${escapeHtml(c.label)}</button>`
-      ).join('');
-
-      adminReplyBoxHtml = `
-        <div class="qa-admin-reply-box">
-          <div class="qa-canned-toolbar">
-            <span class="qa-canned-title">⚡ 賣家一鍵罐頭快回：</span>
-            <label class="qa-instant-send-lbl" title="勾選後點擊罐頭按鈕將直接送出回覆；取消勾選則先帶入下方輸入框供微調">
-              <input type="checkbox" class="chk-qa-instant-canned" ${AppState.qaInstantCannedSend ? 'checked' : ''} style="accent-color:var(--c-gold-1);" />
-              <span>⚡ 點擊罐頭句立即送出</span>
-            </label>
-          </div>
-          <div class="qa-canned-chips-row">
-            ${cannedBtns}
-          </div>
-          <div class="qa-admin-input-row">
-            <textarea class="qa-admin-textarea" placeholder="輸入賣家官方回覆內容（支援 Ctrl+Enter 快速送出）..." maxlength="350" id="inp-reply-${k}">${q.reply ? escapeHtml(q.reply) : ''}</textarea>
-            <div class="qa-admin-btn-group">
-              <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply" data-qa-key="${k}" style="height:38px;padding:0 10px;font-weight:800;">
-                ${q.reply ? '✏️ 更新主回覆' : '🚀 送出回覆'}
-              </button>
-              ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-qa-key="${k}" title="保留原回覆並新增一樓官方補充回覆" style="height:38px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    streamItem.innerHTML = `
-      <div class="qa-avatar-col">
-        <div class="qa-avatar ${avatarClass}" title="${displayAuthorName}">${escapeHtml(avatarChar)}</div>
-        <div class="qa-timeline-line"></div>
-      </div>
-      <div class="qa-stream-main">
-        <div class="qa-stream-header">
-          <div class="qa-stream-user-group">
-            <span class="qa-floor-tag">#${floorNum}F</span>
-            <span class="qa-author-name">${displayAuthorName}</span>
-            ${roleBadgesHtml}
-          </div>
-          <span class="qa-stream-time">${formatQAStreamTime(q.time)}</span>
-        </div>
-        ${adminContactStripHtml}
-        <div class="qa-stream-question-body">${escapeHtml(q.question)}</div>
-        ${actionsHtml}
-        ${repliesHtml}
-        ${buyerFollowupHtml}
-        ${adminReplyBoxHtml}
-      </div>
-    `;
-
-    listEl.appendChild(streamItem);
   });
 
   // 綁定流水式留言串內所有互動按鈕事件
@@ -2790,7 +2896,7 @@ function renderQA(preserveScroll = true, highlightKey = null) {
   }
 }
 
-/** 綁定問答留言串內的複製、黑名單、按讚、追問、罐頭快回與刪除事件 */
+/** 綁定問答留言串內的複製、黑名單、按讚、追問、收合面板、單則回覆刪除、罐頭快回與整筆刪除事件 */
 function bindQAStreamItemEvents(containerEl, defaultItemId) {
   if (!containerEl) return;
 
@@ -2848,6 +2954,58 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
           el(`inp-qa-followup-${qKey}`)?.focus();
         }
       }
+    });
+  });
+
+  // 5-1. 展開 / 收合管理者「💬 回覆此提問（罐頭快答面板）」
+  containerEl.querySelectorAll('.btn-qa-admin-reply-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const qKey = btn.dataset.qaKey;
+      const boxPrefix = btn.dataset.boxPrefix || 'qa-admin-reply-box-';
+      const inpPrefix = btn.dataset.inputPrefix || 'inp-reply-';
+      if (!AppState.expandedAdminReplyMap) AppState.expandedAdminReplyMap = {};
+      const nextState = !AppState.expandedAdminReplyMap[qKey];
+      AppState.expandedAdminReplyMap[qKey] = nextState;
+
+      const box = el(`${boxPrefix}${qKey}`);
+      if (box) {
+        box.classList.toggle('show', nextState);
+        btn.classList.toggle('active', nextState);
+        const labelSpan = btn.querySelectorAll('span')[1];
+        if (labelSpan) {
+          labelSpan.textContent = nextState ? '收合回覆面板 ▲' : '回覆此提問 ▼';
+        }
+        if (nextState) {
+          el(`${inpPrefix}${qKey}`)?.focus();
+        }
+      }
+    });
+  });
+
+  // 5-2. 展開 / 收合單題多樓層歷史回覆對話
+  containerEl.querySelectorAll('.btn-toggle-floor-history').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const qKey = btn.dataset.qaKey;
+      if (!AppState.expandedHistoryFloorsMap) AppState.expandedHistoryFloorsMap = {};
+      AppState.expandedHistoryFloorsMap[qKey] = !AppState.expandedHistoryFloorsMap[qKey];
+      const prevScroll = window.scrollY;
+      renderQA(true, null);
+      window.scrollTo({ top: prevScroll, behavior: 'instant' });
+    });
+  });
+
+  // 5-3. 展開 / 收合同一位買家的多則歷史提問
+  containerEl.querySelectorAll('.btn-toggle-buyer-history').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const bgKey = btn.dataset.buyerGroup;
+      if (!AppState.expandedBuyerGroupMap) AppState.expandedBuyerGroupMap = {};
+      AppState.expandedBuyerGroupMap[bgKey] = !AppState.expandedBuyerGroupMap[bgKey];
+      const prevScroll = window.scrollY;
+      renderQA(true, null);
+      window.scrollTo({ top: prevScroll, behavior: 'instant' });
     });
   });
 
@@ -2957,16 +3115,66 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
     });
   });
 
-  // 11. 刪除提問
+  // 11. 👑 最高權限管理者專屬：單一回覆獨立刪除按鈕 (.btn-del-single-reply)
+  containerEl.querySelectorAll('.btn-del-single-reply').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itId = btn.dataset.itemId || defaultItemId;
+      const qKey = btn.dataset.qaKey;
+      const floorType = btn.dataset.floorType || 'main';
+      const replyIdx = Number(btn.dataset.replyIdx ?? -1);
+      deleteSingleQAReply(itId, qKey, floorType, replyIdx);
+    });
+  });
+
+  // 12. 刪除整筆提問
   containerEl.querySelectorAll('.btn-del-qa').forEach(btn => {
     btn.addEventListener('click', () => {
       const itId = btn.dataset.itemId || defaultItemId;
       const qKey = btn.dataset.qaKey;
-      if (confirm('確定要刪除這筆留言提問嗎？刪除後將同步自雲端移除。')) {
+      if (confirm('確定要刪除這整筆買家提問嗎？刪除後將同步自雲端移除。')) {
         deleteQuestion(itId, qKey);
       }
     });
   });
+}
+
+/**
+ * 👑 最高權限管理者專屬：獨立刪除單一筆賣家回覆或追問樓層（保留原買家提問）
+ * @param {string} itemId 商品 ID
+ * @param {string} qKey 提問 Key
+ * @param {string} floorType 'main' (主回覆 q.reply) 或 'sub' (多樓層陣列 q.replies[replyIdx])
+ * @param {number} replyIdx 當 floorType 為 'sub' 時之陣列索引
+ */
+function deleteSingleQAReply(itemId, qKey, floorType, replyIdx) {
+  if (!requireAdminAuth()) return;
+  const prevScroll = window.scrollY;
+  const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
+  if (!item || !item.qa || !item.qa[qKey]) return;
+
+  const q = item.qa[qKey];
+  if (floorType === 'main') {
+    q.reply = null;
+    q.replyTime = null;
+  } else if (floorType === 'sub') {
+    if (Array.isArray(q.replies) && replyIdx >= 0 && replyIdx < q.replies.length) {
+      q.replies.splice(replyIdx, 1);
+    }
+  }
+
+  renderQA(true, qKey);
+  renderAdminAllQA();
+  window.scrollTo({ top: prevScroll, behavior: 'instant' });
+  showToast('🗑️ 已刪除此筆回覆並同步更新雲端！');
+
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
+  }
+  syncToFirebase();
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    syncToLocalServer();
+  }
 }
 
 /** 買家或訪客對某則提問按讚 / 同問 (+1 熱度，影響「🔥 最熱門」排序並同步雲端) */
@@ -3031,27 +3239,33 @@ function submitQAFollowup(itemId, qKey, text, isSellerFloor = false) {
   const q = item.qa[qKey];
   if (!Array.isArray(q.replies)) q.replies = [];
 
-  q.replies.push({
-    author: isSellerFloor ? (AppState.studioName || '建生工坊賣家') : AppState.userProfile.name,
-    phone: isSellerFloor ? '' : (AppState.userProfile.phone || ''),
-    isSeller: Boolean(isSellerFloor),
-    text: cleanText,
-    time: now
-  });
-
-  if (isSellerFloor && !q.reply) {
+  // 若為賣家回覆且尚無主回覆，直接存入主回覆避免重複產生兩筆相同樓層
+  if (isSellerFloor && !(q.reply && String(q.reply).trim())) {
     q.reply = cleanText;
     q.replyTime = now;
+  } else {
+    q.replies.push({
+      author: isSellerFloor ? (AppState.studioName || '建生工坊賣家') : AppState.userProfile.name,
+      phone: isSellerFloor ? '' : (AppState.userProfile.phone || ''),
+      isSeller: Boolean(isSellerFloor),
+      text: cleanText,
+      time: now
+    });
+  }
+
+  // 送出後自動收合管理員回覆面板，保持版面精簡
+  if (isSellerFloor && AppState.expandedAdminReplyMap) {
+    AppState.expandedAdminReplyMap[qKey] = false;
   }
 
   renderQA(true, qKey);
   renderAdminAllQA();
   window.scrollTo({ top: prevScroll, behavior: 'instant' });
-  showToast(isSellerFloor ? '🛡️ 已成功加蓋賣家官方回覆樓層！' : '💬 您的追問已成功送出！');
+  showToast(isSellerFloor ? '🛡️ 已成功新增賣家官方回覆樓層！' : '💬 您的追問已成功送出！');
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).update(q).catch(() => {});
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3105,7 +3319,6 @@ function submitQuestion() {
   item.qa[qKey] = newQ;
 
   inp.value = '';
-  // 若買家原本停留在其他過濾標籤，自動切回「最新留言」以便立即看到剛發出的問題
   if (AppState.qaFilterMode !== 'latest' && AppState.qaFilterMode !== 'mine') {
     AppState.qaFilterMode = 'latest';
   }
@@ -3114,7 +3327,6 @@ function submitQuestion() {
   window.scrollTo({ top: prevScroll, behavior: 'instant' });
   showToast('💬 提問已發佈至留言串！賣家回覆後將即時顯示於下方。');
 
-  // 即時推播至統一雲端 Firebase 節點
   const db = FirebaseManager.getDb();
   if (db && item.id) {
     db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => {});
@@ -3139,7 +3351,7 @@ function submitQuestion() {
   }
 }
 
-/** 提交提問回覆 (同步雲端 Firebase - 最高權限管理者專屬，嚴格保持捲軸鎖定) */
+/** 提交提問回覆 (同步雲端 Firebase - 最高權限管理者專屬，回覆後自動收合面板並保持捲軸鎖定) */
 function submitQAReply(itemId, qKey, replyText) {
   if (!requireAdminAuth()) return;
   const prevScroll = window.scrollY;
@@ -3149,6 +3361,11 @@ function submitQAReply(itemId, qKey, replyText) {
   item.qa[qKey].reply = replyText;
   item.qa[qKey].replyTime = now;
 
+  // 送出回覆後自動收合該題的罐頭回覆面板，避免畫面過長
+  if (AppState.expandedAdminReplyMap) {
+    AppState.expandedAdminReplyMap[qKey] = false;
+  }
+
   renderQA(true, qKey);
   renderAdminAllQA();
   window.scrollTo({ top: prevScroll, behavior: 'instant' });
@@ -3156,7 +3373,7 @@ function submitQAReply(itemId, qKey, replyText) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).update(item.qa[qKey]).catch(() => {});
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(item.qa[qKey]).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3164,7 +3381,7 @@ function submitQAReply(itemId, qKey, replyText) {
   }
 }
 
-/** 刪除提問留言 (從雲端與本地同步移除 - 最高權限管理者專屬，保持捲軸鎖定) */
+/** 刪除整筆提問留言 (從雲端與本地同步移除 - 最高權限管理者專屬，保持捲軸鎖定) */
 function deleteQuestion(itemId, qKey) {
   if (!requireAdminAuth()) return;
   const prevScroll = window.scrollY;
@@ -3187,7 +3404,7 @@ function deleteQuestion(itemId, qKey) {
   }
 }
 
-/** 渲染管理者後台「💬 各商品買家提問即時總覽」（支援待回覆篩選與一鍵罐頭快回） */
+/** 渲染管理者後台「💬 各商品買家提問即時總覽」（支援單則回覆獨立刪除與收合式罐頭快回） */
 function renderAdminAllQA() {
   const container = el('admin-all-qa-list');
   if (!container) return;
@@ -3235,7 +3452,7 @@ function renderAdminAllQA() {
       ? '🎉 目前所有商品的買家提問皆已回覆完畢！'
       : '目前尚無任何商品買家提問。';
     container.innerHTML = `
-      <div style="font-size:.84rem;color:var(--c-text-3);text-align:center;padding:16px;background:rgba(255,255,255,0.02);border-radius:10px;">
+      <div style="font-size:.82rem;color:var(--c-text-3);text-align:center;padding:14px;background:rgba(255,255,255,0.02);border-radius:10px;">
         ${msg}
       </div>
     `;
@@ -3243,34 +3460,47 @@ function renderAdminAllQA() {
   }
 
   container.innerHTML = '';
-  displayList.forEach((entry, idx) => {
+  displayList.forEach((entry) => {
     const q = entry.qa;
     const isUnans = isQuestionUnanswered(q);
     const authorRaw = String(q.user || '買家').trim();
     const isBlack = isBuyerBlacklisted(q.phone, authorRaw);
     const avatarChar = authorRaw ? authorRaw.charAt(0).toUpperCase() : '買';
+    const isAdminBoxOpen = Boolean(AppState.expandedAdminReplyMap && AppState.expandedAdminReplyMap[entry.qaKey]);
 
     const card = document.createElement('div');
     card.className = `qa-stream-item ${isUnans ? 'is-unanswered' : ''}`;
 
-    const lineTag = q.line ? `<span class="buyer-contact-badge badge-line" style="font-size:.66rem;">Line: ${escapeHtml(q.line)}</span>` : '';
-    const igTag = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.66rem;">IG: ${escapeHtml(q.ig)}</span>` : '';
-    const fbTag = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.66rem;">FB</span>` : '';
+    const lineTag = q.line ? `<span class="buyer-contact-badge badge-line" style="font-size:.64rem;padding:0 5px;">Line: ${escapeHtml(q.line)}</span>` : '';
+    const igTag = q.ig ? `<span class="buyer-contact-badge badge-ig" style="font-size:.64rem;padding:0 5px;">IG: ${escapeHtml(q.ig)}</span>` : '';
+    const fbTag = q.fb ? `<span class="buyer-contact-badge badge-fb" style="font-size:.64rem;padding:0 5px;">FB</span>` : '';
 
-    // 組合樓層回覆
+    // 組合樓層回覆（每層皆具備獨立「🗑️ 刪除此回覆」按鈕）
     const floors = [];
     if (q.reply && String(q.reply).trim()) {
-      floors.push({ isSeller: true, author: AppState.studioName || '賣家官方回覆', text: q.reply, time: q.replyTime || q.time });
+      floors.push({ floorType: 'main', replyIdx: -1, isSeller: true, author: AppState.studioName || '賣家官方回覆', text: q.reply, time: q.replyTime || q.time });
     }
     if (Array.isArray(q.replies)) {
-      q.replies.forEach(r => { if (r && r.text) floors.push(r); });
+      q.replies.forEach((r, rIdx) => {
+        if (r && r.text) floors.push({ floorType: 'sub', replyIdx: rIdx, isSeller: Boolean(r.isSeller), author: r.author || authorRaw, text: r.text, time: r.time });
+      });
     }
     const repliesHtml = floors.length
       ? `<div class="qa-thread-replies">${floors.map((fl, fIdx) => `
           <div class="qa-reply-floor ${fl.isSeller ? 'is-seller' : 'is-buyer'}">
             <div class="qa-reply-floor-hd">
-              <span class="${fl.isSeller ? 'qa-seller-badge' : 'qa-buyer-floor-badge'}">${fl.isSeller ? '🛡️ 賣家回覆' : '💬 買家追問'} #${fIdx + 1}</span>
-              <span class="qa-stream-time">${formatQAStreamTime(fl.time)}</span>
+              <span class="${fl.isSeller ? 'qa-seller-badge' : 'qa-buyer-floor-badge'}">${fl.isSeller ? '🛡️ 賣家官方回覆' : '💬 買家追問'} #${fIdx + 1}</span>
+              <div class="qa-reply-floor-meta-right">
+                <span class="qa-stream-time">${formatQAStreamTime(fl.time)}</span>
+                <button type="button" class="btn-del-single-reply"
+                  data-item-id="${escapeHtml(entry.itemId)}"
+                  data-qa-key="${escapeHtml(entry.qaKey)}"
+                  data-floor-type="${fl.floorType}"
+                  data-reply-idx="${fl.replyIdx}"
+                  title="刪除此筆回覆記錄">
+                  🗑️ 刪除此回覆
+                </button>
+              </div>
             </div>
             <div class="qa-reply-floor-text">${escapeHtml(fl.text)}</div>
           </div>
@@ -3289,27 +3519,33 @@ function renderAdminAllQA() {
       <div class="qa-stream-main">
         <div class="qa-stream-header">
           <div class="qa-stream-user-group">
-            <span class="item-tab-badge badge-live" style="font-size:.68rem;">📦 ${escapeHtml(entry.itemName.slice(0, 22))}</span>
+            <span class="item-tab-badge badge-live" style="font-size:.65rem;padding:0 6px;">📦 ${escapeHtml(entry.itemName.slice(0, 20))}</span>
             <span class="qa-author-name">👤 ${escapeHtml(authorRaw)}</span>
             <span class="qa-role-badge ${isUnans ? 'role-pending' : 'role-replied'}">${isUnans ? '⏳ 待回覆' : '✅ 已回覆'}</span>
           </div>
           <span class="qa-stream-time">${formatQAStreamTime(q.time)}</span>
         </div>
         <div class="qa-admin-contact-strip">
-          ${q.phone ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:1px 6px;font-size:.71rem;">📞 ${escapeHtml(q.phone)}</a>
-          <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-phone" data-phone="${escapeHtml(q.phone)}" style="padding:1px 5px;font-size:.66rem;">📋 複製電話</button>` : '<span style="color:var(--c-text-3);">未留電話</span>'}
+          ${q.phone ? `<a href="tel:${escapeHtml(q.phone)}" class="buyer-phone-link" style="padding:0 5px;font-size:.68rem;">📞 ${escapeHtml(q.phone)}</a>
+          <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-phone" data-phone="${escapeHtml(q.phone)}" style="padding:0 4px;font-size:.64rem;">📋</button>` : '<span style="color:var(--c-text-3);">未留電話</span>'}
           ${lineTag}
-          ${q.line ? `<button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-line" data-line="${escapeHtml(q.line)}" style="padding:1px 5px;font-size:.66rem;">📋 複製 Line</button>` : ''}
+          ${q.line ? `<button type="button" class="tbtn tbtn-ghost tbtn-xs btn-copy-line" data-line="${escapeHtml(q.line)}" style="padding:0 4px;font-size:.64rem;">📋</button>` : ''}
           ${igTag}
           ${fbTag}
-          ${q.phone ? `<button type="button" class="tbtn ${isBlack ? 'tbtn-gold' : 'tbtn-danger'} tbtn-xs btn-toggle-blacklist" data-phone="${escapeHtml(q.phone)}" data-name="${escapeHtml(authorRaw)}" style="padding:1px 6px;font-size:.66rem;">${isBlack ? '🔓 解封' : '🚫 封鎖'}</button>` : ''}
-          <button type="button" class="btn-del-qa" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" style="margin-left:auto;font-size:.68rem;padding:1px 6px;">🗑️ 刪除</button>
+          ${q.phone ? `<button type="button" class="tbtn ${isBlack ? 'tbtn-gold' : 'tbtn-danger'} tbtn-xs btn-toggle-blacklist" data-phone="${escapeHtml(q.phone)}" data-name="${escapeHtml(authorRaw)}" style="padding:0 5px;font-size:.64rem;">${isBlack ? '🔓 解封' : '🚫 封鎖'}</button>` : ''}
+          <button type="button" class="btn-del-qa" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" style="margin-left:auto;font-size:.65rem;padding:0 5px;">🗑️ 刪除提問</button>
         </div>
         <div class="qa-stream-question-body">${escapeHtml(q.question)}</div>
+        <div class="qa-stream-actions">
+          <button type="button" class="qa-action-btn btn-qa-admin-reply-toggle ${isUnans ? 'is-unanswered-btn' : ''} ${isAdminBoxOpen ? 'active' : ''}" data-qa-key="${entry.qaKey}" data-box-prefix="qa-admin-overview-box-" data-input-prefix="inp-admin-reply-">
+            <span>💬</span>
+            <span>${isAdminBoxOpen ? '收合回覆面板 ▲' : (isUnans ? '回覆此提問 ▼' : '回覆 / 罐頭快答 ▼')}</span>
+          </button>
+        </div>
         ${repliesHtml}
-        <div class="qa-admin-reply-box">
+        <div class="qa-admin-reply-box ${isAdminBoxOpen ? 'show' : ''}" id="qa-admin-overview-box-${entry.qaKey}">
           <div class="qa-canned-toolbar">
-            <span class="qa-canned-title">⚡ 一鍵罐頭快回：</span>
+            <span class="qa-canned-title">⚡ 一鍵罐頭快答：</span>
             <label class="qa-instant-send-lbl">
               <input type="checkbox" class="chk-qa-instant-canned" ${AppState.qaInstantCannedSend ? 'checked' : ''} style="accent-color:var(--c-gold-1);" />
               <span>⚡ 點擊罐頭句立即送出</span>
@@ -3319,12 +3555,12 @@ function renderAdminAllQA() {
             ${cannedBtns}
           </div>
           <div class="qa-admin-input-row">
-            <textarea class="qa-admin-textarea" placeholder="輸入賣家回覆內容..." maxlength="350" id="inp-admin-reply-${entry.qaKey}">${q.reply ? escapeHtml(q.reply) : ''}</textarea>
+            <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以覆蓋主回覆，或點「➕ 加蓋樓層」新增回覆…' : '輸入賣家回覆內容…'}" maxlength="350" id="inp-admin-reply-${entry.qaKey}"></textarea>
             <div class="qa-admin-btn-group">
-              <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply btn-admin-submit-reply" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:38px;padding:0 10px;font-weight:800;">
-                ${q.reply ? '✏️ 更新主回覆' : '🚀 送出回覆'}
+              <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply btn-admin-submit-reply" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 10px;font-weight:800;">
+                ${q.reply ? '✏️ 覆蓋主回覆' : '🚀 送出回覆'}
               </button>
-              ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:38px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
+              ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
             </div>
           </div>
         </div>

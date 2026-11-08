@@ -3780,53 +3780,56 @@ body.view-mode-desktop .btn-submit-bid {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   24. 問答區現代化升級：流水式留言串（Timeline Stream）＋ 多維度排序過濾 ＋ 罐頭快回
+   24. 問答區現代化升級：流水式留言串（輕量瘦身版）＋ 單一回覆刪除 ＋ 收合式罐頭快答
    ═══════════════════════════════════════════════════════════════════════════ */
+
+.qa-section {
+  padding: 12px 14px !important;
+}
 
 .qa-section-hd {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .qa-summary-pill {
-  font-size: .73rem;
+  font-size: .7rem;
   font-weight: 700;
   color: var(--c-gold-2);
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.28);
-  padding: 2px 9px;
+  padding: 1px 8px;
   border-radius: 999px;
 }
 
-/* 買家發問框與快速提問引導膠囊 */
+/* 買家發問框與快速提問引導膠囊（緊湊瘦身） */
 .qa-ask-box {
-  background: rgba(15, 15, 38, 0.65);
-  border: 1px solid rgba(168, 85, 247, 0.28);
-  border-radius: 12px;
-  padding: 10px 12px;
+  background: rgba(15, 15, 38, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  gap: 6px;
 }
 
 .qa-buyer-prompts-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
   scrollbar-width: none;
 }
 .qa-buyer-prompts-bar::-webkit-scrollbar {
   display: none;
 }
 .qa-prompts-lbl {
-  font-size: .72rem;
+  font-size: .68rem;
   color: var(--c-text-3);
   font-weight: 700;
   white-space: nowrap;
@@ -3836,51 +3839,51 @@ body.view-mode-desktop .btn-submit-bid {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--c-text-2);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all .15s ease;
+  transition: all .14s ease;
 }
 .qa-prompt-chip:hover,
 .qa-prompt-chip:active {
   background: rgba(168, 85, 247, 0.18);
   border-color: var(--c-purple-1);
   color: #fff;
-  transform: translateY(-1px);
 }
 
 .qa-ask-input {
   width: 100%;
   background: rgba(8, 8, 24, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 9px;
+  border-radius: 8px;
   color: #fff;
-  font-size: .85rem;
-  line-height: 1.45;
-  padding: 8px 11px;
+  font-size: .82rem;
+  line-height: 1.4;
+  padding: 6px 10px;
   resize: vertical;
-  min-height: 50px;
+  min-height: 36px;
+  height: 38px;
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s, height .15s;
 }
 .qa-ask-input:focus {
   border-color: var(--c-gold-1);
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+  height: 54px;
 }
 
 .qa-ask-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .qa-ask-hint {
-  font-size: .7rem;
+  font-size: .66rem;
   color: var(--c-text-3);
 }
 
@@ -3888,12 +3891,12 @@ body.view-mode-desktop .btn-submit-bid {
 .qa-filter-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 10px;
-  padding: 5px;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 4px;
   background: rgba(10, 10, 28, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 11px;
+  border-radius: 9px;
 }
 @media (max-width: 460px) {
   .qa-filter-bar {
@@ -3906,16 +3909,16 @@ body.view-mode-desktop .btn-submit-bid {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 6px;
-  border-radius: 8px;
+  padding: 4px 5px;
+  border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--c-text-2);
-  font-size: .76rem;
+  font-size: .72rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: all .16s ease;
+  transition: all .15s ease;
 }
 .qa-filter-tab:hover {
   background: rgba(255, 255, 255, 0.05);
@@ -3925,21 +3928,20 @@ body.view-mode-desktop .btn-submit-bid {
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.28), rgba(245, 158, 11, 0.22));
   border-color: rgba(245, 158, 11, 0.55);
   color: #fff;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 .qa-tab-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 17px;
-  padding: 0 5px;
+  min-width: 16px;
+  height: 15px;
+  padding: 0 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   color: var(--c-text-2);
   font-family: var(--f-num);
-  font-size: .68rem;
+  font-size: .64rem;
   font-weight: 800;
 }
 .qa-filter-tab.active .qa-tab-count {
@@ -3954,26 +3956,26 @@ body.view-mode-desktop .btn-submit-bid {
 }
 @keyframes pulseUrgentBadge {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  50% { transform: scale(1.08); }
 }
 
 /* 後台問答總覽篩選器 */
 .qa-admin-filter-pills {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 .qa-admin-filter-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   color: var(--c-text-2);
-  font-size: .74rem;
+  font-size: .71rem;
   font-weight: 700;
   cursor: pointer;
   transition: all .15s;
@@ -3984,60 +3986,59 @@ body.view-mode-desktop .btn-submit-bid {
   color: var(--c-gold-1);
 }
 
-/* ── 流水式留言串（Timeline Stream）核心排版 ── */
+/* ── 流水式留言串（Timeline Stream 輕量緊湊版） ── */
 .qa-timeline-stream {
   display: flex;
   flex-direction: column;
   gap: 0 !important;
-  margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .qa-stream-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  transition: background-color .25s ease;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background-color .2s ease;
   position: relative;
 }
 .qa-stream-item:hover {
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(255, 255, 255, 0.015);
 }
 .qa-stream-item.is-unanswered {
-  background: rgba(245, 158, 11, 0.035);
+  background: rgba(245, 158, 11, 0.03);
 }
 .qa-stream-item.qa-just-updated {
-  animation: qaStreamHighlight 1.8s ease;
+  animation: qaStreamHighlight 1.6s ease;
 }
 @keyframes qaStreamHighlight {
-  0% { background: rgba(245, 158, 11, 0.24); }
+  0% { background: rgba(245, 158, 11, 0.22); }
   100% { background: transparent; }
 }
 
-/* 左側頭像與時間軸垂直導線 */
+/* 左側精巧頭像與時間軸垂直導線 */
 .qa-avatar-col {
   display: flex;
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
-  width: 36px;
+  width: 28px;
   align-self: stretch;
 }
 .qa-avatar {
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: linear-gradient(135deg, #4f46e5, #9333ea);
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   color: #fff;
-  font-size: .84rem;
+  font-size: .72rem;
   font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   flex-shrink: 0;
   user-select: none;
 }
@@ -4057,54 +4058,53 @@ body.view-mode-desktop .btn-submit-bid {
 }
 .qa-timeline-line {
   flex: 1;
-  width: 2px;
-  min-height: 12px;
-  margin-top: 5px;
-  background: linear-gradient(to bottom, rgba(168, 85, 247, 0.38), rgba(245, 158, 11, 0.12));
-  border-radius: 2px;
+  width: 1.5px;
+  min-height: 8px;
+  margin-top: 4px;
+  background: linear-gradient(to bottom, rgba(168, 85, 247, 0.32), rgba(245, 158, 11, 0.08));
 }
 
-/* 右側留言串主內容區 */
+/* 右側留言串主內容區（緊湊行距） */
 .qa-stream-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .qa-stream-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 .qa-stream-user-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
   min-width: 0;
 }
 .qa-floor-tag {
   font-family: var(--f-num);
-  font-size: .68rem;
+  font-size: .64rem;
   font-weight: 800;
   color: var(--c-gold-1);
-  background: rgba(245, 158, 11, 0.14);
-  padding: 1px 6px;
-  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.13);
+  padding: 0 5px;
+  border-radius: 4px;
 }
 .qa-author-name {
-  font-size: .84rem;
+  font-size: .8rem;
   font-weight: 800;
   color: #f8fafc;
 }
 .qa-role-badge {
-  font-size: .66rem;
+  font-size: .62rem;
   font-weight: 800;
-  padding: 1px 6px;
+  padding: 0 5px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -4135,55 +4135,55 @@ body.view-mode-desktop .btn-submit-bid {
 }
 
 .qa-stream-time {
-  font-size: .7rem;
+  font-size: .66rem;
   color: var(--c-text-3);
   white-space: nowrap;
 }
 
-/* 管理者解碼聯絡資訊條 (緊湊單列顯示) */
+/* 管理者解碼聯絡資訊條 (超緊湊單列) */
 .qa-admin-contact-strip {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
-  padding: 4px 8px;
-  background: rgba(245, 158, 11, 0.07);
-  border: 1px dashed rgba(245, 158, 11, 0.28);
-  border-radius: 7px;
-  font-size: .72rem;
+  padding: 2px 6px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px dashed rgba(245, 158, 11, 0.22);
+  border-radius: 5px;
+  font-size: .68rem;
 }
 
 /* 提問內容文字本體 */
 .qa-stream-question-body {
-  font-size: .88rem;
+  font-size: .84rem;
   color: #f1f5f9;
-  line-height: 1.5;
+  line-height: 1.4;
   word-break: break-word;
   white-space: pre-line;
-  padding: 2px 0;
+  padding: 1px 0;
 }
 
-/* 留言下方互動按鈕列 (按讚熱度、追問、管理者快回) */
+/* 留言下方互動按鈕列 (按讚熱度、追問、管理者展開回覆按鈕) */
 .qa-stream-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .qa-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--c-text-2);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 700;
-  padding: 2px 9px;
+  padding: 1px 8px;
   border-radius: 999px;
   cursor: pointer;
-  transition: all .15s;
+  transition: all .14s;
 }
 .qa-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
@@ -4194,31 +4194,46 @@ body.view-mode-desktop .btn-submit-bid {
   border-color: var(--c-gold-1);
   color: var(--c-gold-1);
 }
+.qa-action-btn.btn-qa-admin-reply-toggle {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.42);
+  color: #e9d5ff;
+}
+.qa-action-btn.btn-qa-admin-reply-toggle.is-unanswered-btn {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.24), rgba(168, 85, 247, 0.24));
+  border-color: var(--c-gold-1);
+  color: var(--c-gold-1);
+}
+.qa-action-btn.btn-qa-admin-reply-toggle.active {
+  background: var(--c-purple-1);
+  border-color: var(--c-purple-1);
+  color: #fff;
+}
 
-/* ── 賣家官方回覆與多樓層對話串 (Nested Stream Replies) ── */
+/* ── 賣家官方回覆與多樓層對話串 (緊湊版 + 單一回覆獨立刪除按鈕) ── */
 .qa-thread-replies {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-  padding-left: 10px;
-  border-left: 2px solid rgba(168, 85, 247, 0.45);
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(168, 85, 247, 0.4);
 }
 
 .qa-reply-floor {
-  padding: 7px 10px;
-  border-radius: 9px;
-  font-size: .83rem;
-  line-height: 1.45;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: .8rem;
+  line-height: 1.38;
   position: relative;
 }
 .qa-reply-floor.is-seller {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.14), rgba(79, 70, 229, 0.1));
-  border: 1px solid rgba(168, 85, 247, 0.32);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(79, 70, 229, 0.08));
+  border: 1px solid rgba(168, 85, 247, 0.28);
 }
 .qa-reply-floor.is-buyer {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .qa-reply-floor-hd {
@@ -4227,28 +4242,34 @@ body.view-mode-desktop .btn-submit-bid {
   justify-content: space-between;
   gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 3px;
-  font-size: .72rem;
+  margin-bottom: 2px;
+  font-size: .68rem;
+}
+.qa-reply-floor-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 .qa-seller-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   font-weight: 800;
   color: #e9d5ff;
-  background: rgba(147, 51, 234, 0.35);
-  border: 1px solid rgba(192, 132, 252, 0.45);
-  padding: 1px 7px;
+  background: rgba(147, 51, 234, 0.32);
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  padding: 0 6px;
   border-radius: 999px;
-  font-size: .68rem;
+  font-size: .65rem;
 }
 .qa-buyer-floor-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   font-weight: 700;
   color: var(--c-gold-2);
-  font-size: .72rem;
+  font-size: .68rem;
 }
 .qa-reply-floor-text {
   color: #f8fafc;
@@ -4256,31 +4277,95 @@ body.view-mode-desktop .btn-submit-bid {
   white-space: pre-line;
 }
 
-/* 買家樓中樓追問輸入盒 */
-.qa-buyer-followup-box {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: rgba(15, 15, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 9px;
+/* 最高管理者專屬：單一回覆獨立刪除按鈕 */
+.btn-del-single-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  color: #fca5a5;
+  font-size: .65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .14s ease;
+}
+.btn-del-single-reply:hover,
+.btn-del-single-reply:active {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+/* 歷史回覆樓層 & 同一買家多則歷史提問 摺疊切換列 */
+.qa-collapse-toggle-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  color: var(--c-gold-2);
+  font-size: .7rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: fit-content;
+  margin-top: 3px;
+  transition: all .14s;
+}
+.qa-collapse-toggle-bar:hover {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: var(--c-gold-1);
+  color: #fff;
+}
+
+.qa-buyer-history-group-wrap {
+  padding-left: 14px;
+  border-left: 2px dashed rgba(245, 158, 11, 0.25);
+  margin: 2px 0 6px 14px;
   display: none;
   flex-direction: column;
-  gap: 6px;
+}
+.qa-buyer-history-group-wrap.show {
+  display: flex;
+}
+
+/* 買家樓中樓追問輸入盒 */
+.qa-buyer-followup-box {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(15, 15, 38, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 5px;
 }
 .qa-buyer-followup-box.show {
   display: flex;
 }
 
-/* ── 管理者高效回覆盒 ＋ 一鍵罐頭快捷回覆列 ── */
+/* ── 管理者收合式高效回覆盒 ＋ 一鍵罐頭快捷回覆列（預設隱藏，點擊展開） ── */
 .qa-admin-reply-box {
-  margin-top: 7px;
-  padding: 8px 10px;
-  background: rgba(18, 18, 44, 0.85);
-  border: 1px solid rgba(168, 85, 247, 0.32);
-  border-radius: 10px;
-  display: flex;
+  margin-top: 5px;
+  padding: 7px 9px;
+  background: rgba(18, 18, 44, 0.92);
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  border-radius: 9px;
+  display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  animation: qaDrawerIn .18s ease;
+}
+.qa-admin-reply-box.show {
+  display: flex;
+}
+@keyframes qaDrawerIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .qa-canned-toolbar {
@@ -4291,7 +4376,7 @@ body.view-mode-desktop .btn-submit-bid {
   flex-wrap: wrap;
 }
 .qa-canned-title {
-  font-size: .7rem;
+  font-size: .68rem;
   font-weight: 800;
   color: var(--c-gold-1);
 }
@@ -4299,7 +4384,7 @@ body.view-mode-desktop .btn-submit-bid {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: .68rem;
+  font-size: .66rem;
   color: #c4b5fd;
   cursor: pointer;
   user-select: none;
@@ -4308,32 +4393,31 @@ body.view-mode-desktop .btn-submit-bid {
 .qa-canned-chips-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 .btn-qa-canned {
   background: rgba(168, 85, 247, 0.14);
   border: 1px solid rgba(168, 85, 247, 0.38);
   color: #f3e8ff;
-  font-size: .71rem;
+  font-size: .68rem;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
   cursor: pointer;
-  transition: all .14s ease;
+  transition: all .13s ease;
 }
 .btn-qa-canned:hover,
 .btn-qa-canned:active {
   background: var(--c-gold-1);
   border-color: var(--c-gold-1);
   color: #000;
-  transform: translateY(-1px);
 }
 
 .qa-admin-input-row {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
 }
 @media (max-width: 480px) {
   .qa-admin-input-row {
@@ -4342,11 +4426,11 @@ body.view-mode-desktop .btn-submit-bid {
 }
 .qa-admin-textarea {
   flex: 1;
-  min-height: 38px !important;
-  height: 40px;
-  padding: 6px 9px !important;
-  font-size: .8rem !important;
-  border-radius: 7px !important;
+  min-height: 32px !important;
+  height: 34px;
+  padding: 5px 8px !important;
+  font-size: .78rem !important;
+  border-radius: 6px !important;
   background: rgba(6, 6, 20, 0.9) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
   color: #fff !important;
@@ -4358,7 +4442,6 @@ body.view-mode-desktop .btn-submit-bid {
 .qa-admin-btn-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-shrink: 0;
 }
-
