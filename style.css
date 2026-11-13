@@ -760,15 +760,19 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
+  padding: 6px 13px;
   border-radius: var(--r-full);
   font-size: .78rem;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
-  transition: transform .15s, opacity .15s;
+  user-select: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform .15s ease, opacity .15s ease, box-shadow .15s ease, filter .15s ease;
 }
-.contact-btn:hover { transform: translateY(-1px); opacity: .9; }
+.contact-btn:hover { transform: translateY(-1px); opacity: .95; filter: brightness(1.06); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+.contact-btn:active { transform: scale(0.97); }
 .contact-btn.phone { background: #2563eb; color: #fff; }
 .contact-btn.line  { background: #06c755; color: #fff; }
 .contact-btn.ig    { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: #fff; }
@@ -2116,6 +2120,16 @@ body {
   background: rgba(6, 199, 85, 0.15);
   color: #06c755;
   border-color: rgba(6, 199, 85, 0.3);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.badge-line:hover {
+  background: rgba(6, 199, 85, 0.28);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.badge-line:active {
+  transform: scale(0.96);
 }
 .badge-ig {
   background: rgba(225, 48, 108, 0.15);
@@ -4860,4 +4874,174 @@ body.view-mode-desktop .btn-submit-bid {
   background: linear-gradient(135deg, rgba(120, 53, 15, 0.55), rgba(245, 158, 11, 0.18));
   border: 1px solid rgba(251, 191, 36, 0.55);
   color: #fde68a;
+}
+
+/* ── 👑 4 組預設身分（官方管理員 + 小建 / 阿豪 / 小美）一鍵快速切換按鈕樣式 ── */
+.nav-role-preset-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  width: 100% !important;
+  padding: 7px 10px !important;
+  margin-bottom: 5px !important;
+  border-radius: 9px !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #e2e8f0 !important;
+  transition: all 0.18s ease !important;
+}
+.nav-role-preset-btn:hover {
+  background: rgba(251, 191, 36, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  color: #ffffff !important;
+}
+.nav-role-preset-btn.role-seller {
+  background: rgba(37, 99, 235, 0.22) !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  color: #dbeafe !important;
+}
+.nav-role-preset-btn.active-role {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(6, 78, 59, 0.65)) !important;
+  border: 2px solid #34d399 !important;
+  box-shadow: 0 0 14px rgba(52, 211, 153, 0.38) !important;
+  color: #ffffff !important;
+}
+.nav-role-preset-btn.role-seller.active-role {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border: 2px solid #fbbf24 !important;
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.45) !important;
+  color: #ffffff !important;
+}
+.nav-role-preset-btn .preset-btn-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-role-preset-btn .preset-btn-main small {
+  font-family: var(--f-num);
+  opacity: 0.85;
+  font-weight: 700;
+}
+.nav-role-preset-btn .preset-btn-status {
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fde68a;
+  flex-shrink: 0;
+}
+.nav-role-preset-btn.active-role .preset-btn-status {
+  background: rgba(16, 185, 129, 0.35);
+  color: #a7f3d0;
+}
+.nav-role-preset-btn.role-seller.active-role .preset-btn-status {
+  background: rgba(251, 191, 36, 0.28);
+  color: #fef08a;
+}
+.nav-role-custom-btn {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border: 1px dashed rgba(251, 191, 36, 0.48) !important;
+  border-radius: 8px !important;
+  color: #fde68a !important;
+  font-size: 0.76rem !important;
+  font-weight: 800 !important;
+  padding: 6px 10px !important;
+  margin-top: 3px !important;
+}
+.nav-role-custom-btn:hover {
+  background: rgba(245, 158, 11, 0.25) !important;
+  color: #fff !important;
+}
+
+.preset-identity-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.preset-identity-big-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.preset-identity-big-btn:hover {
+  background: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.55);
+  transform: translateY(-1px);
+}
+.preset-identity-big-btn.role-seller-btn {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(30, 58, 138, 0.35));
+  border-color: rgba(96, 165, 250, 0.45);
+}
+.preset-identity-big-btn.active-preset-identity {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.72), rgba(16, 185, 129, 0.25));
+  border: 2px solid #34d399;
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.35);
+}
+.preset-identity-big-btn.role-seller-btn.active-preset-identity {
+  background: linear-gradient(135deg, #1d4ed8, #1e3a8a);
+  border: 2px solid #fbbf24;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.42);
+}
+.preset-big-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+.preset-big-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.preset-big-info {
+  min-width: 0;
+  flex: 1;
+}
+.preset-big-title {
+  font-size: 0.84rem;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1.3;
+}
+.preset-big-sub {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.preset-big-badge {
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.48);
+  color: #fde68a;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.preset-identity-big-btn.active-preset-identity .preset-big-badge {
+  background: rgba(16, 185, 129, 0.32);
+  border-color: #34d399;
+  color: #a7f3d0;
+}
+.preset-identity-big-btn.role-seller-btn.active-preset-identity .preset-big-badge {
+  background: rgba(251, 191, 36, 0.3);
+  border-color: #fbbf24;
+  color: #fef08a;
 }

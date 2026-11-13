@@ -33,8 +33,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 
-  <!-- 主樣式表 (v6.5 最高權限管理者登入與全站控制專用) -->
-  <link rel="stylesheet" href="style.css?v=7.5&t=20261108_role_hub" />
+  <!-- 主樣式表 (v7.7 競標重開競態防呆與電話/Line互動修復) -->
+  <link rel="stylesheet" href="style.css?v=7.7&t=20261113_relist_contact" />
 </head>
 
 <body>
@@ -111,28 +111,42 @@
             <span>⋯</span>
           </button>
           <div class="nav-more-dropdown" id="nav-more-dropdown">
-            <!-- 👑 最高管理者專屬：身分與測試分身快速切換器（位於選單最上方） -->
+            <!-- 👑 最高管理者專屬：4 組預設身分一鍵快速切換器（位於選單最上方） -->
             <div class="nav-dropdown-identity-box" id="nav-dropdown-identity-switcher" style="display:none;">
               <div class="nav-id-box-hd">
-                <span>👑 身分與測試分身切換器</span>
-                <span class="nav-id-active-pill" id="nav-id-active-pill">🧪 測試買家</span>
+                <span>👑 管理員專屬：一鍵切換測試身分</span>
+                <span class="nav-id-active-pill" id="nav-id-active-pill">🧪 小建</span>
               </div>
-              <button class="nav-dropdown-item nav-role-btn role-seller" id="btn-nav-role-seller" type="button">
-                <span>🛡️</span>
-                <span id="nav-role-seller-text">切換為：官方管理者（建生工坊）</span>
+              <!-- 1. 🛡️ 官方管理者（建生工坊） -->
+              <button class="nav-dropdown-item nav-role-preset-btn role-seller" id="btn-nav-role-seller" type="button">
+                <span class="preset-btn-main">🛡️ 官方管理者（建生工坊）</span>
+                <span class="preset-btn-status" id="nav-status-seller">切換 ›</span>
               </button>
-              <div class="nav-id-sub-lbl">🧪 多組測試買家分身一鍵切換（免防棄標鎖定）：</div>
-              <div id="nav-dropdown-personas-list" class="nav-dropdown-personas-list">
-                <!-- 由腳本動態渲染多組測試買家分身按鈕 -->
-              </div>
-              <div class="nav-id-quick-gen-row">
-                <button class="tbtn tbtn-ghost tbtn-xs" id="btn-nav-gen-buyer-a" type="button" title="切換為測試買家小建 (0931849482)">🧪 小建</button>
-                <button class="tbtn tbtn-ghost tbtn-xs" id="btn-nav-gen-buyer-b" type="button" title="一鍵產生並切換為測試買家 B (0922168888)">⚡ 買家 B</button>
-                <button class="tbtn tbtn-ghost tbtn-xs" id="btn-nav-gen-buyer-c" type="button" title="一鍵產生並切換為測試買家 C (0955168999)">⚡ 買家 C</button>
-                <button class="tbtn tbtn-gold tbtn-xs" id="btn-nav-manage-personas" type="button" title="開啟完整測試買家分身管理與自訂視窗">➕ 自訂</button>
-              </div>
-              <button class="nav-dropdown-item" id="btn-nav-clear-test-data" type="button" style="color:#fcd34d;margin-top:6px;border-top:1px dashed rgba(255,255,255,0.14);padding-top:7px;">
-                <span>🧹</span> 一鍵清除測試出價與測試問答
+              <!-- 2. 🧪 測試買家 A - 小建 -->
+              <button class="nav-dropdown-item nav-role-preset-btn role-buyer" id="btn-nav-gen-buyer-a" type="button">
+                <span class="preset-btn-main">🧪 測試買家 A - 小建 <small>(0931849482)</small></span>
+                <span class="preset-btn-status" id="nav-status-buyer-a">切換 ›</span>
+              </button>
+              <!-- 3. 🧪 測試買家 B - 阿豪（虛擬測試 2 號） -->
+              <button class="nav-dropdown-item nav-role-preset-btn role-buyer" id="btn-nav-gen-buyer-b" type="button">
+                <span class="preset-btn-main">🧪 測試買家 B - 阿豪 <small>(0911222333)</small></span>
+                <span class="preset-btn-status" id="nav-status-buyer-b">切換 ›</span>
+              </button>
+              <!-- 4. 🧪 測試買家 C - 小美（虛擬測試 3 號） -->
+              <button class="nav-dropdown-item nav-role-preset-btn role-buyer" id="btn-nav-gen-buyer-c" type="button">
+                <span class="preset-btn-main">🧪 測試買家 C - 小美 <small>(0922333444)</small></span>
+                <span class="preset-btn-status" id="nav-status-buyer-c">切換 ›</span>
+              </button>
+              <!-- 額外自訂分身動態列表 -->
+              <div id="nav-dropdown-personas-list" class="nav-dropdown-personas-list"></div>
+              <!-- ✏️ 自訂其他買家資料 -->
+              <button class="nav-dropdown-item nav-role-custom-btn" id="btn-nav-manage-personas" type="button">
+                <span>✏️</span>
+                <span>自訂其他買家資料（手動輸入門號）</span>
+              </button>
+              <!-- 🧹 清除測試出價／問答並重置起標價 -->
+              <button class="nav-dropdown-item" id="btn-nav-clear-test-data" type="button" style="color:#fcd34d;margin-top:4px;border-top:1px dashed rgba(255,255,255,0.14);padding-top:7px;">
+                <span>🧹</span> 清除測試出價／問答並重置起標價
               </button>
             </div>
             <!-- 尚未登入管理員時之快捷驗證入口 -->
@@ -285,6 +299,12 @@
         <div id="winner-admin-contacts" style="display:none;margin-top:10px;">
           <div style="font-size:.76rem;color:var(--c-text-3);margin-bottom:6px;font-weight:700;">得標者聯絡管道：</div>
           <div class="contact-chips-wrap" id="winner-contacts-list"></div>
+        </div>
+
+        <!-- 賣家官方聯絡管道 (買家與賣家雙方皆可快速聯繫面交/寄送) -->
+        <div id="winner-seller-contacts" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,215,0,0.2);">
+          <div style="font-size:.76rem;color:var(--c-gold-1);margin-bottom:6px;font-weight:700;">🏪 聯繫賣家（建生工坊）確認取貨／聯絡方式：</div>
+          <div class="contact-chips-wrap" id="winner-seller-contacts-list"></div>
         </div>
 
         <!-- 買賣雙方一對一私訊留言板 -->
@@ -605,7 +625,7 @@
           <div id="admin-item-controls"
             style="margin-top:12px;padding-top:10px;border-top:1px solid var(--c-border);display:none;gap:8px;flex-wrap:wrap;justify-content:center;">
             <button class="tbtn tbtn-purple tbtn-xs" id="btn-front-clear-test-data" type="button" title="一鍵清除測試出價與測試問答並將商品恢復為初始起標價">
-              🧹 一鍵清除測試出價與問答
+              🧹 清除測試出價／問答並重置起標價
             </button>
             <button class="tbtn tbtn-danger tbtn-xs" id="btn-admin-end-early" type="button" title="立即提前結束本商品競標">
               🛑 手動提前結標
@@ -814,7 +834,7 @@
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-view-mode" type="button" title="切換手機或電腦觀看模式">💻
             電腦寬版模式</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-admin-to-front" type="button">👁️ 前台預覽</button>
-          <button class="tbtn tbtn-purple tbtn-sm" id="btn-admin-clear-test-data" type="button" title="一鍵清除測試用的出價紀錄與測試問答，並將商品恢復為初始起標價">🧹 一鍵清除測試出價與問答</button>
+          <button class="tbtn tbtn-purple tbtn-sm" id="btn-admin-clear-test-data" type="button" title="一鍵清除測試用的出價紀錄與測試問答，並將商品恢復為初始起標價">🧹 清除測試出價／問答並重置起標價</button>
           <button class="tbtn tbtn-ghost tbtn-sm" id="btn-fb-config" type="button" style="display:none;">☁️ Firebase 連線</button>
           <button class="tbtn tbtn-gold tbtn-sm" id="btn-publish-all" type="button">🚀 全面發布拍賣</button>
           <button class="tbtn tbtn-danger tbtn-sm" id="btn-admin-logout" type="button" title="安全登出並鎖定管理後台">🔒
@@ -830,6 +850,7 @@
             <div class="acard-hd" style="flex-wrap:wrap;gap:10px;">
               <h2 class="acard-title"><span>📦</span> 拍賣商品品項列表 (多商品同時管理)</h2>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="tbtn tbtn-purple tbtn-sm" id="btn-admin-sec-clear-test" type="button" title="一鍵清除測試出價／問答並重置起標價">🧹 清除測試出價／問答並重置起標價</button>
                 <button class="tbtn tbtn-gold tbtn-sm" id="btn-copy-all-urls">📋 一鍵複製全部商品獨立網址清單</button>
                 <button class="tbtn tbtn-purple tbtn-sm" id="btn-add-new-item">➕ 新增商品品項</button>
               </div>
@@ -1398,60 +1419,83 @@
         <button type="button" class="tbtn tbtn-gold tbtn-xs" id="btn-unlock-admin-from-buyer">🔑 驗證管理員解鎖</button>
       </div>
 
-      <!-- 👑 最高管理者專屬：官方管理者 ⇄ 多組測試買家分身「快速切換中心」 -->
+      <!-- 👑 最高管理者專屬：一鍵切換測試身分（4 組預設大按鈕 + 自訂其他買家資料） -->
       <div id="admin-dual-identity-panel" class="admin-dual-identity-panel" style="display:none;">
         <div class="dual-identity-hd">
-          <span class="dual-identity-title">👑 身分與測試分身切換器（guess_chen1981 專屬）</span>
-          <span class="dual-identity-badge" id="dual-identity-current-badge">🧪 目前：測試買家</span>
+          <span class="dual-identity-title">👑 管理員專屬：一鍵切換測試身分</span>
+          <span class="dual-identity-badge" id="dual-identity-current-badge">🧪 目前：小建</span>
         </div>
         <p class="dual-identity-desc">
-          具備最高管理者權限時，<strong>完全不受「最高出價者防棄標鎖定」限制</strong>！可一秒切換「🛡️ 官方管理者」或切換「🧪 測試買家 A / B / C」測試超標與第一名棄標後第 2、第 3 順位遞補流程：
+          具備最高管理者（guess_chen1981）權限時，<strong>完全免除「最高出價者防棄標鎖定」限制</strong>！點擊下方任一按鈕即刻完成身分切換並關閉視窗：
         </p>
 
-        <!-- 模式 A：🛡️ 官方管理者身分 -->
-        <div class="dual-mode-box">
-          <div class="dual-mode-box-title">【模式 A：🛡️ 官方管理者身分（建生工坊）】</div>
-          <button type="button" class="tbtn dual-btn-seller" id="btn-switch-to-seller-identity">
-            <span>🛡️</span>
-            <span>切換為「🛡️ 官方管理者」身分（專注管理與官方回覆・防誤觸出價）</span>
+        <!-- 4 個預設身分大按鈕（點擊一鍵立即切換並關閉視窗，目前生效身分顯示高亮邊框） -->
+        <div class="preset-identity-grid" id="preset-identity-grid">
+          <!-- 1. 【🛡️ 官方管理者（建生工坊）】 -->
+          <button type="button" class="preset-identity-big-btn role-seller-btn" id="btn-switch-to-seller-identity">
+            <div class="preset-big-left">
+              <span class="preset-big-icon">🛡️</span>
+              <div class="preset-big-info">
+                <div class="preset-big-title">【🛡️ 官方管理者（建生工坊）】</div>
+                <div class="preset-big-sub">右上角顯示「🛡️ 官方管理員」・問答直接官方回覆・防誤觸出價</div>
+              </div>
+            </div>
+            <span class="preset-big-badge" id="modal-status-seller">一鍵切換</span>
+          </button>
+
+          <!-- 2. 【🧪 測試買家 A - 小建】 -->
+          <button type="button" class="preset-identity-big-btn role-buyer-btn" id="btn-quick-persona-a">
+            <div class="preset-big-left">
+              <span class="preset-big-icon">🧪</span>
+              <div class="preset-big-info">
+                <div class="preset-big-title">【🧪 測試買家 A - 小建】</div>
+                <div class="preset-big-sub">📞 0931849482 ｜ Line ID：guess_chen1981（保留原有測試資料）</div>
+              </div>
+            </div>
+            <span class="preset-big-badge" id="modal-status-buyer-a">一鍵切換</span>
+          </button>
+
+          <!-- 3. 【🧪 測試買家 B - 阿豪（虛擬測試 2 號）】 -->
+          <button type="button" class="preset-identity-big-btn role-buyer-btn" id="btn-quick-persona-b">
+            <div class="preset-big-left">
+              <span class="preset-big-icon">🧪</span>
+              <div class="preset-big-info">
+                <div class="preset-big-title">【🧪 測試買家 B - 阿豪（虛擬測試 2 號）】</div>
+                <div class="preset-big-sub">📞 0911222333 ｜ Line ID：test_ahao88（測試超標與第 2 順位遞補）</div>
+              </div>
+            </div>
+            <span class="preset-big-badge" id="modal-status-buyer-b">一鍵切換</span>
+          </button>
+
+          <!-- 4. 【🧪 測試買家 C - 小美（虛擬測試 3 號）】 -->
+          <button type="button" class="preset-identity-big-btn role-buyer-btn" id="btn-quick-persona-c">
+            <div class="preset-big-left">
+              <span class="preset-big-icon">🧪</span>
+              <div class="preset-big-info">
+                <div class="preset-big-title">【🧪 測試買家 C - 小美（虛擬測試 3 號）】</div>
+                <div class="preset-big-sub">📞 0922333444 ｜ Line ID：test_xiaomei99（測試再超標與第 3 順位遞補）</div>
+              </div>
+            </div>
+            <span class="preset-big-badge" id="modal-status-buyer-c">一鍵切換</span>
           </button>
         </div>
 
-        <!-- 模式 B：🧪 自訂測試買家分身（支援多組測試帳號切換） -->
-        <div class="dual-mode-box" style="margin-top:8px;">
-          <div class="dual-mode-box-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
-            <span>【模式 B：🧪 自訂測試買家分身（點擊一鍵無限制切換）】</span>
-            <span style="font-size:.68rem;color:#34d399;font-weight:800;">🔓 管理員免防棄標鎖定</span>
-          </div>
+        <!-- 額外自訂測試買家分身列表（若有手動新增其他測試門號時自動顯示） -->
+        <div id="test-buyer-personas-list" class="test-buyer-personas-list"></div>
 
-          <!-- 多組測試買家分身卡片列表（小建 0931849482 / 測試買家 B / 測試買家 C） -->
-          <div id="test-buyer-personas-list" class="test-buyer-personas-list">
-            <!-- 由腳本動態渲染多組測試買家分身按鈕 -->
-          </div>
-
-          <!-- 一鍵產生 / 快速切換測試買家 B / C 快捷列 -->
-          <div class="dual-quick-personas-row">
-            <button type="button" class="tbtn dual-btn-persona-chip" id="btn-quick-persona-a" title="一鍵切換為測試買家小建 (0931849482)">
-              🧪 切換：小建 (0931849482)
-            </button>
-            <button type="button" class="tbtn dual-btn-persona-chip" id="btn-quick-persona-b" title="一鍵產生並切換為測試買家 B (0922168888)">
-              ⚡ 一鍵產生/切換：測試買家 B
-            </button>
-            <button type="button" class="tbtn dual-btn-persona-chip" id="btn-quick-persona-c" title="一鍵產生並切換為測試買家 C (0955168999)">
-              ⚡ 一鍵產生/切換：測試買家 C
-            </button>
-          </div>
-
-          <div class="dual-identity-actions" style="margin-top:8px;">
-            <button type="button" class="tbtn dual-btn-reset-buyer" id="btn-reset-test-buyer-identity">
-              <span>➕</span>
-              <span>清空下方表單以新增自訂測試買家分身（可自由輸入任意電話與稱呼）</span>
-            </button>
-            <button type="button" class="tbtn dual-btn-restore-buyer" id="btn-restore-backup-buyer" style="display:none;">
-              <span>🧪</span>
-              <span id="restore-backup-buyer-text">切回已儲存測試買家（小建）</span>
-            </button>
-          </div>
+        <!-- ✏️ 自訂其他買家資料 ＆ 🧹 清除測試紀錄 -->
+        <div class="dual-identity-actions" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="tbtn dual-btn-reset-buyer" id="btn-reset-test-buyer-identity" style="flex:1;">
+            <span>✏️</span>
+            <span>自訂其他買家資料（手動輸入其他測試門號）</span>
+          </button>
+          <button type="button" class="tbtn tbtn-purple tbtn-xs" id="btn-modal-clear-test-data" style="padding:8px 12px;font-weight:800;">
+            🧹 清除測試出價／問答並重置起標價
+          </button>
+          <button type="button" class="tbtn dual-btn-restore-buyer" id="btn-restore-backup-buyer" style="display:none;">
+            <span>🧪</span>
+            <span id="restore-backup-buyer-text">切回已儲存測試買家（小建）</span>
+          </button>
         </div>
       </div>
       <p style="font-size:.8rem;color:var(--c-text-2);margin-bottom:10px;line-height:1.45;">
@@ -1783,13 +1827,13 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-  <!-- 主程式腳本 (v7.5 最高權限管理者與多組測試買家分身切換中心) -->
-  <script src="app.js?v=7.5&t=20261108_role_hub"></script>
+  <!-- 主程式腳本 (v7.7 競標重開競態防呆與電話/Line互動修復) -->
+  <script src="app.js?v=7.7&t=20261113_relist_contact"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
     (function () {
-      const CURRENT_SW_VER = 'jiansheng-auction-v37';
+      const CURRENT_SW_VER = 'jiansheng-auction-v39';
       try {
         const lastVer = localStorage.getItem('agy_sw_cache_ver');
         if (lastVer !== CURRENT_SW_VER && 'caches' in window) {
@@ -1811,7 +1855,7 @@
         });
 
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=27').then(reg => {
+          navigator.serviceWorker.register('./sw.js?v=29').then(reg => {
             reg.update().catch(() => {});
             if (reg.waiting) {
               reg.waiting.postMessage({ action: 'skipWaiting' });
