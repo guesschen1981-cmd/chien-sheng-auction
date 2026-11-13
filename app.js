@@ -1618,7 +1618,7 @@ function shouldIgnoreStaleRemoteUpdate(local, rItem) {
   const remoteEnded = (rItem.status === 'ended' || rItem.status === 'picked_up' || rItem.endedEarly === true || rItem.manualEnd === true || rItem.isEnded === true);
 
   if (remoteSeq < localSeq) return true;
-  if (localReopen > 0 && remoteReopen < localReopen && (remoteEnded || (rItem.endTime && Number(rItem.endTime) < Number(local.endTime || 0)))) {
+  if (localReopen > 0 && remoteReopen < localReopen && (remoteEnded || (rItem.endTime && Number(rItem.endTime) < Number(local.endTime || 0)) || isItemRelistLocked(local.id))) {
     return true;
   }
   if (isItemRelistLocked(local.id)) {
@@ -1647,39 +1647,25 @@ function handleIncomingAuctionItems(remoteItems) {
       const remoteSeq = Number(rItem.relistSeq || 0);
       const isRemoteFreshRelist = (remoteSeq > Number(local.relistSeq || 0)) || (remoteReopen > Number(local.reopenedAt || 0));
 
-      const remoteHasBids = !!(rItem.bids && Object.keys(rItem.bids).length > 0) || !!(rItem.topBidder && (rItem.topBidder.name || typeof rItem.topBidder === 'string'));
+      const remoteHasBids = hasItemBids(rItem);
       if (isRemoteFreshRelist || (!remoteHasBids && rItem.currentPrice !== undefined && Number(rItem.currentPrice) <= Number(rItem.startPrice || local.startPrice || 10000))) {
         const resetPrice = Number(rItem.startPrice || local.startPrice || 10000);
-        if (isRemoteFreshRelist || local.currentPrice !== resetPrice || local.topBidder || (local.bidHistory && local.bidHistory.length > 0)) {
-          local.startPrice = resetPrice;
-          local.currentPrice = resetPrice;
-          local.currentBid = resetPrice;
-          local.topBidder = '';
-          local.topBidderContact = null;
-          local.topBidTime = null;
-          local.bids = {};
-          local.bidHistory = [];
-          local.winnerMsgs = [];
-          local.backupOffer = null;
-          local.backupState = null;
-          local.finalDealPrice = null;
-          local.defaultedBidders = [];
-          local.endedEarly = false;
-          local.manualEnd = false;
-          local.isEnded = false;
-          local.pickupDeadline = null;
-          local.pickedUpAt = null;
+        if (isRemoteFreshRelist || local.currentPrice !== resetPrice || hasItemBids(local)) {
+          applyCleanResetFields(local, resetPrice, false);
           if (remoteSeq) local.relistSeq = remoteSeq;
           if (remoteReopen) local.reopenedAt = remoteReopen;
           if (rItem.timeMode) local.timeMode = rItem.timeMode === 'reset24' ? 'reset24' : 'fixed';
           changed = true;
         }
-      } else if (rItem.currentPrice !== undefined && rItem.currentPrice > (local.currentPrice || local.currentBid || 0)) {
-        const bidderName = rItem.topBidder?.name || rItem.topBidder || '';
+      } else if (rItem.currentPrice !== undefined && Number(rItem.currentPrice) > Number(local.currentPrice || local.currentBid || 0)) {
+        const bidderName = rItem.topBidder?.name || rItem.topBidder || rItem.lastBidder || rItem.highestBidder || '';
         checkOutbidNotice(id, bidderName, rItem.currentPrice);
-        local.currentPrice = rItem.currentPrice;
-        local.currentBid = rItem.currentPrice;
+        local.currentPrice = Number(rItem.currentPrice);
+        local.currentBid = Number(rItem.currentPrice);
+        local.highestBid = Number(rItem.highestBid ?? rItem.currentPrice);
         local.topBidder = bidderName;
+        local.lastBidder = bidderName;
+        local.highestBidder = bidderName;
         if (rItem.topBidder && typeof rItem.topBidder === 'object') {
           local.topBidderContact = rItem.topBidder;
         }
@@ -1772,38 +1758,24 @@ function handleIncomingAuctionData(data) {
         const remoteSeq = Number(rItem.relistSeq || 0);
         const isRemoteFreshRelist = (remoteSeq > Number(local.relistSeq || 0)) || (remoteReopen > Number(local.reopenedAt || 0));
 
-        const rHasBids = !!(rItem.bids && Object.keys(rItem.bids).length > 0) || !!(rItem.bidHistory && rItem.bidHistory.length > 0) || !!rItem.topBidder;
+        const rHasBids = hasItemBids(rItem);
         if (isRemoteFreshRelist || (!rHasBids && Number(rItem.currentBid || rItem.startPrice) <= Number(rItem.startPrice || local.startPrice || 10000))) {
           const resetP = Number(rItem.startPrice || local.startPrice || 10000);
-          if (isRemoteFreshRelist || local.currentPrice !== resetP || local.topBidder || (local.bidHistory && local.bidHistory.length > 0)) {
-            local.startPrice = resetP;
-            local.currentPrice = resetP;
-            local.currentBid = resetP;
-            local.topBidder = '';
-            local.topBidderContact = null;
-            local.topBidTime = null;
-            local.bids = {};
-            local.bidHistory = [];
-            local.winnerMsgs = [];
-            local.backupOffer = null;
-            local.backupState = null;
-            local.finalDealPrice = null;
-            local.defaultedBidders = [];
-            local.endedEarly = false;
-            local.manualEnd = false;
-            local.isEnded = false;
-            local.pickupDeadline = null;
-            local.pickedUpAt = null;
+          if (isRemoteFreshRelist || local.currentPrice !== resetP || hasItemBids(local)) {
+            applyCleanResetFields(local, resetP, false);
             if (remoteSeq) local.relistSeq = remoteSeq;
             if (remoteReopen) local.reopenedAt = remoteReopen;
             if (rItem.timeMode) local.timeMode = rItem.timeMode === 'reset24' ? 'reset24' : 'fixed';
             changed = true;
           }
-        } else if (rItem.currentBid > (local.currentPrice || local.currentBid || 0)) {
+        } else if (Number(rItem.currentBid || 0) > Number(local.currentPrice || local.currentBid || 0)) {
           checkOutbidNotice(rItem.id, rItem.topBidder, rItem.currentBid);
-          local.currentPrice = rItem.currentBid;
-          local.currentBid = rItem.currentBid;
+          local.currentPrice = Number(rItem.currentBid);
+          local.currentBid = Number(rItem.currentBid);
+          local.highestBid = Number(rItem.highestBid ?? rItem.currentBid);
           local.topBidder = rItem.topBidder;
+          local.lastBidder = rItem.lastBidder || rItem.topBidder;
+          local.highestBidder = rItem.highestBidder || rItem.topBidder;
           local.topBidderContact = rItem.topBidderContact;
           changed = true;
         }
@@ -2163,7 +2135,8 @@ function renderActiveItemDisplay() {
   }
 
   // 4. 出價金額顯示 (核心功能 2 多幣別換算)
-  const curBidVal = item.currentPrice ?? item.currentBid ?? item.startPrice ?? 0;
+  const hasPriorBids = hasItemBids(item);
+  const curBidVal = getEffectiveCurrentBidPrice(item);
   if (el('cur-bid-amount')) {
     el('cur-bid-amount').textContent = formatMoney(curBidVal, AppState.activeCurrency);
   }
@@ -2177,16 +2150,15 @@ function renderActiveItemDisplay() {
     el('active-currency-badge').textContent = `${AppState.activeCurrency} (${CURRENCY_RATES[AppState.activeCurrency].name})`;
   }
 
-  // 5. 下一口最低出價
-  const hasPriorBids = !!topName || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
-  const nextMinBid = hasPriorBids ? (curBidVal + item.increment) : item.startPrice;
+  // 5. 下一口最低出價（0 筆出價時允許直接出起標價，1 筆以上必須大於目前最高價）
+  const nextMinBid = getMinimumValidBid(item);
   if (el('next-min-bid-val')) {
     el('next-min-bid-val').textContent = formatMoney(nextMinBid, AppState.activeCurrency);
   }
 
   // 6. 底部出價輸入框預設值
   const inpBid = el('inp-bid-val');
-  if (inpBid && !inpBid.value) {
+  if (inpBid && (!inpBid.value || Number(inpBid.value) < nextMinBid)) {
     inpBid.value = nextMinBid;
   }
   if (el('btn-submit-text') && !(typeof isSubmittingBid !== 'undefined' && isSubmittingBid)) {
@@ -2353,20 +2325,119 @@ function renderBidHistory() {
   });
 }
 
-/** 判斷商品是否具有有效出價紀錄 */
+/** 判斷商品是否具有任何有效出價紀錄（含 bids / bidHistory / topBidder / lastBidder / highestBidder） */
 function hasItemBids(item) {
-  if (!item) return false;
+  if (!item || typeof item !== 'object') return false;
   const winnerName = getBidderName(item.topBidder);
   if (winnerName && winnerName !== '無人出標' && winnerName !== 'null') return true;
+  if (item.lastBidder && String(item.lastBidder).trim() && String(item.lastBidder) !== 'null') return true;
+  if (item.highestBidder && String(item.highestBidder).trim() && String(item.highestBidder) !== 'null') return true;
   if (item.bids && Object.keys(item.bids).length > 0) return true;
-  if (item.bidHistory && item.bidHistory.length > 0) return true;
+  if (Array.isArray(item.bidHistory) && item.bidHistory.length > 0) return true;
   return false;
 }
 
+/** 取得商品目前有效最高價（尚無人出價時恆為起標價） */
+function getEffectiveCurrentBidPrice(item) {
+  if (!item || typeof item !== 'object') return 0;
+  const startPrice = Number(item.startPrice ?? 0);
+  if (!hasItemBids(item)) return startPrice;
+  return Math.max(
+    Number(item.currentPrice ?? item.currentBid ?? 0),
+    Number(item.highestBid ?? 0),
+    startPrice
+  );
+}
+
+/** 計算下一口最低有效出價：【0 筆出價】可 >= 起標價；【1 筆以上出價】必須嚴格大於目前最高價（至少 currentPrice + increment） */
+function getMinimumValidBid(item) {
+  if (!item || typeof item !== 'object') return 0;
+  const startPrice = Number(item.startPrice ?? 0);
+  const increment = Math.max(1, Number(item.increment || 10));
+  if (!hasItemBids(item)) {
+    return Math.max(startPrice, 1);
+  }
+  return getEffectiveCurrentBidPrice(item) + increment;
+}
+
+/** 共享重置輔助：將本機商品物件所有價格、出價陣列、得標與代理欄位徹底歸零為新一輪起標價 */
+function applyCleanResetFields(it, price, resetQA = false) {
+  if (!it || typeof it !== 'object') return;
+  const cleanPrice = Number(price || it.startPrice || 10000);
+  it.startPrice = cleanPrice;
+  it.currentPrice = cleanPrice;
+  it.currentBid = cleanPrice;
+  it.highestBid = cleanPrice;
+  it.topBidder = '';
+  it.lastBidder = '';
+  it.highestBidder = '';
+  it.topBidderContact = null;
+  it.topBidTime = null;
+  it.bids = {};
+  it.bidHistory = [];
+  it.winner = null;
+  it.winnerMsgs = [];
+  it.proxyBids = null;
+  it.endedEarly = false;
+  it.manualEnd = false;
+  it.isEnded = false;
+  it.auctionDone = false;
+  it.auctionLive = true;
+  it.pickupDeadline = null;
+  it.pickedUpAt = null;
+  it.backupOffer = null;
+  it.backupState = null;
+  it.finalDealPrice = null;
+  it.defaultedBidders = [];
+  it.status = 'live';
+  if (resetQA) it.qa = {};
+}
+
+/** 建立 Firebase 雲端重置更新酬載（顯式將所有舊出價、領先者、得標與代理欄位清空） */
+function buildFirebaseResetPayload(it, resetQA = false) {
+  const cleanPrice = Number(it.startPrice || 10000);
+  const payload = {
+    id: it.id,
+    name: it.name,
+    startPrice: cleanPrice,
+    currentPrice: cleanPrice,
+    currentBid: cleanPrice,
+    highestBid: cleanPrice,
+    topBidder: null,
+    lastBidder: null,
+    highestBidder: null,
+    topBidderContact: null,
+    topBidTime: null,
+    winner: null,
+    proxyBids: null,
+    bids: null,
+    bidHistory: null,
+    backupOffer: null,
+    backupState: null,
+    finalDealPrice: null,
+    defaultedBidders: null,
+    winnerMsgs: null,
+    endedEarly: null,
+    manualEnd: null,
+    isEnded: null,
+    pickupDeadline: null,
+    pickedUpAt: null,
+    auctionLive: true,
+    auctionDone: false,
+    status: 'live',
+    relistSeq: Number(it.relistSeq || 0),
+    reopenedAt: it.reopenedAt || getServerNow(),
+    timeMode: it.timeMode || 'fixed',
+    endTime: Number(it.endTime || (getServerNow() + 24 * 3600 * 1000))
+  };
+  if (resetQA) payload.qa = null;
+  return payload;
+}
+
 /**
- * 🔄 一鍵重新開啟競標核心函式 (支援改價重開 + 多種時段)
+ * 🔄 一鍵重新開啟競標核心函式 (支援改價重開 + 多種時段 + 雲端與本機全欄位徹底重置)
  */
-function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newStartPrice = null) {
+async function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newStartPrice = null) {
   if (!requireAdminAuth(() => restartAuctionItem(itemId, mode, durationHours, newStartPrice))) return;
   const item = AppState.items.find(i => i.id === itemId) || getActiveItem();
   if (!item) return;
@@ -2383,34 +2454,13 @@ function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newSta
   const safeHours = (Number.isFinite(parsedHours) && parsedHours > 0) ? parsedHours : 24;
   let price = Number(newStartPrice);
   if (!Number.isFinite(price) || price <= 0) {
-    price = Number(item.startPrice || 100);
+    price = Number(item.startPrice || 10000);
   }
 
-  // 1. 徹底歸零前檔結標、得標者、候補遞補、取貨期限與歷史出價紀錄，並設定全新未來截標時間
+  // 1. 徹底歸零前檔結標、得標者、最高價、代理出價與歷史出價紀錄，並設定全新未來截標時間
   item.relistSeq = Number(item.relistSeq || 0) + 1;
   item.reopenedAt = now;
-  item.startPrice = price;
-  item.currentPrice = price;
-  item.currentBid = price;
-  item.topBidder = '';
-  item.topBidderContact = null;
-  item.topBidTime = null;
-  item.bids = {};
-  item.bidHistory = [];
-  item.winnerMsgs = [];
-  item.winner = null;
-  item.endedEarly = false;
-  item.manualEnd = false;
-  item.isEnded = false;
-  item.pickupDeadline = null;
-  item.pickedUpAt = null;
-  item.backupOffer = null;
-  item.backupState = null;
-  item.finalDealPrice = null;
-  item.defaultedBidders = [];
-  item.status = 'live';
-  item.auctionDone = false;
-  item.auctionLive = true;
+  applyCleanResetFields(item, price, false);
   item.timeMode = (mode === 'reset24') ? 'reset24' : 'fixed';
   item.endTime = now + safeHours * 3600 * 1000;
   item.autoRelistIfNoBids = (item.autoRelistIfNoBids !== false);
@@ -2418,7 +2468,7 @@ function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newSta
   // 2. 本機快取與前後台表單輸入值同步重置
   SafeStorage.set('agy_items', AppState.items);
   if (AppState.activeItemId === item.id && el('inp-bid-val')) {
-    el('inp-bid-val').value = price;
+    el('inp-bid-val').value = getMinimumValidBid(item);
   }
   if (typeof loadItemIntoEditForm === 'function') {
     loadItemIntoEditForm(item.id);
@@ -2441,14 +2491,20 @@ function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, newSta
   const mobileBidBar = el('mobile-bid-bar');
   if (mobileBidBar) mobileBidBar.style.display = 'block';
 
-  // 5. 跨端同步：更新本機伺服器 my_auction_data.json 與 Firebase（顯式送出 null 清除舊出價與結標欄位）
+  // 5. 跨端同步：更新本機伺服器 my_auction_data.json 與 Firebase（顯式覆寫與清除所有價格/出價/得標欄位）
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    try {
+      await db.ref(`auction/items/${item.id}`).update(buildFirebaseResetPayload(item, false));
+    } catch (e) {}
+  }
   syncToFirebase();
   syncToLocalServer();
 
   const durationLabel = (mode === 'reset24')
     ? '24 小時（動態重置模式）'
     : (safeHours >= 24 ? `${safeHours / 24} 天` : `${safeHours} 小時`);
-  showToast(`🚀 商品【${item.name}】已成功重新開啟競標（${durationLabel}，起標價 NT$ ${price.toLocaleString()}）！`);
+  showToast(`🚀 商品【${item.name}】已成功重新開啟競標（${durationLabel}，起標價 NT$ ${price.toLocaleString()}，出價紀錄已完全歸零）！`);
 }
 
 /** 渲染結標狀態與得標專屬卡片 (智慧區分有人得標與無人出標流標) */
@@ -4694,53 +4750,102 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
   if (submitText) submitText.textContent = '出標同步中…';
 
   try {
-    const itemRef = firebase.database().ref(`auction/items/${itemId}`);
+    const db = FirebaseManager.getDb();
+    if (!db || !firebase.apps || !firebase.apps.length || !FirebaseManager.isReady()) {
+      throw new Error('FIREBASE_OFFLINE_FALLBACK');
+    }
+    const itemRef = db.ref(`auction/items/${itemId}`);
     let extendMessage = '';
+    let abortInfo = null;
 
     const result = await itemRef.transaction((item) => {
+      abortInfo = null;
+      const localItem = AppState.items.find(i => i.id === itemId);
+
       if (!item) {
-        const local = AppState.items.find(i => i.id === itemId);
-        if (local) {
-          item = {
-            id: local.id,
-            name: local.name,
-            startPrice: Number(local.startPrice || 0),
-            increment: Number(local.increment || 10),
-            currentPrice: Number(local.currentPrice || local.currentBid || local.startPrice || 0),
-            endTime: Number(local.endTime || 0),
-            status: local.status || 'active',
-            timeMode: local.timeMode || 'fixed',
-            antiSnipeEnable: local.antiSnipeEnable !== false && local.antiSnipeEnabled !== false,
-            antiSnipeMins: Number(local.antiSnipeMins || 3),
-            antiSnipeExt: Number(local.antiSnipeExt || local.antiSnipeExtMins || 3),
-            bids: local.bids || {}
-          };
+        if (localItem) {
+          item = buildFirebaseResetPayload(localItem, false);
+          item.increment = Number(localItem.increment || 10);
+          item.antiSnipeEnable = localItem.antiSnipeEnable !== false && localItem.antiSnipeEnabled !== false;
+          item.antiSnipeMins = Number(localItem.antiSnipeMins || 3);
+          item.antiSnipeExt = Number(localItem.antiSnipeExt || localItem.antiSnipeExtMins || 3);
+          if (hasItemBids(localItem)) {
+            item.currentPrice = getEffectiveCurrentBidPrice(localItem);
+            item.currentBid = item.currentPrice;
+            item.highestBid = item.currentPrice;
+            item.topBidder = localItem.topBidderContact || localItem.topBidder || null;
+            item.lastBidder = getBidderName(localItem.topBidder) || null;
+            item.highestBidder = item.lastBidder;
+            item.bids = localItem.bids || {};
+          }
         } else {
           return item; // 節點尚未載入時返回原值
+        }
+      } else if (localItem) {
+        // 若遠端單品節點的 relistSeq / reopenedAt 落後於本機剛重開/清除的紀錄，先於交易內歸零防止上一輪舊價誤殺首標
+        const localSeq = Number(localItem.relistSeq || 0);
+        const remoteSeq = Number(item.relistSeq || 0);
+        const localReopen = Number(localItem.reopenedAt || 0);
+        const remoteReopen = Number(item.reopenedAt || 0);
+        if (localSeq > remoteSeq || (localReopen > 0 && localReopen > remoteReopen && !hasItemBids(localItem))) {
+          const freshPrice = Number(localItem.startPrice || item.startPrice || 10000);
+          item = Object.assign({}, item, buildFirebaseResetPayload(localItem, false), {
+            startPrice: freshPrice,
+            currentPrice: freshPrice,
+            currentBid: freshPrice,
+            highestBid: freshPrice,
+            relistSeq: localSeq,
+            reopenedAt: localReopen || getServerNow(),
+            increment: Number(localItem.increment || item.increment || 10),
+            antiSnipeEnable: localItem.antiSnipeEnable !== false && localItem.antiSnipeEnabled !== false,
+            antiSnipeMins: Number(localItem.antiSnipeMins || 3),
+            antiSnipeExt: Number(localItem.antiSnipeExt || localItem.antiSnipeExtMins || 3)
+          });
         }
       }
 
       const now = getServerNow();
       const endTime = Number(item.endTime || 0);
+      const startPrice = Number(item.startPrice || 0);
+      const increment = Math.max(1, Number(item.increment || 10));
+      const txHasBids = hasItemBids(item);
+      const txCurrentPrice = getEffectiveCurrentBidPrice(item);
 
       // 檢查是否已經結標
-      if (item.status === 'ended' || (endTime > 0 && now >= endTime)) {
+      if (item.status === 'ended' || item.status === 'picked_up' || item.endedEarly === true || item.manualEnd === true || (endTime > 0 && now >= endTime)) {
+        abortInfo = { reason: 'ended', currentPrice: txCurrentPrice, startPrice, increment, hasBids: txHasBids, minRequiredBid: getMinimumValidBid(item) };
         return; // 中止 Transaction
       }
 
-      const startPrice = Number(item.startPrice || 0);
-      const increment = Number(item.increment || 10);
-      const currentPrice = Number(item.currentPrice || 0);
-      const hasBids = item.bids && Object.keys(item.bids).length > 0;
-
-      // 計算最低合法出價金額
-      const minRequiredBid = hasBids ? (currentPrice + increment) : Math.max(startPrice, increment);
-      if (bidAmountTWD < minRequiredBid) {
-        return; // 出價低於最新門檻，中止 Transaction
+      // 計算最低合法出價：【0 筆出價】可 >= 起標價；【1 筆以上出價】必須嚴格 > 目前最高價（至少 cur + inc）
+      const minRequiredBid = getMinimumValidBid(item);
+      if (!txHasBids) {
+        if (bidAmountTWD < minRequiredBid) {
+          abortInfo = { reason: 'below_start', currentPrice: startPrice, startPrice, increment, hasBids: false, minRequiredBid };
+          return;
+        }
+      } else {
+        if (bidAmountTWD <= txCurrentPrice || bidAmountTWD < minRequiredBid) {
+          abortInfo = { reason: 'outbid', currentPrice: txCurrentPrice, startPrice, increment, hasBids: true, minRequiredBid };
+          return;
+        }
       }
 
-      // 更新最高價與領先買家資訊
+      // 更新最高價與所有領先買家對應欄位（並確保清除殘留得標與代理出價）
+      item.status = 'live';
+      item.auctionLive = true;
+      item.auctionDone = false;
+      item.endedEarly = null;
+      item.manualEnd = null;
+      item.isEnded = null;
+      item.winner = null;
+      item.proxyBids = null;
       item.currentPrice = bidAmountTWD;
+      item.currentBid = bidAmountTWD;
+      item.highestBid = bidAmountTWD;
+      item.lastBidder = buyerProfile.name;
+      item.highestBidder = buyerProfile.name;
+      item.topBidTime = now;
       item.topBidder = {
         name: buyerProfile.name,
         phone: buyerProfile.phone,
@@ -4751,7 +4856,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       };
 
       // 新增出價歷史紀錄 (完整記錄買家聯絡資訊以供管理者後台解碼)
-      if (!item.bids) item.bids = {};
+      if (!item.bids || typeof item.bids !== 'object') item.bids = {};
       const newBidKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
       item.bids[newBidKey] = {
         bidderName: buyerProfile.name,
@@ -4784,18 +4889,38 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
     });
 
     if (!result.committed) {
-      showToast('⚠️ 出價失敗：可能已有其他買家搶先出更高價，或競標已結束！');
+      const remoteVal = result.snapshot ? result.snapshot.val() : null;
+      const localItem = AppState.items.find(i => i.id === itemId);
+      const refItem = remoteVal || localItem;
+      const latestHasBids = abortInfo ? abortInfo.hasBids : hasItemBids(refItem);
+      const latestCur = remoteVal ? getEffectiveCurrentBidPrice(remoteVal) : (abortInfo ? abortInfo.currentPrice : getEffectiveCurrentBidPrice(localItem));
+      const latestMin = remoteVal ? getMinimumValidBid(remoteVal) : (abortInfo ? abortInfo.minRequiredBid : getMinimumValidBid(localItem));
+
+      if (bidInput && latestMin > 0) {
+        bidInput.value = latestMin;
+      }
+
+      if (abortInfo?.reason === 'ended') {
+        showToast('⚠️ 出價未成功：本商品競標時間已結束或已被管理員截標！', 4800);
+      } else if (!latestHasBids) {
+        showToast(`⚠️ 出價未成功：目前尚無人出價，起標價為 ${formatMoney(latestCur)}，您的出價必須大於或等於 ${formatMoney(latestMin)}（已重設輸入框）。`, 4800);
+      } else {
+        showToast(`⚠️ 出價未成功：雲端最新最高價為 ${formatMoney(latestCur)}，下一口最低出價需達 ${formatMoney(latestMin)}（已為您自動更新輸入框）。`, 4800);
+      }
+      if (remoteVal && localItem && Number(remoteVal.relistSeq || 0) >= Number(localItem.relistSeq || 0)) {
+        handleIncomingAuctionItems({ [itemId]: remoteVal });
+      }
     } else {
       showToast(extendMessage || '🎉 出價成功！您目前已成為最高出價領先者！');
+      const val = result.snapshot ? result.snapshot.val() : null;
       if (bidInput) {
-        const nextIncrement = Number(result.snapshot.val()?.increment || 10);
+        const nextIncrement = Math.max(1, Number(val?.increment || 10));
         bidInput.value = bidAmountTWD + nextIncrement;
       }
       // 鏡像更新至 auction/items 與 settings/buyers
       try {
-        const valSnap = result.snapshot.val();
-        if (valSnap) {
-          firebase.database().ref(`auction/items/${itemId}`).update(valSnap).catch(() => {});
+        if (val) {
+          db.ref(`auction/items/${itemId}`).update(val).catch(() => {});
         }
         const key = buyerProfile.phone.replace(/[^0-9]/g, '');
         const bSync = {
@@ -4808,16 +4933,18 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
           lastBidItem: itemId,
           lastBidAmount: bidAmountTWD
         };
-        firebase.database().ref('settings/buyers/' + key).update(bSync).catch(() => {});
-        firebase.database().ref('buyers/' + key).update(bSync).catch(() => {});
+        db.ref('settings/buyers/' + key).update(bSync).catch(() => {});
+        db.ref('buyers/' + key).update(bSync).catch(() => {});
       } catch (e) {}
-      const val = result.snapshot.val();
       const localItem = AppState.items.find(i => i.id === itemId);
       if (localItem && val) {
         localItem.currentPrice = val.currentPrice;
         localItem.currentBid = val.currentPrice;
+        localItem.highestBid = val.currentPrice;
         localItem.endTime = val.endTime;
         localItem.topBidder = buyerProfile.name;
+        localItem.lastBidder = buyerProfile.name;
+        localItem.highestBidder = buyerProfile.name;
         localItem.topBidderContact = JSON.parse(JSON.stringify(buyerProfile));
         localItem.topBidTime = getServerNow();
         if (val.bids) localItem.bids = val.bids;
@@ -4838,16 +4965,33 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       syncToFirebase();
     }
   } catch (err) {
-    console.error('Bid transaction error:', err);
+    if (err && err.message !== 'FIREBASE_OFFLINE_FALLBACK') {
+      console.error('Bid transaction error:', err);
+    }
     // 展示/離線模式保底容錯
     const localItem = AppState.items.find(i => i.id === itemId);
     if (localItem && (!firebase.apps || !firebase.apps.length || !FirebaseManager.isReady())) {
       const now = getServerNow();
       localItem.currentPrice = bidAmountTWD;
       localItem.currentBid = bidAmountTWD;
+      localItem.highestBid = bidAmountTWD;
       localItem.topBidder = buyerProfile.name;
+      localItem.lastBidder = buyerProfile.name;
+      localItem.highestBidder = buyerProfile.name;
       localItem.topBidderContact = JSON.parse(JSON.stringify(buyerProfile));
       localItem.topBidTime = now;
+      if (!localItem.bids || typeof localItem.bids !== 'object') localItem.bids = {};
+      const offKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
+      localItem.bids[offKey] = {
+        bidderName: buyerProfile.name,
+        bidderPhone: buyerProfile.phone,
+        bidderPhoneMasked: maskPhone(buyerProfile.phone),
+        bidderLine: buyerProfile.line || '',
+        bidderIg: buyerProfile.ig || '',
+        bidderFb: buyerProfile.fb || '',
+        amount: bidAmountTWD,
+        timestamp: now
+      };
       if (!localItem.bidHistory) localItem.bidHistory = [];
       localItem.bidHistory.push({
         user: buyerProfile.name,
@@ -4859,6 +5003,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       if (localItem.timeMode === 'reset24') {
         localItem.endTime = now + (24 * 60 * 60 * 1000);
       }
+      SafeStorage.set('agy_items', AppState.items);
       renderActiveItemDisplay();
       renderItemTabs();
       renderBidHistory();
@@ -4866,7 +5011,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       triggerConfetti();
       showToast(localItem.timeMode === 'reset24' ? '⚡ 已觸發 24 小時動態重置，倒數重新起算！' : '🎉 出價成功！您目前已成為最高出價領先者！');
       if (bidInput) {
-        bidInput.value = bidAmountTWD + Number(localItem.increment || 10);
+        bidInput.value = bidAmountTWD + Math.max(1, Number(localItem.increment || 10));
       }
     } else {
       showToast('❌ 網路連線異常，請稍後再試。');
@@ -4916,26 +5061,30 @@ async function handleBidSubmit() {
   const inpBid = el('inp-bid-val');
   const bidAmt = Number(inpBid ? inpBid.value : 0);
 
-  const curPrice = Number(item.currentPrice ?? item.currentBid ?? 0);
-  const inc = Number(item.increment || 10);
-  const hasPriorBids = !!item.topBidder || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
-  const minRequired = hasPriorBids ? (curPrice + inc) : Math.max(Number(item.startPrice || 0), inc);
+  const inc = Math.max(1, Number(item.increment || 10));
+  const hasPriorBids = hasItemBids(item);
+  const curPrice = getEffectiveCurrentBidPrice(item);
+  const minRequired = getMinimumValidBid(item);
 
-  if (bidAmt <= curPrice && curPrice > 0) {
-    alert(`❌ 出價無效！\n您的出價（${formatMoney(bidAmt)}）必須「嚴格大於」目前最高價（${formatMoney(curPrice)}）。\n腳本已攔截並阻止出價！`);
-    if (inpBid) inpBid.value = minRequired;
-    return;
-  }
-
-  if (bidAmt < minRequired) {
-    alert(`❌ 出價未達加價門檻！\n目前下一口最低出價必須為 ${formatMoney(minRequired)}（每口加價 ${formatMoney(inc)}）。\n腳本已阻止出價！`);
-    if (inpBid) inpBid.value = minRequired;
-    return;
+  // 【0 筆出價】：允許第一位買家直接投下等於或大於起標價（bidAmt >= startPrice）
+  if (!hasPriorBids) {
+    if (!Number.isFinite(bidAmt) || bidAmt < minRequired) {
+      if (inpBid) inpBid.value = minRequired;
+      showToast(`⚠️ 出價未成功：目前尚無人出價，起標價為 ${formatMoney(minRequired)}，您的首標必須大於或等於此金額（已自動重設為 ${formatMoney(minRequired)}）`, 4800);
+      return;
+    }
+  } else {
+    // 【1 筆以上出價】：後續出價必須嚴格大於目前最高價且符合每口加價
+    if (!Number.isFinite(bidAmt) || bidAmt <= curPrice || bidAmt < minRequired) {
+      if (inpBid) inpBid.value = minRequired;
+      showToast(`⚠️ 出價未成功：目前最新最高價為 ${formatMoney(curPrice)}，您的出價必須大於目前最高價（下一口最低 ${formatMoney(minRequired)}，已自動更新輸入框）`, 4800);
+      return;
+    }
   }
 
   const phoneCheck = validatePhoneNumber(AppState.userProfile.phone, AppState.userProfile.name);
   if (!phoneCheck.valid) {
-    alert(phoneCheck.message);
+    showToast(phoneCheck.message || '⚠️ 請輸入有效的聯絡電話格式！', 4200);
     openBuyerProfileModal();
     return;
   }
@@ -5782,7 +5931,11 @@ function saveCurrentItemEdits() {
   const inStartPrice = Number(el('edit-item-start-price')?.value);
   if (!isNaN(inStartPrice) && inStartPrice >= 0) {
     item.startPrice = inStartPrice;
-    if (!item.topBidder) item.currentBid = inStartPrice;
+    if (!hasItemBids(item)) {
+      item.currentPrice = inStartPrice;
+      item.currentBid = inStartPrice;
+      item.highestBid = inStartPrice;
+    }
   }
 
   const inIncrement = Number(el('edit-item-increment')?.value);
@@ -6583,10 +6736,7 @@ function switchToTestBuyerPersona(personaObj) {
   // 自動將前台出價輸入框帶入下一口最低可出價金額，方便立即超標測試
   const activeItem = getActiveItem();
   if (activeItem && el('inp-bid-val')) {
-    const curP = Number(activeItem.currentPrice ?? activeItem.currentBid ?? activeItem.startPrice ?? 10000);
-    const inc = Number(activeItem.increment || 10);
-    const hasBids = hasItemBids(activeItem);
-    el('inp-bid-val').value = hasBids ? (curP + inc) : Math.max(Number(activeItem.startPrice || 10000), inc);
+    el('inp-bid-val').value = getMinimumValidBid(activeItem);
   }
 
   updateBuyerRetentionUI('forever', null);
@@ -6877,7 +7027,7 @@ function restoreBackupTestBuyer() {
  * 🧹 管理員專屬：「一鍵清除測試出價與測試問答」功能
  * 清除測試買家（如小建、買家 B、買家 C）的測試出價紀錄、棄標遞補邀請、測試問答與黑名單，並將商品恢復為初始起標價
  */
-function handleAdminClearTestData(targetItemId = null) {
+async function handleAdminClearTestData(targetItemId = null) {
   el('nav-more-dropdown')?.classList.remove('show');
   if (!requireAdminAuth(() => handleAdminClearTestData(targetItemId))) return;
 
@@ -6900,20 +7050,11 @@ function handleAdminClearTestData(targetItemId = null) {
 
   itemsToReset.forEach(it => {
     if (!it) return;
+    setItemRelistLock(it.id, 8000);
     const initPrice = Number(it.startPrice || 10000);
-    it.currentPrice = initPrice;
-    it.currentBid = initPrice;
-    it.topBidder = '';
-    it.topBidderContact = null;
-    it.topBidTime = null;
-    it.bids = {};
-    it.bidHistory = [];
-    it.backupOffer = null;
-    it.finalDealPrice = null;
-    it.defaultedBidders = [];
-    it.qa = {};
-    it.winnerMsgs = [];
-    it.status = 'live';
+    it.relistSeq = Number(it.relistSeq || 0) + 1;
+    it.reopenedAt = now;
+    applyCleanResetFields(it, initPrice, true);
     if (it.timeMode === 'reset24' || it.endTime <= now) {
       it.endTime = now + 24 * 3600 * 1000;
     }
@@ -6928,32 +7069,19 @@ function handleAdminClearTestData(targetItemId = null) {
 
   // 重置前台出價輸入框為起標價
   if (el('inp-bid-val')) {
-    el('inp-bid-val').value = startP;
+    el('inp-bid-val').value = getMinimumValidBid(targetItem);
   }
 
-  // 即時同步清除雲端 Firebase 節點（明確將 bids / qa / topBidder / backupOffer 設為 null 移除）
+  // 即時同步清除雲端 Firebase 節點（明確清空 bids / highestBid / lastBidder / highestBidder / winner / proxyBids / qa 等全欄位）
   const db = FirebaseManager.getDb();
   if (db) {
     db.ref('settings/blacklist').remove().catch(() => {});
-    itemsToReset.forEach(it => {
+    await Promise.all(itemsToReset.map(it => {
       if (it && it.id) {
-        db.ref(`auction/items/${it.id}`).update({
-          currentPrice: Number(it.startPrice || 10000),
-          currentBid: Number(it.startPrice || 10000),
-          topBidder: null,
-          topBidderContact: null,
-          bids: null,
-          bidHistory: null,
-          backupOffer: null,
-          finalDealPrice: null,
-          defaultedBidders: null,
-          qa: null,
-          winnerMsgs: null,
-          status: 'live',
-          endTime: it.endTime
-        }).catch(() => {});
+        return db.ref(`auction/items/${it.id}`).update(buildFirebaseResetPayload(it, true)).catch(() => {});
       }
-    });
+      return Promise.resolve();
+    }));
   }
   syncToFirebase();
   syncToLocalServer(true);
@@ -6970,7 +7098,7 @@ function handleAdminClearTestData(targetItemId = null) {
   renderAdminBuyersRoster();
   updateAuctionTimerUI();
 
-  showToast(`🧹 已成功清除測試出價紀錄與測試問答！商品已恢復為初始起標價 NT$ ${startP.toLocaleString()}。`, 4200);
+  showToast(`🧹 已成功清除測試出價紀錄與測試問答！商品已恢復為初始起標價 NT$ ${startP.toLocaleString()}，首位買家可直接依起標價出標。`, 4200);
 }
 
 function openBuyerProfileModal() {
@@ -7844,10 +7972,21 @@ function syncToFirebase() {
   // 向下相容支援：若當前有商品，將首項商品的舊版頂層欄位一併安全合併寫入
   if (AppState.items && AppState.items.length > 0) {
     const main = AppState.items[0];
+    const mainHasBids = hasItemBids(main);
+    const mainCurPrice = getEffectiveCurrentBidPrice(main);
     payload.itemName = main.name;
     payload.itemSubtitle = main.subtitle || '';
     payload.itemDesc = main.desc || '';
     payload.startPrice = main.startPrice;
+    payload.currentPrice = mainCurPrice;
+    payload.currentBid = mainCurPrice;
+    payload.highestBid = mainHasBids ? mainCurPrice : Number(main.startPrice || 0);
+    payload.bids = mainHasBids ? main.bids : null;
+    payload.topBidder = mainHasBids ? (main.topBidder || null) : null;
+    payload.lastBidder = mainHasBids ? (getBidderName(main.topBidder) || null) : null;
+    payload.highestBidder = mainHasBids ? (getBidderName(main.topBidder) || null) : null;
+    payload.winner = main.winner || null;
+    payload.proxyBids = null;
     payload.increment = main.increment;
     payload.videoUrl = main.videoUrl || '';
     payload.imageList = (main.images || []).map((src, i) => ({
@@ -7861,6 +8000,8 @@ function syncToFirebase() {
       if (it && it.id) {
         const hasBidsMap = it.bids && Object.keys(it.bids).length > 0;
         const hasHistoryArr = Array.isArray(it.bidHistory) && it.bidHistory.length > 0;
+        const itHasBids = hasItemBids(it);
+        const effCur = getEffectiveCurrentBidPrice(it);
         const hasWinnerMsgs = Array.isArray(it.winnerMsgs) && it.winnerMsgs.length > 0;
         const hasDefaulted = Array.isArray(it.defaultedBidders) && it.defaultedBidders.length > 0;
         const isClosed = (it.status === 'ended' || it.status === 'picked_up');
@@ -7869,11 +8010,16 @@ function syncToFirebase() {
           name: it.name,
           startPrice: Number(it.startPrice || 0),
           increment: Number(it.increment || 10),
-          currentPrice: Number(it.currentPrice ?? it.currentBid ?? it.startPrice ?? 0),
-          currentBid: Number(it.currentBid ?? it.currentPrice ?? it.startPrice ?? 0),
-          topBidder: it.topBidder ? it.topBidder : null,
-          topBidderContact: it.topBidderContact || null,
-          topBidTime: it.topBidTime || null,
+          currentPrice: effCur,
+          currentBid: effCur,
+          highestBid: itHasBids ? effCur : Number(it.startPrice || 0),
+          topBidder: itHasBids && it.topBidder ? it.topBidder : null,
+          lastBidder: itHasBids ? (getBidderName(it.topBidder) || it.lastBidder || null) : null,
+          highestBidder: itHasBids ? (getBidderName(it.topBidder) || it.highestBidder || null) : null,
+          topBidderContact: itHasBids ? (it.topBidderContact || null) : null,
+          topBidTime: itHasBids ? (it.topBidTime || null) : null,
+          winner: it.winner || null,
+          proxyBids: null,
           endTime: Number(it.endTime || 0),
           status: it.status || 'live',
           auctionLive: !isClosed,
@@ -8675,7 +8821,7 @@ function bindEvents() {
     const item = getActiveItem();
     const inp = el('inp-bid-val');
     if (inp && item) {
-      inp.value = item.currentBid + item.increment;
+      inp.value = getMinimumValidBid(item);
       inp.focus();
     }
   });
