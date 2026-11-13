@@ -4388,14 +4388,14 @@ body.view-mode-desktop .btn-submit-bid {
 
 /* ── 管理者收合式高效回覆盒 ＋ 一鍵罐頭快捷回覆列（預設隱藏，點擊展開） ── */
 .qa-admin-reply-box {
-  margin-top: 5px;
-  padding: 7px 9px;
-  background: rgba(18, 18, 44, 0.92);
-  border: 1px solid rgba(168, 85, 247, 0.38);
-  border-radius: 9px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: rgba(18, 18, 44, 0.94);
+  border: 1px solid rgba(168, 85, 247, 0.42);
+  border-radius: 10px;
   display: none;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   animation: qaDrawerIn .18s ease;
 }
 .qa-admin-reply-box.show {
@@ -4410,11 +4410,11 @@ body.view-mode-desktop .btn-submit-bid {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .qa-canned-title {
-  font-size: .68rem;
+  font-size: .72rem;
   font-weight: 800;
   color: var(--c-gold-1);
 }
@@ -4422,7 +4422,7 @@ body.view-mode-desktop .btn-submit-bid {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: .66rem;
+  font-size: .68rem;
   color: #c4b5fd;
   cursor: pointer;
   user-select: none;
@@ -4431,56 +4431,186 @@ body.view-mode-desktop .btn-submit-bid {
 .qa-canned-chips-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 .btn-qa-canned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: rgba(168, 85, 247, 0.14);
   border: 1px solid rgba(168, 85, 247, 0.38);
   color: #f3e8ff;
-  font-size: .68rem;
+  font-size: .71rem;
   font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all .13s ease;
+  user-select: none;
+  transition: all .14s ease;
 }
-.btn-qa-canned:hover,
+.btn-qa-canned .canned-check-mark {
+  display: none;
+  font-weight: 900;
+  color: var(--c-gold-1);
+}
+.btn-qa-canned:hover {
+  background: rgba(255, 215, 0, 0.14);
+  border-color: rgba(255, 215, 0, 0.65);
+  color: #fef08a;
+  transform: translateY(-1px);
+}
 .btn-qa-canned:active {
-  background: var(--c-gold-1);
+  transform: scale(0.96);
+}
+.btn-qa-canned.is-selected {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(245, 158, 11, 0.2));
   border-color: var(--c-gold-1);
-  color: #000;
+  color: #fef08a;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.28);
+}
+.btn-qa-canned.is-selected .canned-check-mark {
+  display: inline;
+}
+.btn-qa-canned.is-custom {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.12);
+}
+.btn-qa-canned.is-custom.is-selected {
+  border-color: var(--c-gold-1);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(245, 158, 11, 0.2));
+}
+.btn-open-canned-manager {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px dashed rgba(255, 215, 0, 0.55);
+  color: var(--c-gold-1);
+  font-size: .7rem;
+  font-weight: 800;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .14s ease;
+}
+.btn-open-canned-manager:hover {
+  background: rgba(255, 215, 0, 0.22);
+  border-style: solid;
+  transform: translateY(-1px);
 }
 
 .qa-admin-input-row {
   display: flex;
-  align-items: stretch;
-  gap: 5px;
-}
-@media (max-width: 480px) {
-  .qa-admin-input-row {
-    flex-direction: column;
-  }
+  flex-direction: column;
+  gap: 7px;
 }
 .qa-admin-textarea {
-  flex: 1;
-  min-height: 32px !important;
-  height: 34px;
-  padding: 5px 8px !important;
-  font-size: .78rem !important;
-  border-radius: 6px !important;
-  background: rgba(6, 6, 20, 0.9) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 54px !important;
+  max-height: 220px;
+  padding: 8px 10px !important;
+  font-size: .82rem !important;
+  line-height: 1.5 !important;
+  border-radius: 8px !important;
+  background: rgba(6, 6, 20, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   color: #fff !important;
-  resize: vertical;
+  resize: none;
+  overflow-y: hidden;
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 215, 0, 0.35) rgba(10, 10, 28, 0.85);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.qa-admin-textarea::-webkit-scrollbar {
+  width: 6px;
+}
+.qa-admin-textarea::-webkit-scrollbar-track {
+  background: rgba(10, 10, 28, 0.85);
+  border-radius: 4px;
+}
+.qa-admin-textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 215, 0, 0.35);
+  border-radius: 4px;
 }
 .qa-admin-textarea:focus {
   border-color: var(--c-gold-1) !important;
+  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.15);
+  outline: none;
 }
 .qa-admin-btn-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.btn-clear-qa-draft {
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #cbd5e1;
+  font-size: .72rem;
+  font-weight: 700;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all .14s ease;
+}
+.btn-clear-qa-draft:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+/* 自訂罐頭快答管理彈窗樣式 */
+.canned-manager-form {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 215, 0, 0.22);
+  border-radius: 10px;
+  padding: 12px;
+}
+.custom-canned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  color-scheme: dark;
+  scrollbar-width: thin;
+}
+.custom-canned-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(15, 15, 38, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.custom-canned-row-info {
+  flex: 1;
+  min-width: 0;
+}
+.custom-canned-row-label {
+  font-size: .8rem;
+  font-weight: 800;
+  color: #7dd3fc;
+  margin-bottom: 3px;
+}
+.custom-canned-row-text {
+  font-size: .76rem;
+  color: var(--c-text-2);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.custom-canned-row-actions {
+  display: flex;
+  gap: 5px;
   flex-shrink: 0;
 }
 

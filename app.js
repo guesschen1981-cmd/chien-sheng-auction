@@ -9,12 +9,12 @@
    1. 常數與匯率資料表 (Currency Rates & Formats)
    ───────────────────────────────────────────────────────────── */
 const CURRENCY_RATES = {
-  TWD: { rate: 1, symbol: 'NT$ ', name: '新台幣', digits: 0 },
-  USD: { rate: 0.031, symbol: '$ ', name: '美金', digits: 2 },
-  JPY: { rate: 4.75, symbol: '¥ ', name: '日圓', digits: 0 },
-  VND: { rate: 800, symbol: '₫ ', name: '越南盾', digits: 0 },
-  IDR: { rate: 510, symbol: 'Rp ', name: '印尼盾', digits: 0 },
-  THB: { rate: 1.12, symbol: '฿ ', name: '泰銖', digits: 0 }
+  TWD: { rate: 1,      symbol: 'NT$ ', name: '新台幣',  digits: 0 },
+  USD: { rate: 0.031,  symbol: '$ ',   name: '美金',    digits: 2 },
+  JPY: { rate: 4.75,   symbol: '¥ ',   name: '日圓',    digits: 0 },
+  VND: { rate: 800,    symbol: '₫ ',   name: '越南盾',  digits: 0 },
+  IDR: { rate: 510,    symbol: 'Rp ',  name: '印尼盾',  digits: 0 },
+  THB: { rate: 1.12,   symbol: '฿ ',   name: '泰銖',    digits: 0 }
 };
 
 /* 預設多商品初始資料 (真實拍賣商品：Acer Aspire 7 電競筆電) */
@@ -124,7 +124,11 @@ const AppState = {
   currentEditImages: [], // 編輯中的圖片陣列 (支援拖曳上傳預覽)
   registeredBuyers: [], // 雲端即時同步之買家註冊名冊
   blacklist: {},        // 棄標封鎖黑名單 (key: 純數字手機號碼)
-  activeBackupTemplate: 'discount' // 後台遞補邀請話術當前選用範本
+  activeBackupTemplate: 'discount', // 後台遞補邀請話術當前選用範本
+  customCannedReplies: [], // 賣家自訂罐頭快答詞庫 (雲端同步)
+  qaSelectedCannedMap: {}, // 各提問面板目前已勾選之快答 ID 清單 (支援智慧多選組合)
+  qaLastComposedMap: {},   // 各提問面板前一次智慧組合產生的句子 (用於取消勾選時保留手動文字)
+  qaDraftTextMap: {}       // 保留各展開回覆盒內正在輸入的草稿內容
 };
 
 // === 捲軸記憶與抗跳動保護模組 ===
@@ -141,7 +145,7 @@ window.addEventListener('scroll', () => {
       sessionStorage.setItem('auction_active_item', AppState.activeItemId || '');
       const isViewingAdmin = document.getElementById('page-admin')?.classList.contains('active');
       sessionStorage.setItem('auction_active_page', (AppState.isAdmin && isViewingAdmin) ? 'admin' : 'auction');
-    } catch (e) { }
+    } catch (e) {}
   }, 100);
 }, { passive: true });
 
@@ -150,7 +154,7 @@ window.addEventListener('beforeunload', () => {
     sessionStorage.setItem('auction_scroll_y', String(window.scrollY));
     const isViewingAdmin = document.getElementById('page-admin')?.classList.contains('active');
     sessionStorage.setItem('auction_active_page', (AppState.isAdmin && isViewingAdmin) ? 'admin' : 'auction');
-  } catch (e) { }
+  } catch (e) {}
 });
 
 function restoreScrollPosition() {
@@ -168,7 +172,7 @@ function restoreScrollPosition() {
         window.scrollTo({ top: targetY, behavior: 'instant' });
       }, 250);
     }
-  } catch (e) { }
+  } catch (e) {}
 }
 
 // 伺服器回報之區域網路 IP (局域網網址，保證手機掃描 QR Code 正常連線)
@@ -215,7 +219,7 @@ const SafeStorage = {
             return decoded;
           }
         }
-      } catch (_) { }
+      } catch (_) {}
     }
     return fallback;
   },
@@ -233,22 +237,22 @@ const SafeStorage = {
         const isPerm = isPermanentRetention(value.retentionDays) || value.isPermanent;
         const maxAge = isPerm ? 315360000 : (Number(value.retentionDays || 7) * 86400);
         document.cookie = `agy_buyer_profile=${encodeURIComponent(JSON.stringify(value))}; path=/; max-age=${maxAge}; SameSite=Lax`;
-      } catch (_) { }
+      } catch (_) {}
     } else if (key === 'agy_super_admin_auth' && value && typeof document !== 'undefined') {
       try {
         document.cookie = `agy_super_admin_auth=${encodeURIComponent(JSON.stringify(value))}; path=/; max-age=315360000; SameSite=Lax`;
-      } catch (_) { }
+      } catch (_) {}
     }
     return ok;
   },
   remove(key) {
     try {
       localStorage.removeItem(key);
-    } catch (e) { }
+    } catch (e) {}
     if ((key === 'agy_buyer_profile' || key === 'agy_super_admin_auth') && typeof document !== 'undefined') {
       try {
         document.cookie = `${key}=; path=/; max-age=0; SameSite=Lax`;
-      } catch (_) { }
+      } catch (_) {}
     }
   }
 };
@@ -444,10 +448,10 @@ function normalizeItem(raw, fallbackId) {
   const pickupDeadlineHours = Number(raw.pickupDeadlineHours || (raw.warrantyDays ? raw.warrantyDays * 24 : 48));
   const pickupOptions = (raw.pickupOptions && typeof raw.pickupOptions === 'object')
     ? {
-      self: raw.pickupOptions.self !== false,
-      delivery: !!raw.pickupOptions.delivery,
-      cvs: !!raw.pickupOptions.cvs
-    }
+        self: raw.pickupOptions.self !== false,
+        delivery: !!raw.pickupOptions.delivery,
+        cvs: !!raw.pickupOptions.cvs
+      }
     : { self: true, delivery: false, cvs: false };
   const pickupCustom = raw.pickupCustom || raw.pickupInfo || raw.pickupText || '';
 
@@ -680,7 +684,7 @@ function validatePhoneNumber(rawPhone, userName) {
         boundPhones[clean] = userName.trim();
         SafeStorage.set('agy_registered_users', boundPhones);
       }
-    } catch (e) { }
+    } catch (e) {}
     return { valid: true, phone: clean };
   }
 
@@ -734,7 +738,7 @@ function validatePhoneNumber(rawPhone, userName) {
       boundPhones[clean] = userName.trim();
       SafeStorage.set('agy_registered_users', boundPhones);
     }
-  } catch (e) { }
+  } catch (e) {}
 
   // 檢查是否已被列入棄標封鎖黑名單
   if (typeof isBuyerBlacklisted === 'function' && isBuyerBlacklisted(clean)) {
@@ -778,7 +782,7 @@ function detectInitialViewMode() {
     if (explicitMode === 'mobile' || explicitMode === 'desktop') {
       return explicitMode;
     }
-  } catch (e) { }
+  } catch (e) {}
   return (window.innerWidth >= 860) ? 'desktop' : 'mobile';
 }
 
@@ -1024,7 +1028,7 @@ function getLogoConfig() {
   try {
     const saved = SafeStorage.get('agy_studio_logo_cfg');
     if (saved) return Object.assign({}, DEFAULT_LOGO_CONFIG, typeof saved === 'object' ? saved : JSON.parse(saved));
-  } catch (_) { }
+  } catch (_) {}
   return Object.assign({}, DEFAULT_LOGO_CONFIG);
 }
 
@@ -1122,9 +1126,9 @@ function applyLogoConfig(cfg, shouldSync = true) {
   if (shouldSync) {
     const db = FirebaseManager.getDb();
     if (db) {
-      db.ref('settings/shop/logoConfig').set(cfg).catch(() => { });
+      db.ref('settings/shop/logoConfig').set(cfg).catch(() => {});
       if (AppState.auctionId) {
-        db.ref('auctions/' + AppState.auctionId + '/logoConfig').set(cfg).catch(() => { });
+        db.ref('auctions/' + AppState.auctionId + '/logoConfig').set(cfg).catch(() => {});
       }
     }
   }
@@ -1431,7 +1435,7 @@ const FirebaseManager = (function () {
           SafeStorage.remove('agy_fb_config');
         }
       }
-    } catch (e) { }
+    } catch (e) {}
     return Object.assign({}, DEFAULT_CONFIG);
   }
 
@@ -1497,7 +1501,7 @@ const FirebaseManager = (function () {
       if (snap.exists()) {
         AppState.blacklist = snap.val() || {};
         SafeStorage.set('agy_blacklist', AppState.blacklist);
-        try { renderAdminBuyersRoster(); } catch (e) { }
+        try { renderAdminBuyersRoster(); } catch (e) {}
       }
     });
   }
@@ -1517,6 +1521,18 @@ const FirebaseManager = (function () {
           }
           if (val.logoConfig) {
             applyLogoConfig(val.logoConfig, false);
+          }
+          if (val.customCannedReplies !== undefined) {
+            const list = Array.isArray(val.customCannedReplies)
+              ? val.customCannedReplies
+              : (val.customCannedReplies && typeof val.customCannedReplies === 'object' ? Object.values(val.customCannedReplies) : []);
+            AppState.customCannedReplies = list.filter(c => c && c.label && c.text);
+            SafeStorage.set('agy_custom_canned_replies', AppState.customCannedReplies);
+            try { renderQA(true, null); } catch (e) {}
+            try { renderAdminAllQA(); } catch (e) {}
+            if (typeof renderCustomCannedManagerList === 'function') {
+              try { renderCustomCannedManagerList(); } catch (e) {}
+            }
           }
         }
       }
@@ -1877,14 +1893,14 @@ function applySafeBackgroundRender() {
   const selStart = isInputFocused ? activeEl.selectionStart : null;
   const selEnd = isInputFocused ? activeEl.selectionEnd : null;
 
-  try { renderActiveItemDisplay(); } catch (e) { }
-  try { renderItemTabs(); } catch (e) { }
-  try { renderBidHistory(); } catch (e) { }
-  try { renderQA(); } catch (e) { }
-  try { renderAdminAllQA(); } catch (e) { }
-  try { renderWinnerStatus(); } catch (e) { }
+  try { renderActiveItemDisplay(); } catch (e) {}
+  try { renderItemTabs(); } catch (e) {}
+  try { renderBidHistory(); } catch (e) {}
+  try { renderQA(); } catch (e) {}
+  try { renderAdminAllQA(); } catch (e) {}
+  try { renderWinnerStatus(); } catch (e) {}
   if (typeof updateAuctionTimerUI === 'function') {
-    try { updateAuctionTimerUI(); } catch (e) { }
+    try { updateAuctionTimerUI(); } catch (e) {}
   }
 
   if (focusedId && el(focusedId)) {
@@ -1894,7 +1910,7 @@ function applySafeBackgroundRender() {
     }
     curInp.focus();
     if (selStart !== null && selEnd !== null) {
-      try { curInp.setSelectionRange(selStart, selEnd); } catch (e) { }
+      try { curInp.setSelectionRange(selStart, selEnd); } catch (e) {}
     }
   }
 
@@ -1935,7 +1951,7 @@ function switchActiveItem(itemId) {
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('id', itemId);
     window.history.replaceState(null, '', currentUrl.toString());
-  } catch (e) { }
+  } catch (e) {}
 
   renderItemTabs();
   renderActiveItemDisplay();
@@ -2019,163 +2035,163 @@ function renderActiveItemDisplay() {
       bidBar.style.display = (item.status === 'active' || item.status === 'live') ? 'block' : 'none';
     }
 
-    // 1-0. 店家識別標籤 (在商品名稱正上方：[店家 Logo 縮圖/商標] + 店家或企業名稱)
-    const sellerBadge = el('product-seller-badge');
-    const sellerNameEl = el('product-seller-name');
-    const sellerLogoEl = el('product-seller-logo');
-    if (sellerBadge) {
-      const sName = item.sellerName || '建生工坊';
-      const sLogo = item.sellerLogo || 'icon-192.png';
-      if (sellerNameEl) sellerNameEl.textContent = sName;
-      if (sellerLogoEl) sellerLogoEl.src = sLogo;
-      sellerBadge.style.display = 'inline-flex';
-      applyLogoConfig(getLogoConfig(), false);
-    }
+  // 1-0. 店家識別標籤 (在商品名稱正上方：[店家 Logo 縮圖/商標] + 店家或企業名稱)
+  const sellerBadge = el('product-seller-badge');
+  const sellerNameEl = el('product-seller-name');
+  const sellerLogoEl = el('product-seller-logo');
+  if (sellerBadge) {
+    const sName = item.sellerName || '建生工坊';
+    const sLogo = item.sellerLogo || 'icon-192.png';
+    if (sellerNameEl) sellerNameEl.textContent = sName;
+    if (sellerLogoEl) sellerLogoEl.src = sLogo;
+    sellerBadge.style.display = 'inline-flex';
+    applyLogoConfig(getLogoConfig(), false);
+  }
 
-    // 1. 文字與標題
-    if (el('product-name')) el('product-name').textContent = item.name;
-    if (el('product-subtitle')) el('product-subtitle').textContent = item.subtitle || '';
-    if (el('product-desc')) el('product-desc').textContent = item.desc || '';
+  // 1. 文字與標題
+  if (el('product-name')) el('product-name').textContent = item.name;
+  if (el('product-subtitle')) el('product-subtitle').textContent = item.subtitle || '';
+  if (el('product-desc')) el('product-desc').textContent = item.desc || '';
 
-    // 1-1. 取件標籤與說明動態渲染 (核心功能復原)
-    const pickupBox = el('pickup-chips-container');
-    if (pickupBox) {
-      pickupBox.innerHTML = '';
-      const opts = item.pickupOptions || { self: true };
-      if (opts.self) {
-        pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏠 實體門市面交</span>';
-      }
-      if (opts.delivery) {
-        pickupBox.innerHTML += '<span class="item-tab-badge badge-live">📦 宅配/貨運寄送</span>';
-      }
-      if (opts.cvs) {
-        pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏪 超商取件</span>';
-      }
-      if (item.pickupCustom) {
-        pickupBox.innerHTML += `<span class="item-tab-badge badge-live">📍 ${escapeHtml(item.pickupCustom)}</span>`;
-      }
+  // 1-1. 取件標籤與說明動態渲染 (核心功能復原)
+  const pickupBox = el('pickup-chips-container');
+  if (pickupBox) {
+    pickupBox.innerHTML = '';
+    const opts = item.pickupOptions || { self: true };
+    if (opts.self) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏠 實體門市面交</span>';
     }
+    if (opts.delivery) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">📦 宅配/貨運寄送</span>';
+    }
+    if (opts.cvs) {
+      pickupBox.innerHTML += '<span class="item-tab-badge badge-live">🏪 超商取件</span>';
+    }
+    if (item.pickupCustom) {
+      pickupBox.innerHTML += `<span class="item-tab-badge badge-live">📍 ${escapeHtml(item.pickupCustom)}</span>`;
+    }
+  }
 
-    // 1-2. 額外備註說明與注意事項動態渲染 (核心功能復原)
-    const extraNotesBox = el('product-extra-notes-box');
-    const extraNotesText = el('product-extra-notes-text');
-    if (extraNotesBox && extraNotesText) {
-      if (item.extraNotes && item.extraNotes.trim()) {
-        extraNotesText.textContent = item.extraNotes.trim();
-        extraNotesBox.style.display = 'block';
-      } else {
-        extraNotesBox.style.display = 'none';
-      }
+  // 1-2. 額外備註說明與注意事項動態渲染 (核心功能復原)
+  const extraNotesBox = el('product-extra-notes-box');
+  const extraNotesText = el('product-extra-notes-text');
+  if (extraNotesBox && extraNotesText) {
+    if (item.extraNotes && item.extraNotes.trim()) {
+      extraNotesText.textContent = item.extraNotes.trim();
+      extraNotesBox.style.display = 'block';
+    } else {
+      extraNotesBox.style.display = 'none';
     }
+  }
 
-    // 1-3. 保固說明動態渲染 (核心功能復原)
-    const warrantyBox = el('product-warranty-box');
-    const warrantyText = el('product-warranty-text');
-    if (warrantyBox && warrantyText) {
-      if (item.warrantyText && item.warrantyText.trim()) {
-        warrantyText.textContent = item.warrantyText.trim();
-        warrantyBox.style.display = 'block';
-      } else {
-        warrantyBox.style.display = 'none';
-      }
+  // 1-3. 保固說明動態渲染 (核心功能復原)
+  const warrantyBox = el('product-warranty-box');
+  const warrantyText = el('product-warranty-text');
+  if (warrantyBox && warrantyText) {
+    if (item.warrantyText && item.warrantyText.trim()) {
+      warrantyText.textContent = item.warrantyText.trim();
+      warrantyBox.style.display = 'block';
+    } else {
+      warrantyBox.style.display = 'none';
     }
+  }
 
-    // 2. 圖片輪播與 28 張縮圖多欄網格 / 水平滑動渲染
-    const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
-    if (AppState.galleryIndex >= images.length) AppState.galleryIndex = 0;
+  // 2. 圖片輪播與 28 張縮圖多欄網格 / 水平滑動渲染
+  const images = (item.images && item.images.length) ? item.images : ['icon-512.png'];
+  if (AppState.galleryIndex >= images.length) AppState.galleryIndex = 0;
 
-    const mainImg = el('gallery-main-img');
-    if (mainImg) {
-      mainImg.src = images[AppState.galleryIndex];
-    }
-    const counter = el('gallery-counter');
-    if (counter) {
-      counter.textContent = `${AppState.galleryIndex + 1} / ${images.length}`;
-    }
-    const countBadge = el('gallery-thumbs-count-badge');
-    if (countBadge) {
-      countBadge.textContent = `共 ${images.length} 張實拍照`;
-    }
+  const mainImg = el('gallery-main-img');
+  if (mainImg) {
+    mainImg.src = images[AppState.galleryIndex];
+  }
+  const counter = el('gallery-counter');
+  if (counter) {
+    counter.textContent = `${AppState.galleryIndex + 1} / ${images.length}`;
+  }
+  const countBadge = el('gallery-thumbs-count-badge');
+  if (countBadge) {
+    countBadge.textContent = `共 ${images.length} 張實拍照`;
+  }
 
-    // 縮圖列表 (電腦模式為多欄 Grid，手機模式為 60x60 水平滑動，點擊零延遲切換主圖)
-    const thumbsBox = el('gallery-thumbs');
-    if (thumbsBox) {
-      thumbsBox.innerHTML = '';
-      images.forEach((src, idx) => {
-        const th = document.createElement('img');
-        const isActive = idx === AppState.galleryIndex;
-        th.className = `gallery-thumb ${isActive ? 'active' : ''}`;
-        th.src = src;
-        th.alt = `縮圖 ${idx + 1}`;
-        th.loading = 'lazy';
-        th.addEventListener('click', () => {
-          switchGalleryImage(idx);
-        });
-        thumbsBox.appendChild(th);
-        if (isActive && AppState.viewMode === 'mobile') {
-          setTimeout(() => {
-            th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-          }, 30);
-        }
+  // 縮圖列表 (電腦模式為多欄 Grid，手機模式為 60x60 水平滑動，點擊零延遲切換主圖)
+  const thumbsBox = el('gallery-thumbs');
+  if (thumbsBox) {
+    thumbsBox.innerHTML = '';
+    images.forEach((src, idx) => {
+      const th = document.createElement('img');
+      const isActive = idx === AppState.galleryIndex;
+      th.className = `gallery-thumb ${isActive ? 'active' : ''}`;
+      th.src = src;
+      th.alt = `縮圖 ${idx + 1}`;
+      th.loading = 'lazy';
+      th.addEventListener('click', () => {
+        switchGalleryImage(idx);
       });
-    }
-
-    // 3. 多平台影音播放器嵌入 (核心功能 3)
-    const videoCard = el('product-video-card');
-    const videoContainer = el('video-embed-container');
-    const videoPlatformBadge = el('video-platform-badge');
-
-    if (item.videoUrl && videoCard && videoContainer) {
-      const embedInfo = parseVideoEmbed(item.videoUrl);
-      if (embedInfo) {
-        videoCard.style.display = 'block';
-        if (videoPlatformBadge) videoPlatformBadge.textContent = embedInfo.platform;
-        videoContainer.innerHTML = embedInfo.html;
-      } else {
-        videoCard.style.display = 'none';
-        videoContainer.innerHTML = '';
+      thumbsBox.appendChild(th);
+      if (isActive && AppState.viewMode === 'mobile') {
+        setTimeout(() => {
+          th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 30);
       }
-    } else if (videoCard) {
+    });
+  }
+
+  // 3. 多平台影音播放器嵌入 (核心功能 3)
+  const videoCard = el('product-video-card');
+  const videoContainer = el('video-embed-container');
+  const videoPlatformBadge = el('video-platform-badge');
+
+  if (item.videoUrl && videoCard && videoContainer) {
+    const embedInfo = parseVideoEmbed(item.videoUrl);
+    if (embedInfo) {
+      videoCard.style.display = 'block';
+      if (videoPlatformBadge) videoPlatformBadge.textContent = embedInfo.platform;
+      videoContainer.innerHTML = embedInfo.html;
+    } else {
       videoCard.style.display = 'none';
-      if (videoContainer) videoContainer.innerHTML = '';
+      videoContainer.innerHTML = '';
     }
+  } else if (videoCard) {
+    videoCard.style.display = 'none';
+    if (videoContainer) videoContainer.innerHTML = '';
+  }
 
-    // 4. 出價金額顯示 (核心功能 2 多幣別換算)
-    const curBidVal = item.currentPrice ?? item.currentBid ?? item.startPrice ?? 0;
-    if (el('cur-bid-amount')) {
-      el('cur-bid-amount').textContent = formatMoney(curBidVal, AppState.activeCurrency);
-    }
-    const topName = getBidderName(item.topBidder);
-    if (el('cur-top-bidder')) {
-      el('cur-top-bidder').textContent = topName
-        ? maskBuyerName(topName)
-        : '尚無人出價（起標價等待中）';
-    }
-    if (el('active-currency-badge')) {
-      el('active-currency-badge').textContent = `${AppState.activeCurrency} (${CURRENCY_RATES[AppState.activeCurrency].name})`;
-    }
+  // 4. 出價金額顯示 (核心功能 2 多幣別換算)
+  const curBidVal = item.currentPrice ?? item.currentBid ?? item.startPrice ?? 0;
+  if (el('cur-bid-amount')) {
+    el('cur-bid-amount').textContent = formatMoney(curBidVal, AppState.activeCurrency);
+  }
+  const topName = getBidderName(item.topBidder);
+  if (el('cur-top-bidder')) {
+    el('cur-top-bidder').textContent = topName
+      ? maskBuyerName(topName)
+      : '尚無人出價（起標價等待中）';
+  }
+  if (el('active-currency-badge')) {
+    el('active-currency-badge').textContent = `${AppState.activeCurrency} (${CURRENCY_RATES[AppState.activeCurrency].name})`;
+  }
 
-    // 5. 下一口最低出價
-    const hasPriorBids = !!topName || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
-    const nextMinBid = hasPriorBids ? (curBidVal + item.increment) : item.startPrice;
-    if (el('next-min-bid-val')) {
-      el('next-min-bid-val').textContent = formatMoney(nextMinBid, AppState.activeCurrency);
-    }
+  // 5. 下一口最低出價
+  const hasPriorBids = !!topName || (item.bids && Object.keys(item.bids).length > 0) || (item.bidHistory && item.bidHistory.length > 0);
+  const nextMinBid = hasPriorBids ? (curBidVal + item.increment) : item.startPrice;
+  if (el('next-min-bid-val')) {
+    el('next-min-bid-val').textContent = formatMoney(nextMinBid, AppState.activeCurrency);
+  }
 
-    // 6. 底部出價輸入框預設值
-    const inpBid = el('inp-bid-val');
-    if (inpBid && !inpBid.value) {
-      inpBid.value = nextMinBid;
-    }
-    if (el('btn-submit-text') && !(typeof isSubmittingBid !== 'undefined' && isSubmittingBid)) {
-      el('btn-submit-text').textContent = '立即出標';
-    }
+  // 6. 底部出價輸入框預設值
+  const inpBid = el('inp-bid-val');
+  if (inpBid && !inpBid.value) {
+    inpBid.value = nextMinBid;
+  }
+  if (el('btn-submit-text') && !(typeof isSubmittingBid !== 'undefined' && isSubmittingBid)) {
+    el('btn-submit-text').textContent = '立即出標';
+  }
 
-    // 7. 管理者應變按鈕顯示 (核心功能 7)
-    const adminItemControls = el('admin-item-controls');
-    if (adminItemControls) {
-      adminItemControls.style.display = AppState.isAdmin ? 'flex' : 'none';
-    }
+  // 7. 管理者應變按鈕顯示 (核心功能 7)
+  const adminItemControls = el('admin-item-controls');
+  if (adminItemControls) {
+    adminItemControls.style.display = AppState.isAdmin ? 'flex' : 'none';
+  }
   } catch (err) {
     console.error('renderActiveItemDisplay 錯誤:', err);
   }
@@ -2304,7 +2320,7 @@ function renderBidHistory() {
     d.className = `history-item ${idx === 0 ? 'is-top' : ''}`;
 
     const isTopTag = idx === 0 ? '<span class="item-tab-badge badge-live" style="margin-right:4px;">目前最高</span>' : '';
-
+    
     // 👑 管理者最高權限解碼視角 vs 一般買家隱私遮罩
     let userDisplay = '';
     if (AppState.isAdmin) {
@@ -2586,7 +2602,7 @@ function triggerPhoneContact(phone) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-  } catch (e) { }
+  } catch (e) {}
 }
 
 /** 全站統一「Line ID 加好友」雙動能腳本：複製 ID + Toast 提示 + 開啟 Line App / 網頁加友連結 */
@@ -2690,15 +2706,234 @@ function renderWinnerMessages(item) {
    8. 現代化流水式 Q&A 問答討論串模組 (輕量瘦身版 + 單則回覆獨立刪除 + 收合式罐頭快回)
    ───────────────────────────────────────────────────────────── */
 
-/** 賣家常用罐頭快捷回覆詞庫 */
+/** 賣家常用罐頭快捷回覆預設 12 組詞庫 */
 const QA_CANNED_REPLIES = [
-  { label: '📦 已有貨', text: '您好，此商品目前還有現貨，競標進行中，歡迎直接加價出標參與！' },
-  { label: '🏠 可自取', text: '您好，支援高雄小港區桂林自取面交（透天1～3樓自取自搬），現場可插電測試確認機況！' },
-  { label: '🔒 已保留', text: '您好，目前商品已依最高出價/得標順位為買家保留中，感謝您的關注！' },
-  { label: '💻 機況正常', text: '您好，商品功能與硬體皆實測正常，外觀細節如 28 張實拍照所示，歡迎放心競標！' },
-  { label: '💰 請直接出標', text: '您好，本賣場採公開透明競標制度，不私下議價，歡迎直接使用出價面板加價出標喔！' },
-  { label: '📅 約時間看機', text: '您好，歡迎透過問答或得標後私訊與我們約定方便的時段前來小港桂林現場看機自取！' }
+  { id: 'canned_in_stock', label: '📦 已有貨', text: '此商品目前還有現貨' },
+  { id: 'canned_pickup', label: '🏠 可自取', text: '歡迎預約現場看機自取' },
+  { id: 'canned_reserved', label: '🔒 已保留', text: '目前已為得標買家保留中，若逾時棄標將依序開放遞補' },
+  { id: 'canned_working', label: '💻 機況正常', text: '各項功能與機況皆經實測正常' },
+  { id: 'canned_bid', label: '💰 請直接出標', text: '競標進行中，歡迎直接於頁面上加價出標參與' },
+  { id: 'canned_schedule', label: '📅 約時間看機', text: '歡迎透過問答或得標後私訊約定方便的時段現場看機' },
+  { id: 'canned_no_haggle', label: '🙅‍♂️ 恕不議價', text: '本賣場採公開競標制，一律以系統出價為準，恕不接受私下議價' },
+  { id: 'canned_accessories', label: '🔌 附完整配件', text: '隨附原廠變壓器／必要電源線材，入手即可直接使用' },
+  { id: 'canned_onsite_test', label: '🛡️ 現場測試交機', text: '支援現場開機實測，確認功能滿意後再取走，保障雙方權益' },
+  { id: 'canned_xiaogang', label: '📍 小港桂林自取', text: '自取地點位於高雄小港區桂林（透天 1～3 樓），得標後提供詳細位置' },
+  { id: 'canned_flexible_time', label: '🕒 自取時段彈性', text: '平假日白天或晚間皆可配合預約，出發前請先聯繫確認' },
+  { id: 'canned_pickup_only', label: '🚚 限自取不寄送', text: '為確保商品完好與交易安全，本品項僅限現場自取自搬，暫不開放寄送' }
 ];
+
+/** 取得完整快答清單（內建 12 組 ＋ 賣家雲端自訂詞庫） */
+function getAllCannedReplies() {
+  const presets = QA_CANNED_REPLIES.map(c => ({ ...c, isCustom: false }));
+  const customs = (Array.isArray(AppState.customCannedReplies) ? AppState.customCannedReplies : [])
+    .filter(c => c && c.label && c.text)
+    .map(c => ({
+      id: String(c.id || ('custom_' + encodeURIComponent(c.label))),
+      label: String(c.label).trim(),
+      text: String(c.text).trim(),
+      isCustom: true
+    }));
+  return [...presets, ...customs];
+}
+
+/** 清理單句前後問候與標點，供智慧多選串接使用 */
+function normalizeCannedClause(text) {
+  return String(text || '')
+    .trim()
+    .replace(/^您好[！!，,、\s]*/, '')
+    .replace(/[。！!，,]+$/, '');
+}
+
+/** 智慧組合多選快答語句：開頭自動加一次「您好！」，句間自然連接，結尾補句號並保留手動補充內容 */
+function composeSmartCannedReply(clauses, manualText = '') {
+  const cleanClauses = (clauses || []).map(normalizeCannedClause).filter(Boolean);
+  const cleanManual = String(manualText || '').trim();
+  if (!cleanClauses.length && !cleanManual) return '';
+  if (!cleanClauses.length) return cleanManual;
+
+  const body = cleanClauses.map((c, idx) => {
+    if (idx === cleanClauses.length - 1) return `${c}。`;
+    return (c.length >= 24 && cleanClauses.length > 2) ? `${c}。` : `${c}，`;
+  }).join('');
+
+  const cannedFull = `您好！${body}`;
+  return cleanManual ? `${cannedFull} ${cleanManual}` : cannedFull;
+}
+
+/** 從目前輸入框內容分離「前次自動組合句」與「管理員手動打字補充內容」，確保反覆切換不遺失手打字 */
+function extractManualTextPreservingEdit(currentVal, prevComposed) {
+  const raw = String(currentVal || '');
+  const prev = String(prevComposed || '');
+  if (!raw.trim()) return '';
+  if (!prev) return raw.trim();
+
+  if (raw.startsWith(prev)) {
+    return raw.slice(prev.length).trim();
+  }
+  const idx = raw.indexOf(prev);
+  if (idx !== -1) {
+    return (raw.slice(0, idx) + ' ' + raw.slice(idx + prev.length)).trim();
+  }
+  // 容錯：若使用者小幅刪改了前段最後標點
+  const prevCore = prev.replace(/[。！!，,]+$/, '');
+  if (prevCore && raw.includes(prevCore)) {
+    return raw.replace(prevCore, '').replace(/^[。！!，,\s]+/, '').trim();
+  }
+  return raw.trim();
+}
+
+/** 自動依據內容高度撐開 Q&A 回覆輸入框，避免出現狹窄高度與白色捲軸 */
+function autoResizeQATextarea(textarea) {
+  if (!textarea) return;
+  textarea.style.height = 'auto';
+  const nextHeight = Math.min(Math.max(textarea.scrollHeight, 54), 220);
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = textarea.scrollHeight > 220 ? 'auto' : 'hidden';
+}
+
+/** 共用建立「12 組預設 ＋ 自訂快答 ＋ 管理鈕」標籤列 HTML */
+function buildCannedChipsHtml(itemId, qaKey, inputPrefix = 'inp-reply-') {
+  const boxKey = `${inputPrefix}${qaKey}`;
+  const selectedIds = Array.isArray(AppState.qaSelectedCannedMap?.[boxKey]) ? AppState.qaSelectedCannedMap[boxKey] : [];
+  const allCanned = getAllCannedReplies();
+  const chips = allCanned.map(c => {
+    const isSelected = selectedIds.includes(c.id);
+    return `<button type="button" class="btn-qa-canned ${c.isCustom ? 'is-custom' : ''} ${isSelected ? 'is-selected' : ''}" data-canned-id="${escapeHtml(c.id)}" ${itemId ? `data-item-id="${escapeHtml(itemId)}"` : ''} data-qa-key="${escapeHtml(qaKey)}" data-input-prefix="${escapeHtml(inputPrefix)}" data-label="${escapeHtml(c.label)}" data-reply-text="${escapeHtml(c.text)}" title="${escapeHtml(c.text)}"><span class="canned-check-mark">✓</span><span>${escapeHtml(c.label)}</span></button>`;
+  }).join('');
+  const managerBtn = AppState.isAdmin
+    ? `<button type="button" class="btn-open-canned-manager" title="新增、編輯或刪除賣家自訂快答詞庫（雲端同步）">➕ 自訂快答</button>`
+    : '';
+  return `${chips}${managerBtn}`;
+}
+
+/** 載入本機快取之賣家自訂快答詞庫 */
+function loadSavedCustomCannedReplies() {
+  try {
+    const saved = SafeStorage.get('agy_custom_canned_replies');
+    if (Array.isArray(saved)) {
+      AppState.customCannedReplies = saved.filter(c => c && c.label && c.text);
+    }
+  } catch (e) {}
+}
+
+/** 將自訂快答詞庫同步儲存至本機快取與 Firebase 雲端 (settings/shop/customCannedReplies) */
+function syncCustomCannedRepliesToCloud() {
+  const list = Array.isArray(AppState.customCannedReplies) ? AppState.customCannedReplies : [];
+  SafeStorage.set('agy_custom_canned_replies', list);
+  const db = FirebaseManager.getDb();
+  if (db) {
+    db.ref('settings/shop/customCannedReplies').set(list.length ? list : null).catch(err => {
+      console.warn('同步自訂快答詞庫至 Firebase 失敗:', err);
+    });
+  }
+  try { renderQA(true, null); } catch (e) {}
+  try { renderAdminAllQA(); } catch (e) {}
+}
+
+/** 開啟「➕ 自訂快答」詞庫管理彈窗 */
+function openCustomCannedModal() {
+  if (!requireAdminAuth(() => openCustomCannedModal())) return;
+  resetCustomCannedForm();
+  renderCustomCannedManagerList();
+  el('modal-canned-replies')?.classList.add('show');
+}
+
+function closeCustomCannedModal() {
+  el('modal-canned-replies')?.classList.remove('show');
+  resetCustomCannedForm();
+}
+
+function resetCustomCannedForm() {
+  if (el('inp-custom-canned-edit-id')) el('inp-custom-canned-edit-id').value = '';
+  if (el('inp-custom-canned-label')) el('inp-custom-canned-label').value = '';
+  if (el('inp-custom-canned-text')) el('inp-custom-canned-text').value = '';
+  if (el('btn-save-custom-canned')) el('btn-save-custom-canned').textContent = '➕ 新增並同步雲端';
+  if (el('btn-cancel-edit-custom-canned')) el('btn-cancel-edit-custom-canned').style.display = 'none';
+}
+
+function renderCustomCannedManagerList() {
+  const container = el('custom-canned-replies-list');
+  const badge = el('custom-canned-count-badge');
+  if (!container) return;
+  const list = Array.isArray(AppState.customCannedReplies) ? AppState.customCannedReplies : [];
+  if (badge) badge.textContent = `${list.length} 組自訂`;
+
+  if (!list.length) {
+    container.innerHTML = '<div style="font-size:.78rem;color:var(--c-text-3);text-align:center;padding:14px;border:1px dashed rgba(255,255,255,0.1);border-radius:8px;">尚未新增自訂快答，可使用上方表單建立常用語句！</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  list.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'custom-canned-row';
+    row.innerHTML = `
+      <div class="custom-canned-row-info">
+        <div class="custom-canned-row-label">${escapeHtml(item.label)}</div>
+        <div class="custom-canned-row-text">${escapeHtml(item.text)}</div>
+      </div>
+      <div class="custom-canned-row-actions">
+        <button type="button" class="tbtn tbtn-ghost tbtn-xs btn-edit-custom-canned" data-idx="${idx}" title="編輯此自訂快答">✏️ 編輯</button>
+        <button type="button" class="tbtn tbtn-danger tbtn-xs btn-del-custom-canned" data-idx="${idx}" title="刪除此自訂快答">🗑️</button>
+      </div>
+    `;
+    row.querySelector('.btn-edit-custom-canned')?.addEventListener('click', () => {
+      if (el('inp-custom-canned-edit-id')) el('inp-custom-canned-edit-id').value = item.id;
+      if (el('inp-custom-canned-label')) el('inp-custom-canned-label').value = item.label;
+      if (el('inp-custom-canned-text')) el('inp-custom-canned-text').value = item.text;
+      if (el('btn-save-custom-canned')) el('btn-save-custom-canned').textContent = '💾 儲存修改並同步雲端';
+      if (el('btn-cancel-edit-custom-canned')) el('btn-cancel-edit-custom-canned').style.display = 'inline-flex';
+      el('inp-custom-canned-label')?.focus();
+    });
+    row.querySelector('.btn-del-custom-canned')?.addEventListener('click', () => {
+      deleteCustomCannedReply(item.id);
+    });
+    container.appendChild(row);
+  });
+}
+
+function saveCustomCannedReply() {
+  if (!requireAdminAuth(() => saveCustomCannedReply())) return;
+  const editId = el('inp-custom-canned-edit-id')?.value.trim() || '';
+  const label = el('inp-custom-canned-label')?.value.trim() || '';
+  const rawText = el('inp-custom-canned-text')?.value.trim() || '';
+  const text = normalizeCannedClause(rawText);
+  if (!label || !text) {
+    showToast('⚠️ 請填寫「按鈕標籤」與「回覆語句內容」！');
+    return;
+  }
+
+  if (!Array.isArray(AppState.customCannedReplies)) AppState.customCannedReplies = [];
+  if (editId) {
+    const target = AppState.customCannedReplies.find(c => c.id === editId);
+    if (target) {
+      target.label = label;
+      target.text = text;
+      target.updatedAt = Date.now();
+    } else {
+      AppState.customCannedReplies.push({ id: editId, label, text, createdAt: Date.now() });
+    }
+    showToast(`💾 已更新自訂快答「${label}」並同步至雲端！`);
+  } else {
+    const newId = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    AppState.customCannedReplies.push({ id: newId, label, text, createdAt: Date.now() });
+    showToast(`✅ 已新增自訂快答「${label}」並同步至雲端！`);
+  }
+
+  resetCustomCannedForm();
+  syncCustomCannedRepliesToCloud();
+  renderCustomCannedManagerList();
+}
+
+function deleteCustomCannedReply(cannedId) {
+  if (!requireAdminAuth(() => deleteCustomCannedReply(cannedId))) return;
+  if (!Array.isArray(AppState.customCannedReplies)) return;
+  const target = AppState.customCannedReplies.find(c => c.id === cannedId);
+  AppState.customCannedReplies = AppState.customCannedReplies.filter(c => c.id !== cannedId);
+  syncCustomCannedRepliesToCloud();
+  renderCustomCannedManagerList();
+  showToast(`🗑️ 已刪除自訂快答${target ? `「${target.label}」` : ''}並同步雲端！`);
+}
 
 /** 判斷一則提問是否處於「待賣家回覆」狀態（含買家後續追問但賣家尚未回覆） */
 function isQuestionUnanswered(q) {
@@ -2975,18 +3210,18 @@ function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, 
     </div>
   `;
 
-  // 8. 管理者專屬：收合式「一鍵罐頭快捷回覆 ＋ 高效原地回覆面板」（預設隱藏，點擊「💬 回覆此提問」後才展開）
+  // 8. 管理者專屬：收合式「12 組一鍵罐頭快答 ＋ 智慧多選組合 ＋ 自訂詞庫」（預設隱藏，點擊「💬 回覆此提問」後展開）
   let adminReplyBoxHtml = '';
   if (AppState.isAdmin) {
-    const cannedBtns = QA_CANNED_REPLIES.map(c =>
-      `<button type="button" class="btn-qa-canned" data-qa-key="${k}" data-reply-text="${escapeHtml(c.text)}">${escapeHtml(c.label)}</button>`
-    ).join('');
+    const draftKey = `inp-reply-${k}`;
+    const savedDraft = (AppState.qaDraftTextMap && AppState.qaDraftTextMap[draftKey]) ? AppState.qaDraftTextMap[draftKey] : '';
+    const cannedBtns = buildCannedChipsHtml('', k, 'inp-reply-');
 
     adminReplyBoxHtml = `
       <div class="qa-admin-reply-box ${isAdminBoxOpen ? 'show' : ''}" id="qa-admin-reply-box-${k}">
         <div class="qa-canned-toolbar">
-          <span class="qa-canned-title">⚡ 賣家一鍵罐頭快答：</span>
-          <label class="qa-instant-send-lbl" title="勾選後點擊罐頭按鈕將直接送出回覆；取消勾選則先帶入下方輸入框供微調">
+          <span class="qa-canned-title">⚡ 賣家一鍵罐頭快答（可複選智慧組合）：</span>
+          <label class="qa-instant-send-lbl" title="勾選後點擊單一罐頭將直接送出；取消勾選則可多選標籤智慧串接後再送出">
             <input type="checkbox" class="chk-qa-instant-canned" ${AppState.qaInstantCannedSend ? 'checked' : ''} style="accent-color:var(--c-gold-1);" />
             <span>⚡ 點擊罐頭句立即送出</span>
           </label>
@@ -2995,12 +3230,13 @@ function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, 
           ${cannedBtns}
         </div>
         <div class="qa-admin-input-row">
-          <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以更新主回覆，或點「➕ 加蓋樓層」新增回覆…' : '輸入賣家官方回覆內容（支援 Ctrl+Enter 送出）…'}" maxlength="350" id="inp-reply-${k}"></textarea>
+          <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以覆蓋主回覆，或點選上方多組快答自動組句（支援 Ctrl+Enter 送出）…' : '點選上方快答標籤自動組合回覆，或手動輸入補充說明（支援 Ctrl+Enter 送出）…'}" maxlength="600" id="inp-reply-${k}">${escapeHtml(savedDraft)}</textarea>
           <div class="qa-admin-btn-group">
-            <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply" data-qa-key="${k}" style="height:34px;padding:0 10px;font-weight:800;">
+            <button type="button" class="btn-clear-qa-draft" data-qa-key="${k}" data-input-prefix="inp-reply-" title="一鍵取消所有已選快答標籤並清空文字">🧹 清空重選</button>
+            <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply" data-qa-key="${k}" style="height:34px;padding:0 11px;font-weight:800;">
               ${q.reply ? '✏️ 覆蓋主回覆' : '🚀 送出回覆'}
             </button>
-            ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-qa-key="${k}" title="保留現有回覆並新增一樓官方補充回覆" style="height:34px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
+            ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-qa-key="${k}" title="保留現有回覆並新增一樓官方補充回覆" style="height:34px;padding:0 9px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
           </div>
         </div>
       </div>
@@ -3284,7 +3520,11 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
           labelSpan.textContent = nextState ? '收合回覆面板 ▲' : '回覆此提問 ▼';
         }
         if (nextState) {
-          el(`${inpPrefix}${qKey}`)?.focus();
+          const targetInp = el(`${inpPrefix}${qKey}`);
+          if (targetInp) {
+            autoResizeQATextarea(targetInp);
+            targetInp.focus();
+          }
         }
       }
     });
@@ -3355,24 +3595,112 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
     });
   });
 
-  // 8. 點擊賣家一鍵罐頭回覆按鈕
+  // 8. 點擊賣家罐頭快答按鈕（立即送出模式 vs 多選智慧組合切換模式）
   containerEl.querySelectorAll('.btn-qa-canned').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const itId = btn.dataset.itemId || defaultItemId;
       const qKey = btn.dataset.qaKey;
+      const cannedId = btn.dataset.cannedId || '';
+      const label = btn.dataset.label || '';
       const replyText = btn.dataset.replyText || '';
       const prefix = btn.dataset.inputPrefix || 'inp-reply-';
-      const inp = el(`${prefix}${qKey}`);
-      if (inp) {
-        inp.value = replyText;
-      }
+      const boxKey = `${prefix}${qKey}`;
+      const inp = el(boxKey);
+
       if (AppState.qaInstantCannedSend) {
-        submitQAReply(itId, qKey, replyText);
-      } else if (inp) {
-        inp.focus();
-        showToast('📝 已帶入罐頭回覆，可微調後按「送出回覆」');
+        const singleComposed = composeSmartCannedReply([replyText]);
+        if (inp) {
+          inp.value = singleComposed;
+          autoResizeQATextarea(inp);
+        }
+        submitQAReply(itId, qKey, singleComposed);
+        return;
       }
+
+      if (!AppState.qaSelectedCannedMap) AppState.qaSelectedCannedMap = {};
+      if (!AppState.qaLastComposedMap) AppState.qaLastComposedMap = {};
+      if (!AppState.qaDraftTextMap) AppState.qaDraftTextMap = {};
+
+      const selectedIds = Array.isArray(AppState.qaSelectedCannedMap[boxKey])
+        ? AppState.qaSelectedCannedMap[boxKey].slice()
+        : [];
+      const prevComposed = AppState.qaLastComposedMap[boxKey] || '';
+      const manualText = inp ? extractManualTextPreservingEdit(inp.value, prevComposed) : '';
+
+      const existingIdx = selectedIds.indexOf(cannedId);
+      let isAdding = true;
+      if (existingIdx !== -1) {
+        selectedIds.splice(existingIdx, 1);
+        isAdding = false;
+      } else {
+        selectedIds.push(cannedId);
+      }
+
+      AppState.qaSelectedCannedMap[boxKey] = selectedIds;
+
+      const allCanned = getAllCannedReplies();
+      const selectedClauses = selectedIds
+        .map(id => {
+          const found = allCanned.find(c => c.id === id);
+          return found ? found.text : '';
+        })
+        .filter(Boolean);
+
+      const onlyCannedComposed = composeSmartCannedReply(selectedClauses, '');
+      const finalText = composeSmartCannedReply(selectedClauses, manualText);
+      AppState.qaLastComposedMap[boxKey] = onlyCannedComposed;
+      AppState.qaDraftTextMap[boxKey] = finalText;
+
+      // 同步更新該回覆盒所有標籤的選中樣式
+      const boxEl = btn.closest('.qa-admin-reply-box');
+      if (boxEl) {
+        boxEl.querySelectorAll('.btn-qa-canned').forEach(chipEl => {
+          chipEl.classList.toggle('is-selected', selectedIds.includes(chipEl.dataset.cannedId));
+        });
+      }
+
+      if (inp) {
+        inp.value = finalText;
+        autoResizeQATextarea(inp);
+        inp.focus();
+      }
+      showToast(isAdding
+        ? `✅ 已加入「${label}」（已選 ${selectedIds.length} 項組合句）`
+        : `❎ 已取消「${label}」`);
+    });
+  });
+
+  // 8-1. 開啟「➕ 自訂快答」詞庫管理彈窗（僅最高權限管理者）
+  containerEl.querySelectorAll('.btn-open-canned-manager').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCustomCannedModal();
+    });
+  });
+
+  // 8-2. 🧹 清空重選（一鍵取消所有選中標籤並清空輸入框文字）
+  containerEl.querySelectorAll('.btn-clear-qa-draft').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const qKey = btn.dataset.qaKey;
+      const prefix = btn.dataset.inputPrefix || 'inp-reply-';
+      const boxKey = `${prefix}${qKey}`;
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
+
+      const boxEl = btn.closest('.qa-admin-reply-box');
+      if (boxEl) {
+        boxEl.querySelectorAll('.btn-qa-canned').forEach(c => c.classList.remove('is-selected'));
+      }
+      const inp = el(boxKey);
+      if (inp) {
+        inp.value = '';
+        autoResizeQATextarea(inp);
+        inp.focus();
+      }
+      showToast('🧹 已清空所有已選標籤與回覆草稿！');
     });
   });
 
@@ -3382,17 +3710,27 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
       const itId = btn.dataset.itemId || defaultItemId;
       const qKey = btn.dataset.qaKey;
       const prefix = btn.dataset.inputPrefix || 'inp-reply-';
-      const inp = el(`${prefix}${qKey}`);
+      const boxKey = `${prefix}${qKey}`;
+      const inp = el(boxKey);
       if (!inp || !inp.value.trim()) {
-        showToast('請輸入回覆內容！');
+        showToast('請輸入回覆內容或點選上方罐頭快答！');
         return;
       }
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
       submitQAReply(itId, qKey, inp.value.trim());
     });
   });
 
-  // 支援在管理員回覆框按 Ctrl+Enter / Cmd+Enter 快速送出
+  // 支援輸入時自動增高 (.qa-admin-textarea) 與 Ctrl+Enter / Cmd+Enter 快速送出
   containerEl.querySelectorAll('.qa-admin-textarea').forEach(area => {
+    autoResizeQATextarea(area);
+    area.addEventListener('input', () => {
+      autoResizeQATextarea(area);
+      if (!AppState.qaDraftTextMap) AppState.qaDraftTextMap = {};
+      AppState.qaDraftTextMap[area.id] = area.value;
+    });
     area.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -3401,6 +3739,9 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
         const btn = containerEl.querySelector(`${isBackend ? '.btn-admin-submit-reply' : '.btn-submit-qa-reply'}[data-qa-key="${qKey}"]`);
         const itId = btn?.dataset.itemId || defaultItemId;
         if (area.value.trim()) {
+          if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[area.id];
+          if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[area.id];
+          if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[area.id];
           submitQAReply(itId, qKey, area.value.trim());
         }
       }
@@ -3413,11 +3754,15 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
       const itId = btn.dataset.itemId || defaultItemId;
       const qKey = btn.dataset.qaKey;
       const prefix = btn.dataset.inputPrefix || 'inp-reply-';
-      const inp = el(`${prefix}${qKey}`);
+      const boxKey = `${prefix}${qKey}`;
+      const inp = el(boxKey);
       if (!inp || !inp.value.trim()) {
         showToast('請在輸入框填寫要加蓋樓層的補充回覆內容！');
         return;
       }
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
       submitQAFollowup(itId, qKey, inp.value.trim(), true);
     });
   });
@@ -3476,7 +3821,7 @@ function deleteSingleQAReply(itemId, qKey, floorType, replyIdx) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => { });
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3511,7 +3856,7 @@ function toggleQALike(itemId, qKey) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}/likes`).set(q.likes).catch(() => { });
+    db.ref(`auction/items/${item.id}/qa/${qKey}/likes`).set(q.likes).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3572,7 +3917,7 @@ function submitQAFollowup(itemId, qKey, text, isSellerFloor = false) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => { });
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3659,7 +4004,7 @@ function submitQuestion() {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => { });
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => {});
 
     const key = AppState.userProfile.phone.replace(/[^0-9]/g, '');
     const bData = {
@@ -3672,8 +4017,8 @@ function submitQuestion() {
       lastQuestion: text,
       lastQuestionItem: item.id
     };
-    db.ref('settings/buyers/' + key).update(bData).catch(() => { });
-    db.ref('buyers/' + key).update(bData).catch(() => { });
+    db.ref('settings/buyers/' + key).update(bData).catch(() => {});
+    db.ref('buyers/' + key).update(bData).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3703,7 +4048,7 @@ function submitQAReply(itemId, qKey, replyText) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(item.qa[qKey]).catch(() => { });
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(item.qa[qKey]).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3726,7 +4071,7 @@ function deleteQuestion(itemId, qKey) {
 
   const db = FirebaseManager.getDb();
   if (db && itemId) {
-    db.ref(`auction/items/${itemId}/qa/${qKey}`).remove().catch(() => { });
+    db.ref(`auction/items/${itemId}/qa/${qKey}`).remove().catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -3837,9 +4182,9 @@ function renderAdminAllQA() {
         `).join('')}</div>`
       : '';
 
-    const cannedBtns = QA_CANNED_REPLIES.map(c =>
-      `<button type="button" class="btn-qa-canned" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" data-reply-text="${escapeHtml(c.text)}">${escapeHtml(c.label)}</button>`
-    ).join('');
+    const draftAdminKey = `inp-admin-reply-${entry.qaKey}`;
+    const savedAdminDraft = (AppState.qaDraftTextMap && AppState.qaDraftTextMap[draftAdminKey]) ? AppState.qaDraftTextMap[draftAdminKey] : '';
+    const cannedBtns = buildCannedChipsHtml(entry.itemId, entry.qaKey, 'inp-admin-reply-');
 
     card.innerHTML = `
       <div class="qa-avatar-col">
@@ -3875,7 +4220,7 @@ function renderAdminAllQA() {
         ${repliesHtml}
         <div class="qa-admin-reply-box ${isAdminBoxOpen ? 'show' : ''}" id="qa-admin-overview-box-${entry.qaKey}">
           <div class="qa-canned-toolbar">
-            <span class="qa-canned-title">⚡ 一鍵罐頭快答：</span>
+            <span class="qa-canned-title">⚡ 賣家一鍵罐頭快答（可複選智慧組合）：</span>
             <label class="qa-instant-send-lbl">
               <input type="checkbox" class="chk-qa-instant-canned" ${AppState.qaInstantCannedSend ? 'checked' : ''} style="accent-color:var(--c-gold-1);" />
               <span>⚡ 點擊罐頭句立即送出</span>
@@ -3885,12 +4230,13 @@ function renderAdminAllQA() {
             ${cannedBtns}
           </div>
           <div class="qa-admin-input-row">
-            <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以覆蓋主回覆，或點「➕ 加蓋樓層」新增回覆…' : '輸入賣家回覆內容…'}" maxlength="350" id="inp-admin-reply-${entry.qaKey}"></textarea>
+            <textarea class="qa-admin-textarea" placeholder="${q.reply ? '輸入新內容以覆蓋主回覆，或點選上方多組快答自動組句…' : '點選上方快答標籤自動組合回覆，或手動輸入補充說明…'}" maxlength="600" id="inp-admin-reply-${entry.qaKey}">${escapeHtml(savedAdminDraft)}</textarea>
             <div class="qa-admin-btn-group">
-              <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply btn-admin-submit-reply" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 10px;font-weight:800;">
+              <button type="button" class="btn-clear-qa-draft" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" title="一鍵取消所有已選快答標籤並清空文字">🧹 清空重選</button>
+              <button type="button" class="tbtn tbtn-purple tbtn-xs btn-submit-qa-reply btn-admin-submit-reply" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 11px;font-weight:800;">
                 ${q.reply ? '✏️ 覆蓋主回覆' : '🚀 送出回覆'}
               </button>
-              ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 8px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
+              ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-item-id="${entry.itemId}" data-qa-key="${entry.qaKey}" data-input-prefix="inp-admin-reply-" style="height:34px;padding:0 9px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
             </div>
           </div>
         </div>
@@ -4144,7 +4490,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       try {
         const valSnap = result.snapshot.val();
         if (valSnap) {
-          firebase.database().ref(`auction/items/${itemId}`).update(valSnap).catch(() => { });
+          firebase.database().ref(`auction/items/${itemId}`).update(valSnap).catch(() => {});
         }
         const key = buyerProfile.phone.replace(/[^0-9]/g, '');
         const bSync = {
@@ -4157,9 +4503,9 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
           lastBidItem: itemId,
           lastBidAmount: bidAmountTWD
         };
-        firebase.database().ref('settings/buyers/' + key).update(bSync).catch(() => { });
-        firebase.database().ref('buyers/' + key).update(bSync).catch(() => { });
-      } catch (e) { }
+        firebase.database().ref('settings/buyers/' + key).update(bSync).catch(() => {});
+        firebase.database().ref('buyers/' + key).update(bSync).catch(() => {});
+      } catch (e) {}
       const val = result.snapshot.val();
       const localItem = AppState.items.find(i => i.id === itemId);
       if (localItem && val) {
@@ -4344,7 +4690,7 @@ function checkSavedAdminAuth() {
         return true;
       }
     }
-  } catch (e) { }
+  } catch (e) {}
   return false;
 }
 
@@ -4405,16 +4751,16 @@ function syncAdminUIState() {
     adminItemControls.style.display = isAuth ? 'flex' : 'none';
   }
 
-  try { syncIdentityDisplayUI(); } catch (e) { }
+  try { syncIdentityDisplayUI(); } catch (e) {}
   // 重新渲染前台與後台組件以即時套用個資解碼或隱私遮罩
-  try { renderActiveItemDisplay(); } catch (e) { }
-  try { renderBidHistory(); } catch (e) { }
-  try { renderQA(); } catch (e) { }
-  try { renderWinnerStatus(); } catch (e) { }
+  try { renderActiveItemDisplay(); } catch (e) {}
+  try { renderBidHistory(); } catch (e) {}
+  try { renderQA(); } catch (e) {}
+  try { renderWinnerStatus(); } catch (e) {}
   if (isAuth) {
-    try { renderAdminItemsList(); } catch (e) { }
-    try { renderAdminBuyersRoster(); } catch (e) { }
-    try { renderAdminAllQA(); } catch (e) { }
+    try { renderAdminItemsList(); } catch (e) {}
+    try { renderAdminBuyersRoster(); } catch (e) {}
+    try { renderAdminAllQA(); } catch (e) {}
   }
 }
 
@@ -4485,7 +4831,7 @@ function switchToAdminPage() {
   }
   try {
     sessionStorage.setItem('auction_active_page', 'admin');
-  } catch (e) { }
+  } catch (e) {}
 
   syncAdminUIState();
   try {
@@ -4510,7 +4856,7 @@ function switchToAuctionPage() {
   }
   try {
     sessionStorage.setItem('auction_active_page', 'auction');
-  } catch (e) { }
+  } catch (e) {}
 
   syncAdminUIState();
   try { renderItemTabs(); } catch (e) { console.error('renderItemTabs 錯誤:', e); }
@@ -4536,7 +4882,7 @@ function handleAdminLoginSubmit() {
       errBox.style.animation = 'adminShake .35s ease';
     }
     if ('vibrate' in navigator) {
-      try { navigator.vibrate([100, 50, 100]); } catch (e) { }
+      try { navigator.vibrate([100, 50, 100]); } catch (e) {}
     }
     showToast('❌ 管理者帳號或密碼錯誤，請重新確認！');
     return;
@@ -4549,7 +4895,7 @@ function handleAdminLoginSubmit() {
   try {
     sessionStorage.removeItem('agy_admin_explicit_logout');
     sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, ADMIN_TOKEN_VAL);
-  } catch (e) { }
+  } catch (e) {}
 
   if (remember) {
     SafeStorage.set(ADMIN_AUTH_STORAGE_KEY, ADMIN_TOKEN_VAL);
@@ -4581,7 +4927,7 @@ function handleAdminLogout() {
     sessionStorage.setItem('agy_admin_explicit_logout', '1');
     sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
     sessionStorage.setItem('auction_active_page', 'auction');
-  } catch (e) { }
+  } catch (e) {}
 
   el('modal-fb-setup')?.classList.remove('show');
   el('nav-more-dropdown')?.classList.remove('show');
@@ -4900,8 +5246,8 @@ function renderAdminItemsList() {
     const statusBadge = isLive
       ? '<span class="item-tab-badge badge-live" style="font-size:.7rem;padding:2px 6px;">競標中</span>'
       : (item.status === 'picked_up'
-        ? '<span class="item-tab-badge badge-picked" style="font-size:.7rem;padding:2px 6px;">已取貨</span>'
-        : '<span class="item-tab-badge badge-ended" style="font-size:.7rem;padding:2px 6px;">已結標</span>');
+          ? '<span class="item-tab-badge badge-picked" style="font-size:.7rem;padding:2px 6px;">已取貨</span>'
+          : '<span class="item-tab-badge badge-ended" style="font-size:.7rem;padding:2px 6px;">已結標</span>');
     const itemNum = String(index + 1).padStart(2, '0');
 
     card.innerHTML = `
@@ -5467,9 +5813,9 @@ function toggleBuyerBlacklist(rawPhone, buyerName = '買家') {
   const db = FirebaseManager.getDb();
   if (db) {
     if (currentlyBlocked) {
-      db.ref('settings/blacklist/' + key).remove().catch(() => { });
+      db.ref('settings/blacklist/' + key).remove().catch(() => {});
     } else {
-      db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => { });
+      db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => {});
     }
   }
   renderAdminBuyersRoster();
@@ -5606,7 +5952,7 @@ function lookupCloudBuyerByPhone(rawPhone) {
       if (snap.exists()) {
         applyMatchedBuyer(snap.val());
       }
-    }).catch(() => { });
+    }).catch(() => {});
   }
 }
 
@@ -5664,7 +6010,7 @@ function getTestBuyerPersonas() {
         return !legacyPhones.includes(cleanP);
       });
     }
-  } catch (e) { }
+  } catch (e) {}
 
   // 確保預設三組測試買家（小建 0931849482、阿豪 0911222333、小美 0922333444）皆存在且資料同步更新
   DEFAULT_TEST_BUYER_PERSONAS.forEach(defP => {
@@ -5885,7 +6231,7 @@ function switchToTestBuyerPersona(personaObj) {
     const boundPhones = SafeStorage.get('agy_registered_users', {}) || {};
     boundPhones[cleanPhone] = AppState.userProfile.name;
     SafeStorage.set('agy_registered_users', boundPhones);
-  } catch (e) { }
+  } catch (e) {}
 
   // 同步寫入買家名冊與 Firebase，確保順位遞補清單中具備完整聯絡方式
   const buyerData = {
@@ -5910,8 +6256,8 @@ function switchToTestBuyerPersona(personaObj) {
   }
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('settings/buyers/' + cleanPhone).update(buyerData).catch(() => { });
-    db.ref('buyers/' + cleanPhone).update(buyerData).catch(() => { });
+    db.ref('settings/buyers/' + cleanPhone).update(buyerData).catch(() => {});
+    db.ref('buyers/' + cleanPhone).update(buyerData).catch(() => {});
   }
 
   // 同步更新彈窗輸入框與全站顯示
@@ -6129,7 +6475,7 @@ function syncIdentityDisplayUI() {
   // 同步渲染多組測試買家分身按鈕列表
   try {
     renderTestBuyerPersonasUI();
-  } catch (e) { }
+  } catch (e) {}
 }
 
 /**
@@ -6279,7 +6625,7 @@ function handleAdminClearTestData(targetItemId = null) {
   // 即時同步清除雲端 Firebase 節點（明確將 bids / qa / topBidder / backupOffer 設為 null 移除）
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('settings/blacklist').remove().catch(() => { });
+    db.ref('settings/blacklist').remove().catch(() => {});
     itemsToReset.forEach(it => {
       if (it && it.id) {
         db.ref(`auction/items/${it.id}`).update({
@@ -6296,7 +6642,7 @@ function handleAdminClearTestData(targetItemId = null) {
           winnerMsgs: null,
           status: 'live',
           endTime: it.endTime
-        }).catch(() => { });
+        }).catch(() => {});
       }
     });
   }
@@ -6422,8 +6768,8 @@ function saveBuyerProfile() {
 
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('settings/buyers/' + key).update(buyerData).catch(() => { });
-    db.ref('buyers/' + key).update(buyerData).catch(() => { });
+    db.ref('settings/buyers/' + key).update(buyerData).catch(() => {});
+    db.ref('buyers/' + key).update(buyerData).catch(() => {});
   }
   syncToLocalServer();
 
@@ -6539,7 +6885,7 @@ function enforceBuyerRetentionAndLock() {
     if (el('user-profile-name') && p.name) {
       el('user-profile-name').textContent = p.name;
     }
-  } catch (e) { }
+  } catch (e) {}
 }
 
 function restoreSavedProfile() {
@@ -6575,7 +6921,7 @@ function restoreSavedProfile() {
       AppState.activeCurrency = savedCur;
       if (el('currency-select')) el('currency-select').value = savedCur;
     }
-  } catch (e) { }
+  } catch (e) {}
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -7000,7 +7346,7 @@ function handleMarkWinnerDefaultAndBlacklist() {
       SafeStorage.set('agy_blacklist', AppState.blacklist);
       const db = FirebaseManager.getDb();
       if (db) {
-        db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => { });
+        db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => {});
       }
     }
   }
@@ -7160,7 +7506,7 @@ function handleBuyerRespondBackupOffer(isAccept) {
       topBidder: item.topBidderContact || item.topBidder,
       backupOffer: item.backupOffer,
       winnerMsgs: item.winnerMsgs || []
-    }).catch(() => { });
+    }).catch(() => {});
   }
   syncToFirebase();
   syncToLocalServer();
@@ -7246,7 +7592,7 @@ function syncToFirebase() {
           pickupDeadlineMode: it.pickupDeadlineMode || 'hours',
           pickupDeadlineWeekday: Number(it.pickupDeadlineWeekday ?? 6),
           pickupDeadlineCustomText: it.pickupDeadlineCustomText || ''
-        }).catch(() => { });
+        }).catch(() => {});
       }
     });
   }
@@ -7671,10 +8017,19 @@ function bindEvents() {
   });
 
   // 7. Q&A 提問送出、快速提問引導膠囊、四維度排序過濾切換與快捷鍵綁定
+  loadSavedCustomCannedReplies();
   const savedInstantCanned = SafeStorage.get('agy_qa_instant_canned');
   if (typeof savedInstantCanned === 'boolean') {
     AppState.qaInstantCannedSend = savedInstantCanned;
   }
+
+  // 7-1. 自訂罐頭快答詞庫管理彈窗綁定
+  el('btn-save-custom-canned')?.addEventListener('click', saveCustomCannedReply);
+  el('btn-cancel-edit-custom-canned')?.addEventListener('click', resetCustomCannedForm);
+  el('btn-close-canned-modal')?.addEventListener('click', closeCustomCannedModal);
+  el('modal-canned-replies')?.addEventListener('click', e => {
+    if (e.target === el('modal-canned-replies')) closeCustomCannedModal();
+  });
 
   el('btn-send-question')?.addEventListener('click', submitQuestion);
   el('qa-ask-input')?.addEventListener('keydown', (e) => {
@@ -8028,7 +8383,7 @@ function bindEvents() {
       // 鏡像更新至 auction/items
       (AppState.items || []).forEach(it => {
         if (it && it.id) {
-          db.ref(`auction/items/${it.id}`).update(it).catch(() => { });
+          db.ref(`auction/items/${it.id}`).update(it).catch(() => {});
         }
       });
       showToast('🚀 拍賣已全面正式發布並同步至統一雲端節點！');
@@ -8046,13 +8401,13 @@ function bindEvents() {
       try {
         const keys = await caches.keys();
         await Promise.all(keys.map(k => caches.delete(k)));
-      } catch (e) { }
+      } catch (e) {}
     }
     if ('serviceWorker' in navigator) {
       try {
         const regs = await navigator.serviceWorker.getRegistrations();
         await Promise.all(regs.map(r => r.unregister()));
-      } catch (e) { }
+      } catch (e) {}
     }
     setTimeout(() => {
       window.location.reload(true);
@@ -8338,7 +8693,7 @@ function bindEvents() {
         baseCurrency: baseCur,
         pickupHours: pickupH,
         updatedAt: Date.now()
-      }).catch(() => { });
+      }).catch(() => {});
     }
     showToast('💾 賣家 / 店鋪設定已全面儲存並同步至全站！');
   });
@@ -8906,7 +9261,7 @@ async function checkAndLoadMyAuctionData() {
         updateShareUrl();
       }
     })
-    .catch(() => { });
+    .catch(() => {});
 
   // 相對路徑載入 my_auction_data.json，支援本機伺服器與 GitHub Pages 全球託管
   let targetUrl = './my_auction_data.json?t=' + Date.now();
@@ -9060,7 +9415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyLogoConfig(getLogoConfig(), false);
 
   FirebaseManager.init();
-  try { populateFbSetupModal(); } catch (e) { }
+  try { populateFbSetupModal(); } catch (e) {}
   bindEvents();
 
   // ★ 核心防禦：先完成 await checkAndLoadMyAuctionData() 載入真實商品並渲染完畢！
