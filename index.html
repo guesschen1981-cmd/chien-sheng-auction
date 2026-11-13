@@ -33,8 +33,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 
-  <!-- 主樣式表 (v7.8 問答區 12 組罐頭快答、智慧多選串接與自訂詞庫雲端同步) -->
-  <link rel="stylesheet" href="style.css?v=7.8&t=20261113_canned_upgrade" />
+  <!-- 主樣式表 (v7.9 問答討論串自由拖曳拉長 ＋ 無限延伸 ＋ 依身分智慧預設 ＋ 放大工作台) -->
+  <link rel="stylesheet" href="style.css?v=7.9&t=20261113_qa_resizable" />
 </head>
 
 <body>
@@ -702,14 +702,21 @@
           </div>
         </div>
 
-        <!-- ── 7. 現代化流水式 Q&A 問答討論串 ＋ 多維度排序過濾 (核心功能 8 升級) ── -->
+        <!-- ── 7. 現代化流水式 Q&A 問答討論串 ＋ 多維度排序過濾 ＋ 自由拖曳高度/無限延伸/放大工作台 ── -->
         <div class="acard qa-section" id="qa-section">
           <div class="acard-hd qa-section-hd">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
               <h2 class="acard-title"><span>💬</span> 問答討論串</h2>
               <span class="qa-summary-pill" id="qa-summary-badge">共 0 則討論</span>
+              <span class="item-tab-badge badge-live" id="qa-unanswered-top-pill">即時互動解答</span>
             </div>
-            <span class="item-tab-badge badge-live" id="qa-unanswered-top-pill">即時互動解答</span>
+            <!-- 頂部「📏 檢視高度與放大工作台」快速切換列 -->
+            <div class="qa-view-controls" id="qa-view-controls" role="group" aria-label="問答檢視高度切換">
+              <button type="button" class="qa-view-btn" id="btn-qa-mode-compact" data-qa-size="compact" title="適中高度與捲軸，保持雙欄版面整潔">📏 固定捲軸</button>
+              <button type="button" class="qa-view-btn" id="btn-qa-mode-tall" data-qa-size="tall" title="一鍵將問答討論框拉長為 2 倍高度">↕️ 加長框體</button>
+              <button type="button" class="qa-view-btn" id="btn-qa-mode-infinite" data-qa-size="infinite" title="完全解除外框高度限制，隨留言數量無限向下延伸">♾️ 無限延伸</button>
+              <button type="button" class="qa-view-btn qa-view-btn-workbench" id="btn-qa-open-workbench" title="彈出寬螢幕大型問答工作台（佔畫面 85%~90%）">🔍 放大工作台</button>
+            </div>
           </div>
 
           <!-- 買家發問輸入框 ＋ 快速提問引導膠囊 -->
@@ -735,35 +742,46 @@
             </div>
           </div>
 
-          <!-- 排序與篩選切換列 (Sorting & Filtering Bar) -->
-          <div class="qa-filter-bar" id="qa-filter-bar" role="tablist" aria-label="問答排序與篩選">
-            <button type="button" class="qa-filter-tab active" id="qa-tab-latest" data-qa-filter="latest" role="tab" aria-selected="true">
-              <span>🕒</span>
-              <span>最新留言</span>
-              <span class="qa-tab-count" id="qa-count-latest">0</span>
-            </button>
-            <button type="button" class="qa-filter-tab" id="qa-tab-hot" data-qa-filter="hot" role="tab" aria-selected="false">
-              <span>🔥</span>
-              <span>最熱門</span>
-              <span class="qa-tab-count" id="qa-count-hot">0</span>
-            </button>
-            <button type="button" class="qa-filter-tab qa-tab-unanswered" id="qa-tab-unanswered" data-qa-filter="unanswered" role="tab" aria-selected="false" title="篩選尚未回覆或買家有新追問的留言">
-              <span>❓</span>
-              <span>待回覆專區</span>
-              <span class="qa-tab-count qa-badge-urgent" id="qa-count-unanswered">0</span>
-            </button>
-            <button type="button" class="qa-filter-tab" id="qa-tab-mine" data-qa-filter="mine" role="tab" aria-selected="false">
-              <span>💬</span>
-              <span>我的發問</span>
-              <span class="qa-tab-count" id="qa-count-mine">0</span>
+          <!-- 排序篩選列 ＋「📂 展開全部 / 📁 收合全部」總開關 -->
+          <div class="qa-filter-toolbar">
+            <div class="qa-filter-bar" id="qa-filter-bar" role="tablist" aria-label="問答排序與篩選">
+              <button type="button" class="qa-filter-tab active" id="qa-tab-latest" data-qa-filter="latest" role="tab" aria-selected="true">
+                <span>🕒</span>
+                <span>最新留言</span>
+                <span class="qa-tab-count" id="qa-count-latest">0</span>
+              </button>
+              <button type="button" class="qa-filter-tab" id="qa-tab-hot" data-qa-filter="hot" role="tab" aria-selected="false">
+                <span>🔥</span>
+                <span>最熱門</span>
+                <span class="qa-tab-count" id="qa-count-hot">0</span>
+              </button>
+              <button type="button" class="qa-filter-tab qa-tab-unanswered" id="qa-tab-unanswered" data-qa-filter="unanswered" role="tab" aria-selected="false" title="篩選尚未回覆或買家有新追問的留言">
+                <span>❓</span>
+                <span>待回覆專區</span>
+                <span class="qa-tab-count qa-badge-urgent" id="qa-count-unanswered">0</span>
+              </button>
+              <button type="button" class="qa-filter-tab" id="qa-tab-mine" data-qa-filter="mine" role="tab" aria-selected="false">
+                <span>💬</span>
+                <span>我的發問</span>
+                <span class="qa-tab-count" id="qa-count-mine">0</span>
+              </button>
+            </div>
+            <button type="button" class="qa-toggle-all-btn" id="btn-qa-toggle-all-groups" title="一鍵展開或收合所有買家的多則歷史提問摺疊夾">
+              📂 展開全部
             </button>
           </div>
 
-          <!-- 流水式留言串容器 (Timeline Stream) -->
+          <!-- 流水式留言串容器 (支援適中捲軸 / 加長 / 無限延伸 / 自訂鎖定高度) -->
           <div class="qa-list qa-timeline-stream" id="qa-list">
             <div style="text-align:center;padding:22px 12px;font-size:.82rem;color:var(--c-text-3);" id="qa-empty-hint">
               目前本品項尚無問答，若有任何問題歡迎上方留言提問！
             </div>
+          </div>
+
+          <!-- 底部「↕️ 按住向下拖曳調整高度」無段調整控制桿 -->
+          <div class="qa-resize-handle" id="qa-resize-handle" role="slider" aria-label="拖曳調整問答討論串高度" tabindex="0" title="按住上下拖曳即可自由調整問答討論串高度（支援滑鼠與觸控）">
+            <span class="qa-resize-grip"></span>
+            <span class="qa-resize-label" id="qa-resize-handle-label">↕️ 按住上下拖曳調整高度</span>
           </div>
         </div>
 
@@ -1803,6 +1821,36 @@
 
 
   <!-- ════════════════════════════════════════════════════════
+     MODAL: 🔍 寬螢幕大型問答工作台（佔畫面 85%~90%，專注瀏覽大量留言與快速回覆）
+════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" id="modal-qa-workbench" role="dialog" aria-modal="true"
+    aria-labelledby="qa-workbench-title">
+    <div class="modal-sheet qa-workbench-sheet">
+      <div class="qa-workbench-hd">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="modal-title" id="qa-workbench-title" style="margin:0;">🔍 問答討論寬螢幕工作台</div>
+          <span class="qa-summary-pill" id="wb-qa-summary-badge">共 0 則討論</span>
+        </div>
+        <button type="button" class="tbtn tbtn-ghost tbtn-sm" id="btn-close-qa-workbench">✕ 關閉工作台</button>
+      </div>
+
+      <div class="qa-workbench-toolbar">
+        <div class="qa-filter-bar qa-wb-filter-bar" id="qa-wb-filter-bar" role="tablist" aria-label="工作台問答篩選">
+          <button type="button" class="qa-filter-tab active" data-qa-filter="latest">🕒 最新留言 <span class="qa-tab-count" id="wb-count-latest">0</span></button>
+          <button type="button" class="qa-filter-tab" data-qa-filter="hot">🔥 最熱門 <span class="qa-tab-count" id="wb-count-hot">0</span></button>
+          <button type="button" class="qa-filter-tab qa-tab-unanswered" data-qa-filter="unanswered">❓ 待回覆專區 <span class="qa-tab-count qa-badge-urgent" id="wb-count-unanswered">0</span></button>
+          <button type="button" class="qa-filter-tab" data-qa-filter="mine">💬 我的發問 <span class="qa-tab-count" id="wb-count-mine">0</span></button>
+        </div>
+        <button type="button" class="qa-toggle-all-btn" id="btn-wb-toggle-all-groups" title="一鍵展開或收合所有買家的多則歷史提問">
+          📂 展開全部
+        </button>
+      </div>
+
+      <div class="qa-list qa-timeline-stream qa-workbench-stream" id="qa-workbench-list"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
      MODAL: 管理自訂罐頭快答詞庫（最高管理者雲端同步）
 ════════════════════════════════════════════════════════ -->
   <div class="modal-backdrop" id="modal-canned-replies" role="dialog" aria-modal="true"
@@ -1874,13 +1922,13 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-  <!-- 主程式腳本 (v7.8 問答區 12 組罐頭快答、智慧多選串接與自訂詞庫雲端同步) -->
-  <script src="app.js?v=7.8&t=20261113_canned_upgrade"></script>
+  <!-- 主程式腳本 (v7.9 問答討論串自由拖曳拉長 ＋ 無限延伸 ＋ 依身分智慧預設 ＋ 放大工作台) -->
+  <script src="app.js?v=7.9&t=20261113_qa_resizable"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
     (function () {
-      const CURRENT_SW_VER = 'jiansheng-auction-v40';
+      const CURRENT_SW_VER = 'jiansheng-auction-v41';
       try {
         const lastVer = localStorage.getItem('agy_sw_cache_ver');
         if (lastVer !== CURRENT_SW_VER && 'caches' in window) {
@@ -1902,7 +1950,7 @@
         });
 
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=30').then(reg => {
+          navigator.serviceWorker.register('./sw.js?v=31').then(reg => {
             reg.update().catch(() => {});
             if (reg.waiting) {
               reg.waiting.postMessage({ action: 'skipWaiting' });

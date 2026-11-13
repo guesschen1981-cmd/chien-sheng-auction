@@ -3922,16 +3922,101 @@ body.view-mode-desktop .btn-submit-bid {
   color: var(--c-text-3);
 }
 
-/* 排序與篩選切換列 (Sorting & Filtering Bar) */
+/* 頂部「📏 檢視高度與放大工作台」快速切換列 */
+.qa-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.qa-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 15, 38, 0.72);
+  color: var(--c-text-2);
+  font-size: .71rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s ease;
+}
+.qa-view-btn:hover {
+  border-color: rgba(255, 215, 0, 0.55);
+  color: #fff;
+  background: rgba(255, 215, 0, 0.1);
+}
+.qa-view-btn.active {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.24), rgba(245, 158, 11, 0.18));
+  border-color: var(--c-gold-1);
+  color: var(--c-gold-1);
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.22);
+}
+.qa-view-btn-workbench {
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #93c5fd;
+  background: rgba(37, 99, 235, 0.14);
+}
+.qa-view-btn-workbench:hover {
+  border-color: #60a5fa;
+  background: rgba(37, 99, 235, 0.28);
+  color: #fff;
+}
+
+/* 排序篩選列 ＋「📂 展開全部 / 📁 收合全部」總開關 */
+.qa-filter-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
 .qa-filter-bar {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
-  margin-top: 8px;
+  margin-top: 0;
   padding: 4px;
   background: rgba(10, 10, 28, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9px;
+}
+.qa-toggle-all-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 215, 0, 0.32);
+  background: rgba(255, 215, 0, 0.08);
+  color: var(--c-gold-1);
+  font-size: .72rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .15s ease;
+}
+.qa-toggle-all-btn:hover {
+  background: rgba(255, 215, 0, 0.18);
+  border-color: var(--c-gold-1);
+}
+.qa-toggle-all-btn.is-expanded {
+  background: rgba(168, 85, 247, 0.22);
+  border-color: rgba(168, 85, 247, 0.65);
+  color: #e9d5ff;
+}
+@media (max-width: 600px) {
+  .qa-filter-toolbar {
+    flex-direction: column;
+  }
+  .qa-toggle-all-btn {
+    padding: 6px 10px;
+  }
 }
 @media (max-width: 460px) {
   .qa-filter-bar {
@@ -4021,13 +4106,116 @@ body.view-mode-desktop .btn-submit-bid {
   color: var(--c-gold-1);
 }
 
-/* ── 流水式留言串（Timeline Stream 輕量緊湊版） ── */
+/* ── 流水式留言串（Timeline Stream 輕量緊湊版 ＋ 美化捲軸與自由高度調整） ── */
 .qa-timeline-stream {
   display: flex;
   flex-direction: column;
   gap: 0 !important;
   margin-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-right: 4px;
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 215, 0, 0.35) rgba(10, 10, 28, 0.55);
+}
+.qa-timeline-stream::-webkit-scrollbar {
+  width: 7px;
+}
+.qa-timeline-stream::-webkit-scrollbar-track {
+  background: rgba(10, 10, 28, 0.55);
+  border-radius: 6px;
+}
+.qa-timeline-stream::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.48), rgba(168, 85, 247, 0.45));
+  border-radius: 6px;
+}
+.qa-timeline-stream.qa-size-mode-infinite {
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+}
+
+/* 底部「↕️ 按住上下拖曳調整高度」控制桿 */
+.qa-resize-handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px dashed rgba(255, 215, 0, 0.42);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.06), rgba(168, 85, 247, 0.08));
+  color: var(--c-gold-1);
+  font-size: .74rem;
+  font-weight: 800;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.qa-resize-handle:hover,
+body.is-qa-resizing .qa-resize-handle {
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.18), rgba(168, 85, 247, 0.2));
+  border-style: solid;
+  border-color: var(--c-gold-1);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.24);
+}
+.qa-resize-grip {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 215, 0, 0.7);
+}
+body.is-qa-resizing {
+  cursor: ns-resize !important;
+  user-select: none !important;
+}
+
+/* 🔍 寬螢幕大型問答工作台（佔畫面 85%~90%） */
+.qa-workbench-sheet {
+  width: min(88vw, 1380px) !important;
+  max-width: 90vw !important;
+  height: 88vh;
+  max-height: 90vh !important;
+  display: flex !important;
+  flex-direction: column;
+  padding: 16px 20px !important;
+}
+@media (max-width: 768px) {
+  .qa-workbench-sheet {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    height: 90vh;
+    padding: 12px 12px !important;
+  }
+}
+.qa-workbench-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.qa-workbench-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.qa-wb-filter-bar {
+  flex: 1;
+}
+.qa-workbench-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding-right: 6px;
 }
 
 .qa-stream-item {
