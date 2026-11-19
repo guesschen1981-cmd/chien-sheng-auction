@@ -1,0 +1,104 @@
+{
+  "rules": {
+    "settings": {
+      "admins": {
+        ".read": "auth != null && (root.child('settings/admins/' + auth.uid).val() == true || (auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com'))",
+        "$uid": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com'",
+          ".validate": "newData.isBoolean()"
+        }
+      },
+      "shop": {
+        ".read": true,
+        ".write": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)"
+      },
+      "blacklist": {
+        ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+        ".write": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+        "$phone": {
+          ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true || root.child('buyers/' + $phone + '/ownerUid').val() == auth.uid)"
+        }
+      },
+      "buyers": {
+        ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+        "$phone": {
+          ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid) && newData.child('ownerUid').val() == auth.uid))",
+          ".validate": "newData.hasChildren(['name', 'phone']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 40 && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
+        }
+      }
+    },
+    "buyers": {
+      ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+      "$phone": {
+        ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true || data.child('ownerUid').val() == auth.uid)",
+        ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid) && newData.child('ownerUid').val() == auth.uid))",
+        ".validate": "newData.hasChildren(['name', 'phone']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 40 && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
+      }
+    },
+    "privateContacts": {
+      ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+      "$itemId": {
+        ".write": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+        "topBidder": {
+          ".write": "auth != null && newData.exists() && newData.child('ownerUid').val() == auth.uid",
+          ".validate": "newData.hasChildren(['name', 'phone', 'ownerUid']) && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
+        },
+        "bids": {
+          "$bidKey": {
+            ".write": "auth != null && !data.exists() && newData.exists() && newData.child('ownerUid').val() == auth.uid",
+            ".validate": "newData.hasChildren(['name', 'phone', 'amount', 'timestamp', 'ownerUid']) && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/) && newData.child('amount').isNumber() && newData.child('timestamp').isNumber()"
+          }
+        },
+        "qa": {
+          "$qKey": {
+            ".write": "auth != null && newData.exists() && (!data.exists() || data.child('ownerUid').val() == auth.uid) && newData.child('ownerUid').val() == auth.uid",
+            ".validate": "newData.hasChildren(['phone', 'ownerUid']) && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
+          }
+        }
+      }
+    },
+    "auction": {
+      "items": {
+        ".read": true,
+        ".write": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
+        "$itemId": {
+          "liveBid": {
+            ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && data.parent().child('status').val() != 'ended' && data.parent().child('status').val() != 'picked_up' && data.parent().child('endedEarly').val() != true && data.parent().child('manualEnd').val() != true && newData.child('relistSeq').val() == data.parent().child('relistSeq').val() && ((!data.exists() && newData.child('currentPrice').val() >= data.parent().child('startPrice').val()) || (data.exists() && data.child('hasBids').val() != true && newData.child('currentPrice').val() >= data.parent().child('startPrice').val()) || (data.exists() && data.child('hasBids').val() == true && newData.child('currentPrice').val() > data.child('currentPrice').val())) && newData.child('ownerUid').val() == auth.uid))",
+            ".validate": "newData.hasChildren(['currentPrice', 'currentBid', 'hasBids', 'relistSeq', 'ownerUid', 'topBidTime']) && newData.child('currentPrice').isNumber() && newData.child('currentPrice').val() > 0 && newData.child('currentBid').val() == newData.child('currentPrice').val() && newData.child('topBidTime').isNumber() && !newData.child('topBidder').hasChild('phone') && !newData.child('topBidder').hasChild('line') && !newData.child('topBidder').hasChild('ig') && !newData.child('topBidder').hasChild('fb')"
+          },
+          "bids": {
+            "$bidKey": {
+              ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (!data.exists() && newData.exists() && data.parent().parent().child('status').val() != 'ended' && data.parent().parent().child('status').val() != 'picked_up' && newData.child('ownerUid').val() == auth.uid))",
+              ".validate": "newData.hasChildren(['bidderName', 'amount', 'timestamp']) && newData.child('bidderName').isString() && newData.child('bidderName').val().length > 0 && newData.child('bidderName').val().length <= 40 && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('timestamp').isNumber() && (newData.child('ownerUid').val() == auth.uid || ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)) && !newData.hasChild('bidderPhone') && !newData.hasChild('bidderLine') && !newData.hasChild('bidderIg') && !newData.hasChild('bidderFb')"
+            }
+          },
+          "qa": {
+            "$qKey": {
+              ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (!data.exists() && newData.exists() && newData.child('ownerUid').val() == auth.uid && !newData.hasChild('reply') && !newData.hasChild('replyTime')))",
+              ".validate": "newData.hasChildren(['user', 'question', 'time']) && newData.child('user').isString() && newData.child('user').val().length > 0 && newData.child('user').val().length <= 40 && newData.child('question').isString() && newData.child('question').val().length > 0 && newData.child('question').val().length <= 600 && newData.child('time').isNumber() && !newData.hasChild('phone') && !newData.hasChild('line') && !newData.hasChild('ig') && !newData.hasChild('fb')",
+              "likes": {
+                ".write": "auth != null && newData.exists() && newData.isNumber() && newData.val() >= 0"
+              },
+              "replies": {
+                "$replyKey": {
+                  ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (!data.exists() && newData.exists() && newData.child('isSeller').val() == false && newData.child('ownerUid').val() == auth.uid))",
+                  ".validate": "newData.hasChildren(['author', 'text', 'time', 'isSeller']) && newData.child('author').isString() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 400 && newData.child('time').isNumber() && newData.child('isSeller').isBoolean() && !newData.hasChild('phone') && !newData.hasChild('line')"
+                }
+              }
+            }
+          },
+          "backupResponse": {
+            ".write": "auth != null && newData.exists() && data.parent().child('backupOffer/status').val() == 'pending' && newData.child('ownerUid').val() == auth.uid",
+            ".validate": "newData.hasChildren(['status', 'respondedAt', 'ownerUid']) && (newData.child('status').val() == 'accepted' || newData.child('status').val() == 'declined') && newData.child('respondedAt').isNumber()"
+          }
+        }
+      }
+    },
+    "auctions": {
+      "$auctionId": {
+        ".read": true,
+        ".write": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)"
+      }
+    }
+  }
+}

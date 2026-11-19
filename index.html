@@ -27,14 +27,15 @@
   <!-- Firebase SDK (compat mode) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
   <!-- 防快取 Meta 標籤（杜絕舊版快取卡死） -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 
-  <!-- 主樣式表 (v8.0 徹底修復重開與清除測試後首標起標價出價驗證 ＋ 雲端全欄位重置) -->
-  <link rel="stylesheet" href="style.css?v=8.0&t=20261113_bid_reset_fix" />
+  <!-- 主樣式表 (v8.1 Firebase Realtime Database 安全性規則與個資隔離加固) -->
+  <link rel="stylesheet" href="style.css?v=8.1&t=20261119_firebase_rules_hardening" />
 </head>
 
 <body>
@@ -1922,13 +1923,13 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-  <!-- 主程式腳本 (v8.0 徹底修復重開與清除測試後首標起標價出價驗證 ＋ 雲端全欄位重置) -->
-  <script src="app.js?v=8.0&t=20261113_bid_reset_fix"></script>
+  <!-- 主程式腳本 (v8.1 Firebase Realtime Database 安全性規則與個資隔離加固) -->
+  <script src="app.js?v=8.1&t=20261119_firebase_rules_hardening"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
     (function () {
-      const CURRENT_SW_VER = 'jiansheng-auction-v42';
+      const CURRENT_SW_VER = 'jiansheng-auction-v43';
       try {
         const lastVer = localStorage.getItem('agy_sw_cache_ver');
         if (lastVer !== CURRENT_SW_VER && 'caches' in window) {
@@ -1950,7 +1951,7 @@
         });
 
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=32').then(reg => {
+          navigator.serviceWorker.register('./sw.js?v=33').then(reg => {
             reg.update().catch(() => {});
             if (reg.waiting) {
               reg.waiting.postMessage({ action: 'skipWaiting' });

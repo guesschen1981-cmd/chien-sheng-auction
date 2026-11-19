@@ -1406,10 +1406,15 @@ const DEFAULT_FIREBASE_CONFIG = Object.freeze({
   projectId: "chien-sheng-auction"
 });
 
+const ADMIN_FIREBASE_EMAIL = 'guess_chen1981@jiansheng-auction.com';
+
 const FirebaseManager = (function () {
   let _app = null;
   let _db = null;
+  let _auth = null;
   let _activeCfg = Object.assign({}, DEFAULT_FIREBASE_CONFIG);
+  let _adminListenersActive = false;
+  const _buyersMap = {};
 
   // 強制寫死綁定真實 Firebase Realtime Database 雲端節點 (新加坡區域)
   const DEFAULT_CONFIG = DEFAULT_FIREBASE_CONFIG;
@@ -1445,6 +1450,82 @@ const FirebaseManager = (function () {
     return Object.assign({}, DEFAULT_CONFIG);
   }
 
+  function getCurrentUid() {
+    try {
+      if (_auth && _auth.currentUser && _auth.currentUser.uid) {
+        return String(_auth.currentUser.uid);
+      }
+      if (typeof firebase !== 'undefined' && typeof firebase.auth === 'function') {
+        const u = firebase.auth().currentUser;
+        if (u && u.uid) return String(u.uid);
+      }
+    } catch (e) {}
+    let localAnon = SafeStorage.get('agy_local_anon_uid');
+    if (!localAnon) {
+      localAnon = 'anon_' + Math.random().toString(36).slice(2, 11);
+      SafeStorage.set('agy_local_anon_uid', localAnon);
+    }
+    return String(localAnon);
+  }
+
+  async function ensureAuthSession() {
+    try {
+      if (!_auth && typeof firebase !== 'undefined' && typeof firebase.auth === 'function') {
+        _auth = firebase.auth();
+      }
+      if (!_auth) return getCurrentUid();
+      if (_auth.currentUser && _auth.currentUser.uid) {
+        return String(_auth.currentUser.uid);
+      }
+      // 若本機曾以最高管理者驗證過且存在真實 Email/Password 帳號，優先嘗試維持管理員會話；否則以匿名登入取得合法 uid
+      if (typeof checkSavedAdminAuth === 'function' && checkSavedAdminAuth()) {
+        try {
+          const credAdmin = await _auth.signInWithEmailAndPassword(ADMIN_FIREBASE_EMAIL, SUPER_ADMIN_PASS);
+          if (credAdmin && credAdmin.user && credAdmin.user.uid) {
+            return String(credAdmin.user.uid);
+          }
+        } catch (e) {}
+      }
+      const cred = await _auth.signInAnonymously();
+      if (cred && cred.user && cred.user.uid) {
+        return String(cred.user.uid);
+      }
+    } catch (err) {
+      if (err && err.code) {
+        console.warn('Firebase 匿名/身分登入提示:', err.code, err.message);
+      }
+    }
+    return getCurrentUid();
+  }
+
+  async function signInAdminFirebaseAuth() {
+    try {
+      if (!_auth && typeof firebase !== 'undefined' && typeof firebase.auth === 'function') {
+        _auth = firebase.auth();
+      }
+      if (!_auth) return { ok: false, mode: 'no-auth-sdk', uid: getCurrentUid() };
+      try {
+        const cred = await _auth.signInWithEmailAndPassword(ADMIN_FIREBASE_EMAIL, SUPER_ADMIN_PASS);
+        if (cred && cred.user) {
+          return { ok: true, mode: 'password', uid: String(cred.user.uid) };
+        }
+      } catch (pwErr) {
+        const anonUid = await ensureAuthSession();
+        return { ok: false, mode: 'anonymous', uid: anonUid, errorCode: pwErr?.code || 'auth-fallback' };
+      }
+    } catch (e) {}
+    return { ok: false, mode: 'fallback', uid: getCurrentUid() };
+  }
+
+  async function signOutAdminFirebaseAuth() {
+    try {
+      if (_auth) {
+        await _auth.signOut().catch(() => {});
+        await _auth.signInAnonymously().catch(() => {});
+      }
+    } catch (e) {}
+  }
+
   function init() {
     _activeCfg = resolveEffectiveConfig();
 
@@ -1452,6 +1533,12 @@ const FirebaseManager = (function () {
       if (typeof firebase !== 'undefined' && !_app) {
         _app = firebase.initializeApp(_activeCfg);
         _db = firebase.database();
+        if (typeof firebase.auth === 'function') {
+          _auth = firebase.auth();
+        }
+        ensureAuthSession().then(() => {
+          syncAdminOnlyFirebaseListeners();
+        }).catch(() => {});
         if (typeof initServerTimeSync === 'function') {
           initServerTimeSync(_db);
         }
@@ -1464,44 +1551,41 @@ const FirebaseManager = (function () {
     }
   }
 
-  // 👥 即時監聽買家註冊名冊節點 (同時監聽 settings/buyers 與 buyers 進行雙向無縫合併)
-  function listenBuyers() {
-    if (!_db) return;
-    const buyersMap = {};
+  function updateBuyerRosterFromMap() {
+    const buyers = Object.values(_buyersMap);
+    buyers.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+    const prevCount = AppState.registeredBuyers ? AppState.registeredBuyers.length : 0;
+    AppState.registeredBuyers = buyers;
 
-    const updateBuyerRoster = () => {
-      const buyers = Object.values(buyersMap);
-      buyers.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
-      const prevCount = AppState.registeredBuyers ? AppState.registeredBuyers.length : 0;
-      AppState.registeredBuyers = buyers;
+    if (AppState.isAdmin && AppState.isAdminAuthenticated && buyers.length > prevCount && prevCount > 0) {
+      const newest = buyers[0];
+      showToast(`🔔 新買家「${newest.name} (${newest.phone ? newest.phone.slice(-4) : ''})」已登入系統！`);
+    }
 
-      if (AppState.isAdmin && buyers.length > prevCount && prevCount > 0) {
-        const newest = buyers[0];
-        showToast(`🔔 新買家「${newest.name} (${newest.phone ? newest.phone.slice(-4) : ''})」已登入系統！`);
-      }
+    renderAdminBuyersRoster();
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      syncToLocalServer();
+    }
+  }
 
-      renderAdminBuyersRoster();
-
-      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        syncToLocalServer();
-      }
-    };
+  function startAdminOnlyListeners() {
+    if (!_db || _adminListenersActive) return;
+    if (!(AppState.isAdmin && AppState.isAdminAuthenticated)) return;
+    _adminListenersActive = true;
 
     _db.ref('settings/buyers').on('value', snap => {
       if (snap.exists()) {
-        const val = snap.val() || {};
-        Object.assign(buyersMap, val);
-        updateBuyerRoster();
+        Object.assign(_buyersMap, snap.val() || {});
+        updateBuyerRosterFromMap();
       }
-    });
+    }, () => {});
 
     _db.ref('buyers').on('value', snap => {
       if (snap.exists()) {
-        const val = snap.val() || {};
-        Object.assign(buyersMap, val);
-        updateBuyerRoster();
+        Object.assign(_buyersMap, snap.val() || {});
+        updateBuyerRosterFromMap();
       }
-    });
+    }, () => {});
 
     _db.ref('settings/blacklist').on('value', snap => {
       if (snap.exists()) {
@@ -1509,7 +1593,36 @@ const FirebaseManager = (function () {
         SafeStorage.set('agy_blacklist', AppState.blacklist);
         try { renderAdminBuyersRoster(); } catch (e) {}
       }
-    });
+    }, () => {});
+
+    _db.ref('privateContacts').on('value', snap => {
+      const priv = snap.exists() ? (snap.val() || {}) : {};
+      AppState.privateContactsCache = priv;
+      hydratePrivateContactsIntoItems(priv);
+    }, () => {});
+  }
+
+  function stopAdminOnlyListeners() {
+    if (!_db) return;
+    _adminListenersActive = false;
+    try { _db.ref('settings/buyers').off(); } catch (e) {}
+    try { _db.ref('buyers').off(); } catch (e) {}
+    try { _db.ref('settings/blacklist').off(); } catch (e) {}
+    try { _db.ref('privateContacts').off(); } catch (e) {}
+    AppState.privateContactsCache = {};
+  }
+
+  function syncAdminOnlyFirebaseListeners() {
+    if (AppState.isAdmin && AppState.isAdminAuthenticated) {
+      startAdminOnlyListeners();
+    } else {
+      stopAdminOnlyListeners();
+    }
+  }
+
+  // 👥 安全隔離版買家名單監聽：僅限已驗證最高管理者訂閱完整名單，一般訪客絕不讀取他人名冊或私密個資
+  function listenBuyers() {
+    syncAdminOnlyFirebaseListeners();
   }
 
   // 即時監聽 Firebase 店鋪設定節點
@@ -1560,9 +1673,164 @@ const FirebaseManager = (function () {
     isReady: isReady,
     getDefaultConfig: getDefaultConfig,
     getActiveConfig: getActiveConfig,
-    isValidFirebaseConfig: isValidFirebaseConfig
+    isValidFirebaseConfig: isValidFirebaseConfig,
+    getCurrentUid: getCurrentUid,
+    ensureAuthSession: ensureAuthSession,
+    signInAdminFirebaseAuth: signInAdminFirebaseAuth,
+    signOutAdminFirebaseAuth: signOutAdminFirebaseAuth,
+    syncAdminOnlyFirebaseListeners: syncAdminOnlyFirebaseListeners,
+    stopAdminOnlyListeners: stopAdminOnlyListeners
   };
 })();
+
+/** 🛡️ 將已驗證管理員專屬之私密聯絡方式合併回前端商品節點（一般訪客絕無法讀取 privateContacts） */
+function hydratePrivateContactsIntoItems(privMap) {
+  if (!(AppState.isAdmin && AppState.isAdminAuthenticated) || !privMap || typeof privMap !== 'object') return;
+  let updated = false;
+  (AppState.items || []).forEach(it => {
+    const pNode = privMap[it.id];
+    if (!pNode || typeof pNode !== 'object') return;
+    if (pNode.topBidder && it.topBidder) {
+      it.topBidderContact = Object.assign({}, it.topBidderContact || {}, pNode.topBidder);
+      updated = true;
+    }
+    if (pNode.bids && it.bids) {
+      Object.keys(pNode.bids).forEach(bk => {
+        if (it.bids[bk] && pNode.bids[bk]) {
+          it.bids[bk].bidderPhone = pNode.bids[bk].phone || it.bids[bk].bidderPhone || '';
+          it.bids[bk].bidderLine = pNode.bids[bk].line || it.bids[bk].bidderLine || '';
+          it.bids[bk].bidderIg = pNode.bids[bk].ig || it.bids[bk].bidderIg || '';
+          it.bids[bk].bidderFb = pNode.bids[bk].fb || it.bids[bk].bidderFb || '';
+          updated = true;
+        }
+      });
+    }
+    if (pNode.qa && it.qa) {
+      Object.keys(pNode.qa).forEach(qk => {
+        if (it.qa[qk] && pNode.qa[qk]) {
+          it.qa[qk].phone = pNode.qa[qk].phone || it.qa[qk].phone || '';
+          it.qa[qk].line = pNode.qa[qk].line || it.qa[qk].line || '';
+          it.qa[qk].ig = pNode.qa[qk].ig || it.qa[qk].ig || '';
+          it.qa[qk].fb = pNode.qa[qk].fb || it.qa[qk].fb || '';
+          updated = true;
+        }
+      });
+    }
+  });
+  if (updated) {
+    try { renderBidHistory(); } catch (e) {}
+    try { renderQA(true, null); } catch (e) {}
+    try { renderWinnerStatus(); } catch (e) {}
+    try { renderAdminAllQA(); } catch (e) {}
+    try { renderAdminBuyersRoster(); } catch (e) {}
+  }
+}
+
+/** 🛡️ 公開寫入前清洗單則問答節點，確保不含未遮罩電話、Line、IG、FB */
+function sanitizeQANodeForPublic(q, ownerUid = '') {
+  if (!q || typeof q !== 'object') return null;
+  const uid = String(q.ownerUid || ownerUid || FirebaseManager.getCurrentUid() || 'anon');
+  const phoneMasked = q.phoneMasked || (q.phone ? maskPhone(q.phone) : '');
+  const cleanReplies = {};
+  if (Array.isArray(q.replies)) {
+    q.replies.forEach((rep, idx) => {
+      if (rep && rep.text) {
+        cleanReplies[String(idx)] = {
+          author: String(rep.author || '買家').slice(0, 40),
+          phoneMasked: rep.phoneMasked || (rep.phone ? maskPhone(rep.phone) : ''),
+          ownerUid: String(rep.ownerUid || uid),
+          isSeller: Boolean(rep.isSeller),
+          text: String(rep.text).slice(0, 400),
+          time: Number(rep.time || Date.now())
+        };
+      }
+    });
+  } else if (q.replies && typeof q.replies === 'object') {
+    Object.keys(q.replies).forEach(rk => {
+      const rep = q.replies[rk];
+      if (rep && rep.text) {
+        cleanReplies[rk] = {
+          author: String(rep.author || '買家').slice(0, 40),
+          phoneMasked: rep.phoneMasked || (rep.phone ? maskPhone(rep.phone) : ''),
+          ownerUid: String(rep.ownerUid || uid),
+          isSeller: Boolean(rep.isSeller),
+          text: String(rep.text).slice(0, 400),
+          time: Number(rep.time || Date.now())
+        };
+      }
+    });
+  }
+  const out = {
+    id: String(q.id || ''),
+    user: String(q.user || '買家').slice(0, 40),
+    phoneMasked: phoneMasked,
+    ownerUid: uid,
+    question: String(q.question || '').slice(0, 600),
+    time: Number(q.time || Date.now()),
+    likes: Math.max(0, Number(q.likes || 0)),
+    reply: q.reply ? String(q.reply) : null,
+    replyTime: q.replyTime ? Number(q.replyTime) : null,
+    replies: Object.keys(cleanReplies).length ? cleanReplies : null
+  };
+  return out;
+}
+
+/** 🛡️ 公開寫入前清洗單筆出價節點，移除未遮罩買家個資 */
+function sanitizeBidForPublic(b, ownerUid = '') {
+  if (!b || typeof b !== 'object') return null;
+  return {
+    bidderName: String(b.bidderName || b.user || '買家').slice(0, 40),
+    bidderPhoneMasked: b.bidderPhoneMasked || (b.bidderPhone ? maskPhone(b.bidderPhone) : ''),
+    ownerUid: String(b.ownerUid || ownerUid || FirebaseManager.getCurrentUid() || 'anon'),
+    amount: Number(b.amount || 0),
+    timestamp: Number(b.timestamp || b.time || Date.now())
+  };
+}
+
+/** 🛡️ 公開同步商品時建立零明碼個資複本（完整保留 Acer 商品文字、規格、28 張圖片與出價統計） */
+function sanitizeItemForPublicSync(it) {
+  if (!it || typeof it !== 'object') return null;
+  const uid = FirebaseManager.getCurrentUid();
+  const itHasBids = hasItemBids(it);
+  const effCur = getEffectiveCurrentBidPrice(it);
+  const topName = itHasBids ? getBidderName(it.topBidder) : '';
+  const topMasked = it.topBidderContact?.phone ? maskPhone(it.topBidderContact.phone) : (it.topBidder?.phoneMasked || '');
+
+  const cleanQa = {};
+  if (it.qa && typeof it.qa === 'object') {
+    Object.keys(it.qa).forEach(qk => {
+      const sq = sanitizeQANodeForPublic(it.qa[qk], uid);
+      if (sq) cleanQa[qk] = sq;
+    });
+  }
+  const cleanBids = {};
+  if (it.bids && typeof it.bids === 'object') {
+    Object.keys(it.bids).forEach(bk => {
+      const sb = sanitizeBidForPublic(it.bids[bk], uid);
+      if (sb) cleanBids[bk] = sb;
+    });
+  }
+  const cleanHistory = Array.isArray(it.bidHistory)
+    ? it.bidHistory.map(bh => ({
+        user: String(bh.user || bh.bidderName || '買家').slice(0, 40),
+        phoneMasked: bh.phoneMasked || (bh.phone ? maskPhone(bh.phone) : ''),
+        amount: Number(bh.amount || 0),
+        time: Number(bh.time || Date.now())
+      }))
+    : [];
+
+  const copy = Object.assign({}, it, {
+    currentPrice: effCur,
+    currentBid: effCur,
+    highestBid: itHasBids ? effCur : Number(it.startPrice || 0),
+    topBidder: itHasBids && topName ? { name: topName, phoneMasked: topMasked, ownerUid: it.topBidder?.ownerUid || uid } : '',
+    topBidderContact: null,
+    bids: cleanBids,
+    bidHistory: cleanHistory,
+    qa: cleanQa
+  });
+  return copy;
+}
 
 /**
  * 徹底統一 Firebase 拍賣商品與出價、問答同步模組 (雙向合流保護)
@@ -1634,8 +1902,26 @@ function shouldIgnoreStaleRemoteUpdate(local, rItem) {
 function handleIncomingAuctionItems(remoteItems) {
   let changed = false;
   Object.keys(remoteItems).forEach(key => {
-    const rItem = remoteItems[key];
-    if (!rItem) return;
+    const rawRemote = remoteItems[key];
+    if (!rawRemote) return;
+    // 若存在新版原子出價子節點 liveBid 且重開序號符合，將其最新價格與領先狀態合流覆蓋於商品快照之上
+    const rItem = Object.assign({}, rawRemote);
+    if (rItem.liveBid && typeof rItem.liveBid === 'object') {
+      const lbSeq = Number(rItem.liveBid.relistSeq || 0);
+      const itemSeq = Number(rItem.relistSeq || 0);
+      if (lbSeq >= itemSeq) {
+        if (rItem.liveBid.currentPrice !== undefined) {
+          rItem.currentPrice = rItem.liveBid.currentPrice;
+          rItem.currentBid = rItem.liveBid.currentBid ?? rItem.liveBid.currentPrice;
+          rItem.highestBid = rItem.liveBid.highestBid ?? rItem.liveBid.currentPrice;
+        }
+        if (rItem.liveBid.topBidder !== undefined) rItem.topBidder = rItem.liveBid.topBidder;
+        if (rItem.liveBid.lastBidder !== undefined) rItem.lastBidder = rItem.liveBid.lastBidder;
+        if (rItem.liveBid.highestBidder !== undefined) rItem.highestBidder = rItem.liveBid.highestBidder;
+        if (rItem.liveBid.endTime) rItem.endTime = rItem.liveBid.endTime;
+      }
+    }
+
     const id = rItem.id || key;
     const local = AppState.items.find(i => i.id === id);
     if (local) {
@@ -1679,6 +1965,20 @@ function handleIncomingAuctionItems(remoteItems) {
         local.status = rItem.status;
         changed = true;
       }
+      if (rItem.backupResponse && local.backupOffer && local.backupOffer.status === 'pending') {
+        const br = rItem.backupResponse;
+        local.backupOffer.status = br.status;
+        local.backupOffer.buyerReplyNote = br.buyerReplyNote || '';
+        local.backupOffer.respondedAt = br.respondedAt;
+        if (br.status === 'accepted') {
+          const offerPrice = Number(local.backupOffer.offerPrice || local.backupOffer.originalBid || local.currentPrice);
+          local.currentPrice = offerPrice;
+          local.currentBid = offerPrice;
+          local.finalDealPrice = offerPrice;
+          local.topBidder = local.backupOffer.buyerName || local.topBidder;
+        }
+        changed = true;
+      }
       if (rItem.bids) {
         local.bids = rItem.bids;
         local.bidHistory = Object.values(rItem.bids).map(b => ({
@@ -1716,6 +2016,9 @@ function handleIncomingAuctionItems(remoteItems) {
   });
 
   if (changed) {
+    if (AppState.isAdmin && AppState.isAdminAuthenticated && AppState.privateContactsCache) {
+      hydratePrivateContactsIntoItems(AppState.privateContactsCache);
+    }
     applySafeBackgroundRender();
   }
 }
@@ -2393,9 +2696,12 @@ function applyCleanResetFields(it, price, resetQA = false) {
   if (resetQA) it.qa = {};
 }
 
-/** 建立 Firebase 雲端重置更新酬載（顯式將所有舊出價、領先者、得標與代理欄位清空） */
+/** 建立 Firebase 雲端重置更新酬載（顯式將所有舊出價、領先者、得標與代理欄位清空，並初始化 liveBid 原子狀態） */
 function buildFirebaseResetPayload(it, resetQA = false) {
   const cleanPrice = Number(it.startPrice || 10000);
+  const now = getServerNow();
+  const relistSeq = Number(it.relistSeq || 0);
+  const uid = (typeof FirebaseManager !== 'undefined' && FirebaseManager.getCurrentUid) ? FirebaseManager.getCurrentUid() : 'admin';
   const payload = {
     id: it.id,
     name: it.name,
@@ -2413,6 +2719,7 @@ function buildFirebaseResetPayload(it, resetQA = false) {
     bids: null,
     bidHistory: null,
     backupOffer: null,
+    backupResponse: null,
     backupState: null,
     finalDealPrice: null,
     defaultedBidders: null,
@@ -2425,10 +2732,20 @@ function buildFirebaseResetPayload(it, resetQA = false) {
     auctionLive: true,
     auctionDone: false,
     status: 'live',
-    relistSeq: Number(it.relistSeq || 0),
-    reopenedAt: it.reopenedAt || getServerNow(),
+    relistSeq: relistSeq,
+    reopenedAt: it.reopenedAt || now,
     timeMode: it.timeMode || 'fixed',
-    endTime: Number(it.endTime || (getServerNow() + 24 * 3600 * 1000))
+    endTime: Number(it.endTime || (now + 24 * 3600 * 1000)),
+    liveBid: {
+      currentPrice: cleanPrice,
+      currentBid: cleanPrice,
+      highestBid: cleanPrice,
+      hasBids: false,
+      relistSeq: relistSeq,
+      ownerUid: uid,
+      topBidTime: now,
+      topBidder: null
+    }
   };
   if (resetQA) payload.qa = null;
   return payload;
@@ -2491,11 +2808,13 @@ async function restartAuctionItem(itemId, mode = 'reset24', durationHours = 24, 
   const mobileBidBar = el('mobile-bid-bar');
   if (mobileBidBar) mobileBidBar.style.display = 'block';
 
-  // 5. 跨端同步：更新本機伺服器 my_auction_data.json 與 Firebase（顯式覆寫與清除所有價格/出價/得標欄位）
+  // 5. 跨端同步：更新本機伺服器 my_auction_data.json 與 Firebase（顯式覆寫與清除所有價格/出價/得標欄位與私密聯絡暫存）
   const db = FirebaseManager.getDb();
   if (db && item.id) {
     try {
       await db.ref(`auction/items/${item.id}`).update(buildFirebaseResetPayload(item, false));
+      db.ref(`privateContacts/${item.id}/bids`).set(null).catch(() => {});
+      db.ref(`privateContacts/${item.id}/topBidder`).set(null).catch(() => {});
     } catch (e) {}
   }
   syncToFirebase();
@@ -3026,14 +3345,18 @@ function getQuestionHeatScore(q) {
   return (likes * 3) + (repliesCount * 2) + hasMainReply;
 }
 
-/** 判斷是否為目前登入買家本人發表的提問 */
+/** 判斷是否為目前登入買家本人發表的提問（兼顧 uid、遮罩電話與姓名比對，無需暴露明碼手機） */
 function isQuestionMine(q) {
-  if (!q || !AppState.userProfile) return false;
+  if (!q) return false;
+  const uid = (typeof FirebaseManager !== 'undefined' && FirebaseManager.getCurrentUid) ? FirebaseManager.getCurrentUid() : '';
+  if (uid && q.ownerUid && q.ownerUid === uid) return true;
+  if (!AppState.userProfile) return false;
   const myPhone = String(AppState.userProfile.phone || '').replace(/[^0-9]/g, '');
   const qPhone = String(q.phone || '').replace(/[^0-9]/g, '');
   if (myPhone && qPhone && myPhone === qPhone) return true;
   const myName = String(AppState.userProfile.name || '').trim();
   const qName = String(q.user || '').trim();
+  if (myPhone && q.phoneMasked && maskPhone(myPhone) === q.phoneMasked && (!myName || !qName || myName === qName)) return true;
   return Boolean(myName && qName && myName === qName);
 }
 
@@ -3165,20 +3488,23 @@ function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, 
       isMainReply: true
     });
   }
-  if (Array.isArray(q.replies)) {
-    q.replies.forEach((rep, rIdx) => {
-      if (rep && rep.text) {
-        floors.push({
-          floorType: 'sub',
-          replyIdx: rIdx,
-          isSeller: Boolean(rep.isSeller),
-          author: rep.author || (rep.isSeller ? (AppState.studioName || '建生工坊賣家') : authorRaw),
-          text: rep.text,
-          time: rep.time
-        });
-      }
-    });
-  }
+  const rawRepliesList = Array.isArray(q.replies)
+    ? q.replies.map((rep, rIdx) => ({ key: String(rIdx), idx: rIdx, rep }))
+    : (q.replies && typeof q.replies === 'object'
+        ? Object.keys(q.replies).map((rk, rIdx) => ({ key: rk, idx: rIdx, rep: q.replies[rk] }))
+        : []);
+  rawRepliesList.forEach(({ idx, rep }) => {
+    if (rep && rep.text) {
+      floors.push({
+        floorType: 'sub',
+        replyIdx: idx,
+        isSeller: Boolean(rep.isSeller),
+        author: rep.author || (rep.isSeller ? (AppState.studioName || '建生工坊賣家') : authorRaw),
+        text: rep.text,
+        time: rep.time
+      });
+    }
+  });
 
   let repliesHtml = '';
   if (floors.length > 0) {
@@ -4172,6 +4498,11 @@ function deleteSingleQAReply(itemId, qKey, floorType, replyIdx) {
   } else if (floorType === 'sub') {
     if (Array.isArray(q.replies) && replyIdx >= 0 && replyIdx < q.replies.length) {
       q.replies.splice(replyIdx, 1);
+    } else if (q.replies && typeof q.replies === 'object') {
+      const rKeys = Object.keys(q.replies);
+      if (replyIdx >= 0 && replyIdx < rKeys.length) {
+        delete q.replies[rKeys[replyIdx]];
+      }
     }
   }
 
@@ -4182,7 +4513,7 @@ function deleteSingleQAReply(itemId, qKey, floorType, replyIdx) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(sanitizeQANodeForPublic(q)).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -4217,9 +4548,11 @@ function toggleQALike(itemId, qKey) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}/likes`).set(q.likes).catch(() => {});
+    FirebaseManager.ensureAuthSession().then(() => {
+      db.ref(`auction/items/${item.id}/qa/${qKey}/likes`).set(q.likes).catch(() => {});
+    }).catch(() => {});
   }
-  syncToFirebase();
+  if (AppState.isAdmin && AppState.isAdminAuthenticated) syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     syncToLocalServer();
   }
@@ -4250,20 +4583,31 @@ function submitQAFollowup(itemId, qKey, text, isSellerFloor = false) {
 
   const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
   const q = item.qa[qKey];
-  if (!Array.isArray(q.replies)) q.replies = [];
+  if (!q.replies || (typeof q.replies !== 'object')) q.replies = {};
+  if (Array.isArray(q.replies)) {
+    const obj = {};
+    q.replies.forEach((r, idx) => { if (r) obj[`r_${idx}`] = r; });
+    q.replies = obj;
+  }
+
+  const uid = (typeof FirebaseManager !== 'undefined' && FirebaseManager.getCurrentUid) ? FirebaseManager.getCurrentUid() : 'anon';
+  const repKey = 'rep_' + now + '_' + Math.random().toString(36).slice(2, 6);
+  let newFollowup = null;
 
   // 若為賣家回覆且尚無主回覆，直接存入主回覆避免重複產生兩筆相同樓層
   if (isSellerFloor && !(q.reply && String(q.reply).trim())) {
     q.reply = cleanText;
     q.replyTime = now;
   } else {
-    q.replies.push({
+    newFollowup = {
       author: isSellerFloor ? (AppState.studioName || '建生工坊賣家') : AppState.userProfile.name,
-      phone: isSellerFloor ? '' : (AppState.userProfile.phone || ''),
+      phoneMasked: isSellerFloor ? '' : maskPhone(AppState.userProfile.phone || ''),
+      ownerUid: uid,
       isSeller: Boolean(isSellerFloor),
       text: cleanText,
       time: now
-    });
+    };
+    q.replies[repKey] = newFollowup;
   }
 
   // 送出後自動收合管理員回覆面板，保持版面精簡
@@ -4278,9 +4622,16 @@ function submitQAFollowup(itemId, qKey, text, isSellerFloor = false) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(q).catch(() => {});
+    FirebaseManager.ensureAuthSession().then(authUid => {
+      if (isSellerFloor) {
+        db.ref(`auction/items/${item.id}/qa/${qKey}`).set(sanitizeQANodeForPublic(q, authUid)).catch(() => {});
+      } else if (newFollowup) {
+        newFollowup.ownerUid = authUid || uid;
+        db.ref(`auction/items/${item.id}/qa/${qKey}/replies/${repKey}`).set(newFollowup).catch(() => {});
+      }
+    }).catch(() => {});
   }
-  syncToFirebase();
+  if (isSellerFloor) syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     syncToLocalServer();
   }
@@ -4337,20 +4688,23 @@ function submitQuestion() {
   const prevScroll = window.scrollY;
   const now = typeof getServerNow === 'function' ? getServerNow() : Date.now();
   const qKey = 'qa_' + now + '_' + Math.random().toString(36).slice(2, 6);
+  const uid = FirebaseManager.getCurrentUid();
   if (!item.qa) item.qa = {};
   const newQ = {
     id: qKey,
     user: AppState.userProfile.name,
     phone: AppState.userProfile.phone,
+    phoneMasked: maskPhone(AppState.userProfile.phone),
     line: AppState.userProfile.line || '',
     ig: AppState.userProfile.ig || '',
     fb: AppState.userProfile.fb || '',
+    ownerUid: uid,
     question: text,
     time: now,
     likes: 0,
     reply: null,
     replyTime: null,
-    replies: []
+    replies: null
   };
   item.qa[qKey] = newQ;
 
@@ -4365,23 +4719,39 @@ function submitQuestion() {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(newQ).catch(() => {});
+    const cleanPhoneKey = AppState.userProfile.phone.replace(/[^0-9]/g, '');
+    FirebaseManager.ensureAuthSession().then(authUid => {
+      const publicQ = sanitizeQANodeForPublic(newQ, authUid || uid);
+      delete publicQ.reply;
+      delete publicQ.replyTime;
+      delete publicQ.replies;
+      db.ref(`auction/items/${item.id}/qa/${qKey}`).set(publicQ).catch(() => {});
 
-    const key = AppState.userProfile.phone.replace(/[^0-9]/g, '');
-    const bData = {
-      name: AppState.userProfile.name,
-      phone: AppState.userProfile.phone,
-      line: AppState.userProfile.line || '',
-      ig: AppState.userProfile.ig || '',
-      fb: AppState.userProfile.fb || '',
-      updatedAt: now,
-      lastQuestion: text,
-      lastQuestionItem: item.id
-    };
-    db.ref('settings/buyers/' + key).update(bData).catch(() => {});
-    db.ref('buyers/' + key).update(bData).catch(() => {});
+      db.ref(`privateContacts/${item.id}/qa/${qKey}`).set({
+        name: AppState.userProfile.name,
+        phone: cleanPhoneKey,
+        line: AppState.userProfile.line || '',
+        ig: AppState.userProfile.ig || '',
+        fb: AppState.userProfile.fb || '',
+        ownerUid: authUid || uid,
+        time: now
+      }).catch(() => {});
+
+      const bData = {
+        name: AppState.userProfile.name,
+        phone: cleanPhoneKey,
+        line: AppState.userProfile.line || '',
+        ig: AppState.userProfile.ig || '',
+        fb: AppState.userProfile.fb || '',
+        ownerUid: authUid || uid,
+        updatedAt: now,
+        lastQuestion: text,
+        lastQuestionItem: item.id
+      };
+      db.ref('settings/buyers/' + cleanPhoneKey).update(bData).catch(() => {});
+      db.ref('buyers/' + cleanPhoneKey).update(bData).catch(() => {});
+    }).catch(() => {});
   }
-  syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     syncToLocalServer();
   }
@@ -4409,7 +4779,7 @@ function submitQAReply(itemId, qKey, replyText) {
 
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(item.qa[qKey]).catch(() => {});
+    db.ref(`auction/items/${item.id}/qa/${qKey}`).set(sanitizeQANodeForPublic(item.qa[qKey])).catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -4433,6 +4803,7 @@ function deleteQuestion(itemId, qKey) {
   const db = FirebaseManager.getDb();
   if (db && itemId) {
     db.ref(`auction/items/${itemId}/qa/${qKey}`).remove().catch(() => {});
+    db.ref(`privateContacts/${itemId}/qa/${qKey}`).remove().catch(() => {});
   }
   syncToFirebase();
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
@@ -4754,71 +5125,53 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
     if (!db || !firebase.apps || !firebase.apps.length || !FirebaseManager.isReady()) {
       throw new Error('FIREBASE_OFFLINE_FALLBACK');
     }
-    const itemRef = db.ref(`auction/items/${itemId}`);
+    const localItem = AppState.items.find(i => i.id === itemId);
+    if (!localItem) {
+      throw new Error('FIREBASE_OFFLINE_FALLBACK');
+    }
+    const uid = await FirebaseManager.ensureAuthSession();
+    const liveBidRef = db.ref(`auction/items/${itemId}/liveBid`);
     let extendMessage = '';
     let abortInfo = null;
 
-    const result = await itemRef.transaction((item) => {
+    const result = await liveBidRef.transaction((lb) => {
       abortInfo = null;
-      const localItem = AppState.items.find(i => i.id === itemId);
+      const curLocal = AppState.items.find(i => i.id === itemId) || localItem;
+      const now = getServerNow();
+      const startPrice = Number(curLocal.startPrice || 0);
+      const increment = Math.max(1, Number(curLocal.increment || 10));
+      const localSeq = Number(curLocal.relistSeq || 0);
+      const itemEndTime = Number(curLocal.endTime || 0);
 
-      if (!item) {
-        if (localItem) {
-          item = buildFirebaseResetPayload(localItem, false);
-          item.increment = Number(localItem.increment || 10);
-          item.antiSnipeEnable = localItem.antiSnipeEnable !== false && localItem.antiSnipeEnabled !== false;
-          item.antiSnipeMins = Number(localItem.antiSnipeMins || 3);
-          item.antiSnipeExt = Number(localItem.antiSnipeExt || localItem.antiSnipeExtMins || 3);
-          if (hasItemBids(localItem)) {
-            item.currentPrice = getEffectiveCurrentBidPrice(localItem);
-            item.currentBid = item.currentPrice;
-            item.highestBid = item.currentPrice;
-            item.topBidder = localItem.topBidderContact || localItem.topBidder || null;
-            item.lastBidder = getBidderName(localItem.topBidder) || null;
-            item.highestBidder = item.lastBidder;
-            item.bids = localItem.bids || {};
-          }
-        } else {
-          return item; // 節點尚未載入時返回原值
-        }
-      } else if (localItem) {
-        // 若遠端單品節點的 relistSeq / reopenedAt 落後於本機剛重開/清除的紀錄，先於交易內歸零防止上一輪舊價誤殺首標
-        const localSeq = Number(localItem.relistSeq || 0);
-        const remoteSeq = Number(item.relistSeq || 0);
-        const localReopen = Number(localItem.reopenedAt || 0);
-        const remoteReopen = Number(item.reopenedAt || 0);
-        if (localSeq > remoteSeq || (localReopen > 0 && localReopen > remoteReopen && !hasItemBids(localItem))) {
-          const freshPrice = Number(localItem.startPrice || item.startPrice || 10000);
-          item = Object.assign({}, item, buildFirebaseResetPayload(localItem, false), {
-            startPrice: freshPrice,
-            currentPrice: freshPrice,
-            currentBid: freshPrice,
-            highestBid: freshPrice,
-            relistSeq: localSeq,
-            reopenedAt: localReopen || getServerNow(),
-            increment: Number(localItem.increment || item.increment || 10),
-            antiSnipeEnable: localItem.antiSnipeEnable !== false && localItem.antiSnipeEnabled !== false,
-            antiSnipeMins: Number(localItem.antiSnipeMins || 3),
-            antiSnipeExt: Number(localItem.antiSnipeExt || localItem.antiSnipeExtMins || 3)
-          });
-        }
+      // 若 liveBid 尚不存在或重開序號落後於商品最新 relistSeq，先與本機商品對齊（含是否已有出價與當前最高價）
+      if (!lb || Number(lb.relistSeq || 0) < localSeq) {
+        const localHasBids = hasItemBids(curLocal);
+        const localCurPrice = getEffectiveCurrentBidPrice(curLocal);
+        lb = {
+          currentPrice: localCurPrice,
+          currentBid: localCurPrice,
+          highestBid: localCurPrice,
+          hasBids: localHasBids,
+          relistSeq: localSeq,
+          endTime: itemEndTime,
+          ownerUid: uid,
+          topBidTime: Number(curLocal.topBidTime || now),
+          topBidder: localHasBids ? { name: getBidderName(curLocal.topBidder), phoneMasked: '', ownerUid: uid } : null
+        };
       }
 
-      const now = getServerNow();
-      const endTime = Number(item.endTime || 0);
-      const startPrice = Number(item.startPrice || 0);
-      const increment = Math.max(1, Number(item.increment || 10));
-      const txHasBids = hasItemBids(item);
-      const txCurrentPrice = getEffectiveCurrentBidPrice(item);
+      const endTime = Number(lb.endTime || itemEndTime || 0);
+      const txHasBids = Boolean(lb.hasBids);
+      const txCurrentPrice = txHasBids ? Math.max(Number(lb.currentPrice || 0), startPrice) : startPrice;
 
       // 檢查是否已經結標
-      if (item.status === 'ended' || item.status === 'picked_up' || item.endedEarly === true || item.manualEnd === true || (endTime > 0 && now >= endTime)) {
-        abortInfo = { reason: 'ended', currentPrice: txCurrentPrice, startPrice, increment, hasBids: txHasBids, minRequiredBid: getMinimumValidBid(item) };
+      if (curLocal.status === 'ended' || curLocal.status === 'picked_up' || curLocal.endedEarly === true || curLocal.manualEnd === true || (endTime > 0 && now >= endTime)) {
+        abortInfo = { reason: 'ended', currentPrice: txCurrentPrice, startPrice, increment, hasBids: txHasBids, minRequiredBid: txHasBids ? (txCurrentPrice + increment) : Math.max(startPrice, 1) };
         return; // 中止 Transaction
       }
 
       // 計算最低合法出價：【0 筆出價】可 >= 起標價；【1 筆以上出價】必須嚴格 > 目前最高價（至少 cur + inc）
-      const minRequiredBid = getMinimumValidBid(item);
+      const minRequiredBid = txHasBids ? (txCurrentPrice + increment) : Math.max(startPrice, 1);
       if (!txHasBids) {
         if (bidAmountTWD < minRequiredBid) {
           abortInfo = { reason: 'below_start', currentPrice: startPrice, startPrice, increment, hasBids: false, minRequiredBid };
@@ -4831,70 +5184,47 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
         }
       }
 
-      // 更新最高價與所有領先買家對應欄位（並確保清除殘留得標與代理出價）
-      item.status = 'live';
-      item.auctionLive = true;
-      item.auctionDone = false;
-      item.endedEarly = null;
-      item.manualEnd = null;
-      item.isEnded = null;
-      item.winner = null;
-      item.proxyBids = null;
-      item.currentPrice = bidAmountTWD;
-      item.currentBid = bidAmountTWD;
-      item.highestBid = bidAmountTWD;
-      item.lastBidder = buyerProfile.name;
-      item.highestBidder = buyerProfile.name;
-      item.topBidTime = now;
-      item.topBidder = {
-        name: buyerProfile.name,
-        phone: buyerProfile.phone,
-        line: buyerProfile.line || '',
-        ig: buyerProfile.ig || '',
-        fb: buyerProfile.fb || '',
-        timestamp: now
-      };
-
-      // 新增出價歷史紀錄 (完整記錄買家聯絡資訊以供管理者後台解碼)
-      if (!item.bids || typeof item.bids !== 'object') item.bids = {};
-      const newBidKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
-      item.bids[newBidKey] = {
-        bidderName: buyerProfile.name,
-        bidderPhone: buyerProfile.phone,
-        bidderPhoneMasked: maskPhone(buyerProfile.phone),
-        bidderLine: buyerProfile.line || '',
-        bidderIg: buyerProfile.ig || '',
-        bidderFb: buyerProfile.fb || '',
-        amount: bidAmountTWD,
-        timestamp: now
-      };
-
-      // 處理競標時間模式（選項 A 固定期限防壓標 vs 選項 B 24小時動態重置）
-      if (item.timeMode === 'reset24') {
-        item.endTime = now + (24 * 60 * 60 * 1000);
+      let nextEndTime = endTime;
+      if (curLocal.timeMode === 'reset24') {
+        nextEndTime = now + (24 * 60 * 60 * 1000);
         extendMessage = '⚡ 已觸發 24 小時動態重置，倒數計時重新計算！';
-      } else if (item.antiSnipeEnable !== false) {
-        const triggerMs = Number(item.antiSnipeMins || 3) * 60 * 1000;
-        const extMs = Number(item.antiSnipeExt || 3) * 60 * 1000;
+      } else if (curLocal.antiSnipeEnable !== false) {
+        const triggerMs = Number(curLocal.antiSnipeMins || 3) * 60 * 1000;
+        const extMs = Number(curLocal.antiSnipeExt || 3) * 60 * 1000;
         const remainingMs = endTime - now;
-
-        // 若進入結標前 N 分鐘防壓標區間，自動延長結束時間
         if (remainingMs > 0 && remainingMs <= triggerMs) {
-          item.endTime = endTime + extMs;
-          extendMessage = `🛡️ 觸發防壓標保護！結標時間已自動延長 ${item.antiSnipeExt || 3} 分鐘。`;
+          nextEndTime = endTime + extMs;
+          extendMessage = `🛡️ 觸發防壓標保護！結標時間已自動延長 ${curLocal.antiSnipeExt || 3} 分鐘。`;
         }
       }
 
-      return item;
+      // 僅寫入公開安全欄位至 liveBid（嚴禁於公開節點寫入明碼 phone / line / ig / fb）
+      return {
+        currentPrice: bidAmountTWD,
+        currentBid: bidAmountTWD,
+        highestBid: bidAmountTWD,
+        hasBids: true,
+        relistSeq: localSeq,
+        endTime: nextEndTime,
+        ownerUid: uid,
+        lastBidder: buyerProfile.name,
+        highestBidder: buyerProfile.name,
+        topBidTime: now,
+        topBidder: {
+          name: buyerProfile.name,
+          phoneMasked: maskPhone(buyerProfile.phone),
+          ownerUid: uid
+        }
+      };
     });
 
     if (!result.committed) {
       const remoteVal = result.snapshot ? result.snapshot.val() : null;
-      const localItem = AppState.items.find(i => i.id === itemId);
-      const refItem = remoteVal || localItem;
-      const latestHasBids = abortInfo ? abortInfo.hasBids : hasItemBids(refItem);
-      const latestCur = remoteVal ? getEffectiveCurrentBidPrice(remoteVal) : (abortInfo ? abortInfo.currentPrice : getEffectiveCurrentBidPrice(localItem));
-      const latestMin = remoteVal ? getMinimumValidBid(remoteVal) : (abortInfo ? abortInfo.minRequiredBid : getMinimumValidBid(localItem));
+      const curInc = Math.max(1, Number(localItem.increment || 10));
+      const curStart = Number(localItem.startPrice || 0);
+      const latestHasBids = remoteVal ? Boolean(remoteVal.hasBids) : (abortInfo ? abortInfo.hasBids : hasItemBids(localItem));
+      const latestCur = remoteVal ? (latestHasBids ? Math.max(Number(remoteVal.currentPrice || 0), curStart) : curStart) : (abortInfo ? abortInfo.currentPrice : getEffectiveCurrentBidPrice(localItem));
+      const latestMin = latestHasBids ? (latestCur + curInc) : Math.max(curStart, 1);
 
       if (bidInput && latestMin > 0) {
         bidInput.value = latestMin;
@@ -4907,52 +5237,95 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       } else {
         showToast(`⚠️ 出價未成功：雲端最新最高價為 ${formatMoney(latestCur)}，下一口最低出價需達 ${formatMoney(latestMin)}（已為您自動更新輸入框）。`, 4800);
       }
-      if (remoteVal && localItem && Number(remoteVal.relistSeq || 0) >= Number(localItem.relistSeq || 0)) {
-        handleIncomingAuctionItems({ [itemId]: remoteVal });
+      if (remoteVal && Number(remoteVal.relistSeq || 0) >= Number(localItem.relistSeq || 0)) {
+        handleIncomingAuctionItems({ [itemId]: Object.assign({}, localItem, { liveBid: remoteVal }) });
       }
     } else {
       showToast(extendMessage || '🎉 出價成功！您目前已成為最高出價領先者！');
       const val = result.snapshot ? result.snapshot.val() : null;
+      const now = getServerNow();
+      const newBidKey = `bid_${now}_${Math.random().toString(36).slice(2, 7)}`;
+      const cleanPhoneKey = buyerProfile.phone.replace(/[^0-9]/g, '');
+
       if (bidInput) {
-        const nextIncrement = Math.max(1, Number(val?.increment || 10));
+        const nextIncrement = Math.max(1, Number(localItem.increment || 10));
         bidInput.value = bidAmountTWD + nextIncrement;
       }
-      // 鏡像更新至 auction/items 與 settings/buyers
+
+      // 分流安全寫入：公開 bids 僅寫入遮罩電話與金額；完整聯絡資訊僅寫入 privateContacts 與 buyers（含 ownerUid）
       try {
-        if (val) {
-          db.ref(`auction/items/${itemId}`).update(val).catch(() => {});
-        }
-        const key = buyerProfile.phone.replace(/[^0-9]/g, '');
-        const bSync = {
+        const publicBidRecord = {
+          bidderName: buyerProfile.name,
+          bidderPhoneMasked: maskPhone(buyerProfile.phone),
+          ownerUid: uid,
+          amount: bidAmountTWD,
+          timestamp: now
+        };
+        db.ref(`auction/items/${itemId}/bids/${newBidKey}`).set(publicBidRecord).catch(() => {});
+
+        db.ref(`privateContacts/${itemId}/bids/${newBidKey}`).set({
           name: buyerProfile.name,
-          phone: buyerProfile.phone,
+          phone: cleanPhoneKey,
           line: buyerProfile.line || '',
           ig: buyerProfile.ig || '',
           fb: buyerProfile.fb || '',
-          updatedAt: getServerNow(),
+          amount: bidAmountTWD,
+          timestamp: now,
+          ownerUid: uid
+        }).catch(() => {});
+
+        db.ref(`privateContacts/${itemId}/topBidder`).set({
+          name: buyerProfile.name,
+          phone: cleanPhoneKey,
+          line: buyerProfile.line || '',
+          ig: buyerProfile.ig || '',
+          fb: buyerProfile.fb || '',
+          timestamp: now,
+          ownerUid: uid
+        }).catch(() => {});
+
+        const bSync = {
+          name: buyerProfile.name,
+          phone: cleanPhoneKey,
+          line: buyerProfile.line || '',
+          ig: buyerProfile.ig || '',
+          fb: buyerProfile.fb || '',
+          ownerUid: uid,
+          updatedAt: now,
           lastBidItem: itemId,
           lastBidAmount: bidAmountTWD
         };
-        db.ref('settings/buyers/' + key).update(bSync).catch(() => {});
-        db.ref('buyers/' + key).update(bSync).catch(() => {});
+        db.ref('settings/buyers/' + cleanPhoneKey).update(bSync).catch(() => {});
+        db.ref('buyers/' + cleanPhoneKey).update(bSync).catch(() => {});
       } catch (e) {}
-      const localItem = AppState.items.find(i => i.id === itemId);
+
       if (localItem && val) {
         localItem.currentPrice = val.currentPrice;
         localItem.currentBid = val.currentPrice;
         localItem.highestBid = val.currentPrice;
-        localItem.endTime = val.endTime;
+        localItem.endTime = val.endTime || localItem.endTime;
         localItem.topBidder = buyerProfile.name;
         localItem.lastBidder = buyerProfile.name;
         localItem.highestBidder = buyerProfile.name;
         localItem.topBidderContact = JSON.parse(JSON.stringify(buyerProfile));
-        localItem.topBidTime = getServerNow();
-        if (val.bids) localItem.bids = val.bids;
+        localItem.topBidTime = now;
+        if (!localItem.bids || typeof localItem.bids !== 'object') localItem.bids = {};
+        localItem.bids[newBidKey] = {
+          bidderName: buyerProfile.name,
+          bidderPhone: buyerProfile.phone,
+          bidderPhoneMasked: maskPhone(buyerProfile.phone),
+          bidderLine: buyerProfile.line || '',
+          bidderIg: buyerProfile.ig || '',
+          bidderFb: buyerProfile.fb || '',
+          ownerUid: uid,
+          amount: bidAmountTWD,
+          timestamp: now
+        };
         if (!localItem.bidHistory) localItem.bidHistory = [];
         localItem.bidHistory.push({
           user: buyerProfile.name,
           amount: bidAmountTWD,
-          time: getServerNow(),
+          time: now,
           contact: JSON.parse(JSON.stringify(buyerProfile)),
           phoneMasked: maskPhone(buyerProfile.phone)
         });
@@ -4962,7 +5335,7 @@ async function submitBidTransaction(itemId, bidAmountTWD, buyerProfile) {
       renderBidHistory();
       renderWinnerStatus();
       triggerConfetti();
-      syncToFirebase();
+      if (AppState.isAdmin && AppState.isAdminAuthenticated) syncToFirebase();
     }
   } catch (err) {
     if (err && err.message !== 'FIREBASE_OFFLINE_FALLBACK') {
@@ -5364,6 +5737,12 @@ function handleAdminLoginSubmit() {
   applyRoleBasedQADefaults(false);
   renderQA(true, null);
 
+  if (FirebaseManager.signInAdminFirebaseAuth) {
+    FirebaseManager.signInAdminFirebaseAuth().then(() => {
+      FirebaseManager.syncAdminOnlyFirebaseListeners();
+    }).catch(() => {});
+  }
+
   if (typeof pendingCb === 'function') {
     pendingCb();
   } else {
@@ -5384,6 +5763,13 @@ function handleAdminLogout() {
     sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
     sessionStorage.setItem('auction_active_page', 'auction');
   } catch (e) {}
+
+  if (FirebaseManager.stopAdminOnlyListeners) {
+    FirebaseManager.stopAdminOnlyListeners();
+  }
+  if (FirebaseManager.signOutAdminFirebaseAuth) {
+    FirebaseManager.signOutAdminFirebaseAuth().catch(() => {});
+  }
 
   el('modal-fb-setup')?.classList.remove('show');
   el('nav-more-dropdown')?.classList.remove('show');
@@ -6410,10 +6796,12 @@ function lookupCloudBuyerByPhone(rawPhone) {
 
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('buyers/' + clean).once('value').then(snap => {
-      if (snap.exists()) {
-        applyMatchedBuyer(snap.val());
-      }
+    FirebaseManager.ensureAuthSession().then(() => {
+      db.ref('buyers/' + clean).once('value').then(snap => {
+        if (snap.exists()) {
+          applyMatchedBuyer(snap.val());
+        }
+      }).catch(() => {});
     }).catch(() => {});
   }
 }
@@ -6695,13 +7083,14 @@ function switchToTestBuyerPersona(personaObj) {
     SafeStorage.set('agy_registered_users', boundPhones);
   } catch (e) {}
 
-  // 同步寫入買家名冊與 Firebase，確保順位遞補清單中具備完整聯絡方式
+  // 同步寫入買家名冊與 Firebase（含 ownerUid 隔離標記），確保順位遞補清單中具備完整聯絡方式
   const buyerData = {
     name: AppState.userProfile.name,
     phone: cleanPhone,
     line: AppState.userProfile.line || '',
     ig: AppState.userProfile.ig || '',
     fb: AppState.userProfile.fb || '',
+    ownerUid: FirebaseManager.getCurrentUid(),
     retentionDays: 'forever',
     retentionExpiresAt: null,
     isPermanent: true,
@@ -6718,8 +7107,11 @@ function switchToTestBuyerPersona(personaObj) {
   }
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('settings/buyers/' + cleanPhone).update(buyerData).catch(() => {});
-    db.ref('buyers/' + cleanPhone).update(buyerData).catch(() => {});
+    FirebaseManager.ensureAuthSession().then(authUid => {
+      buyerData.ownerUid = authUid || buyerData.ownerUid;
+      db.ref('settings/buyers/' + cleanPhone).update(buyerData).catch(() => {});
+      db.ref('buyers/' + cleanPhone).update(buyerData).catch(() => {});
+    }).catch(() => {});
   }
 
   // 同步更新彈窗輸入框與全站顯示
@@ -7072,12 +7464,13 @@ async function handleAdminClearTestData(targetItemId = null) {
     el('inp-bid-val').value = getMinimumValidBid(targetItem);
   }
 
-  // 即時同步清除雲端 Firebase 節點（明確清空 bids / highestBid / lastBidder / highestBidder / winner / proxyBids / qa 等全欄位）
+  // 即時同步清除雲端 Firebase 節點（明確清空 bids / liveBid / privateContacts / qa 等全欄位）
   const db = FirebaseManager.getDb();
   if (db) {
     db.ref('settings/blacklist').remove().catch(() => {});
     await Promise.all(itemsToReset.map(it => {
       if (it && it.id) {
+        db.ref(`privateContacts/${it.id}`).set(null).catch(() => {});
         return db.ref(`auction/items/${it.id}`).update(buildFirebaseResetPayload(it, true)).catch(() => {});
       }
       return Promise.resolve();
@@ -7178,14 +7571,15 @@ function saveBuyerProfile() {
 
   syncIdentityDisplayUI();
 
-  // 即時寫入雲端 buyers（買家註冊名冊）節點，同步保留天數/永久保留狀態與到期時間戳記
+  // 即時寫入雲端 buyers（買家註冊名冊）節點（含 ownerUid 隔離標記）
   const key = phoneCheck.phone.replace(/[^0-9]/g, '');
   const buyerData = {
     name: name,
-    phone: phoneCheck.phone,
+    phone: key,
     line: AppState.userProfile.line || '',
     ig: AppState.userProfile.ig || '',
     fb: AppState.userProfile.fb || '',
+    ownerUid: FirebaseManager.getCurrentUid(),
     retentionDays: retentionDays,
     retentionExpiresAt: retentionExpiresAt,
     isPermanent: isForever,
@@ -7205,8 +7599,11 @@ function saveBuyerProfile() {
 
   const db = FirebaseManager.getDb();
   if (db) {
-    db.ref('settings/buyers/' + key).update(buyerData).catch(() => {});
-    db.ref('buyers/' + key).update(buyerData).catch(() => {});
+    FirebaseManager.ensureAuthSession().then(authUid => {
+      buyerData.ownerUid = authUid || buyerData.ownerUid;
+      db.ref('settings/buyers/' + key).update(buyerData).catch(() => {});
+      db.ref('buyers/' + key).update(buyerData).catch(() => {});
+    }).catch(() => {});
   }
   syncToLocalServer();
 
@@ -7937,15 +8334,18 @@ function handleBuyerRespondBackupOffer(isAccept) {
   SafeStorage.set('agy_items', AppState.items);
   const db = FirebaseManager.getDb();
   if (db && item.id) {
-    db.ref(`auction/items/${item.id}`).update({
-      currentPrice: item.currentPrice,
-      finalDealPrice: item.finalDealPrice || null,
-      topBidder: item.topBidderContact || item.topBidder,
-      backupOffer: item.backupOffer,
-      winnerMsgs: item.winnerMsgs || []
+    FirebaseManager.ensureAuthSession().then(authUid => {
+      db.ref(`auction/items/${item.id}/backupResponse`).set({
+        status: bo.status,
+        buyerReplyNote: replyNote || '',
+        respondedAt: now,
+        ownerUid: authUid
+      }).catch(() => {});
+      if (AppState.isAdmin && AppState.isAdminAuthenticated) {
+        syncToFirebase();
+      }
     }).catch(() => {});
   }
-  syncToFirebase();
   syncToLocalServer();
   renderWinnerStatus();
   renderActiveItemDisplay();
@@ -7956,24 +8356,28 @@ function handleBuyerRespondBackupOffer(isAccept) {
    16. 雲端同步與監聽 (Firebase Sync & Realtime Listeners - 舊資料保護與安全寫入)
    ───────────────────────────────────────────────────────────── */
 function syncToFirebase() {
+  if (!(AppState.isAdmin && AppState.isAdminAuthenticated)) return;
   const db = FirebaseManager.getDb();
   if (!db || !AppState.auctionId) return;
 
   const ref = db.ref('auctions/' + AppState.auctionId);
+  const uid = FirebaseManager.getCurrentUid();
+  const sanitizedItems = (AppState.items || []).map(it => sanitizeItemForPublicSync(it)).filter(Boolean);
 
-  // 採用合併更新 (update) 而非整筆覆蓋 (set)，防止其他欄位與舊資料流失
+  // 採用合併更新 (update) 與去敏後資料寫入，防止覆蓋同時絕不洩漏買家明碼個資至公開節點
   const payload = {
     studioName: AppState.studioName,
-    items: AppState.items,
+    items: sanitizedItems,
     broadcasts: AppState.broadcasts,
     lastUpdated: getServerNow()
   };
 
-  // 向下相容支援：若當前有商品，將首項商品的舊版頂層欄位一併安全合併寫入
-  if (AppState.items && AppState.items.length > 0) {
-    const main = AppState.items[0];
-    const mainHasBids = hasItemBids(main);
-    const mainCurPrice = getEffectiveCurrentBidPrice(main);
+  // 向下相容支援：若當前有商品，將首項商品的舊版頂層欄位一併安全合併寫入（已遮罩處理）
+  if (sanitizedItems.length > 0) {
+    const mainRaw = AppState.items[0];
+    const main = sanitizedItems[0];
+    const mainHasBids = hasItemBids(mainRaw);
+    const mainCurPrice = getEffectiveCurrentBidPrice(mainRaw);
     payload.itemName = main.name;
     payload.itemSubtitle = main.subtitle || '';
     payload.itemDesc = main.desc || '';
@@ -7981,10 +8385,10 @@ function syncToFirebase() {
     payload.currentPrice = mainCurPrice;
     payload.currentBid = mainCurPrice;
     payload.highestBid = mainHasBids ? mainCurPrice : Number(main.startPrice || 0);
-    payload.bids = mainHasBids ? main.bids : null;
+    payload.bids = mainHasBids && main.bids && Object.keys(main.bids).length ? main.bids : null;
     payload.topBidder = mainHasBids ? (main.topBidder || null) : null;
-    payload.lastBidder = mainHasBids ? (getBidderName(main.topBidder) || null) : null;
-    payload.highestBidder = mainHasBids ? (getBidderName(main.topBidder) || null) : null;
+    payload.lastBidder = mainHasBids ? (getBidderName(mainRaw.topBidder) || null) : null;
+    payload.highestBidder = mainHasBids ? (getBidderName(mainRaw.topBidder) || null) : null;
     payload.winner = main.winner || null;
     payload.proxyBids = null;
     payload.increment = main.increment;
@@ -7995,11 +8399,12 @@ function syncToFirebase() {
       isCover: i === 0
     }));
 
-    // 同步更新至 auction/items 節點以支援跨客戶端 Transaction、問答與防壓標（空欄位必須顯式送 null 才會清除雲端舊值）
+    // 同步更新至 auction/items 節點（含初始化 liveBid 原子狀態，空欄位顯式送 null，明碼個資絕不進公開節點）
     AppState.items.forEach(it => {
       if (it && it.id) {
-        const hasBidsMap = it.bids && Object.keys(it.bids).length > 0;
-        const hasHistoryArr = Array.isArray(it.bidHistory) && it.bidHistory.length > 0;
+        const cleanIt = sanitizeItemForPublicSync(it);
+        const hasBidsMap = cleanIt.bids && Object.keys(cleanIt.bids).length > 0;
+        const hasHistoryArr = Array.isArray(cleanIt.bidHistory) && cleanIt.bidHistory.length > 0;
         const itHasBids = hasItemBids(it);
         const effCur = getEffectiveCurrentBidPrice(it);
         const hasWinnerMsgs = Array.isArray(it.winnerMsgs) && it.winnerMsgs.length > 0;
@@ -8013,10 +8418,10 @@ function syncToFirebase() {
           currentPrice: effCur,
           currentBid: effCur,
           highestBid: itHasBids ? effCur : Number(it.startPrice || 0),
-          topBidder: itHasBids && it.topBidder ? it.topBidder : null,
+          topBidder: itHasBids && cleanIt.topBidder ? cleanIt.topBidder : null,
           lastBidder: itHasBids ? (getBidderName(it.topBidder) || it.lastBidder || null) : null,
           highestBidder: itHasBids ? (getBidderName(it.topBidder) || it.highestBidder || null) : null,
-          topBidderContact: itHasBids ? (it.topBidderContact || null) : null,
+          topBidderContact: null,
           topBidTime: itHasBids ? (it.topBidTime || null) : null,
           winner: it.winner || null,
           proxyBids: null,
@@ -8036,9 +8441,9 @@ function syncToFirebase() {
           antiSnipeEnable: it.antiSnipeEnable !== false && it.antiSnipeEnabled !== false,
           antiSnipeMins: Number(it.antiSnipeMins || 3),
           antiSnipeExt: Number(it.antiSnipeExt || it.antiSnipeExtMins || 3),
-          qa: (it.qa && Object.keys(it.qa).length > 0) ? it.qa : null,
-          bids: hasBidsMap ? it.bids : null,
-          bidHistory: hasHistoryArr ? it.bidHistory : null,
+          qa: (cleanIt.qa && Object.keys(cleanIt.qa).length > 0) ? cleanIt.qa : null,
+          bids: hasBidsMap ? cleanIt.bids : null,
+          bidHistory: hasHistoryArr ? cleanIt.bidHistory : null,
           backupOffer: it.backupOffer || null,
           finalDealPrice: it.finalDealPrice || null,
           defaultedBidders: hasDefaulted ? it.defaultedBidders : null,
@@ -8046,7 +8451,18 @@ function syncToFirebase() {
           pickupDeadlineHours: Number(it.pickupDeadlineHours || 48),
           pickupDeadlineMode: it.pickupDeadlineMode || 'hours',
           pickupDeadlineWeekday: Number(it.pickupDeadlineWeekday ?? 6),
-          pickupDeadlineCustomText: it.pickupDeadlineCustomText || ''
+          pickupDeadlineCustomText: it.pickupDeadlineCustomText || '',
+          liveBid: {
+            currentPrice: effCur,
+            currentBid: effCur,
+            highestBid: itHasBids ? effCur : Number(it.startPrice || 0),
+            hasBids: itHasBids,
+            relistSeq: Number(it.relistSeq || 0),
+            endTime: Number(it.endTime || 0),
+            ownerUid: uid,
+            topBidTime: Number(it.topBidTime || getServerNow()),
+            topBidder: itHasBids && cleanIt.topBidder ? cleanIt.topBidder : null
+          }
         }).catch(() => {});
       }
     });
@@ -8846,19 +9262,14 @@ function bindEvents() {
     const payload = {
       studioName: AppState.studioName,
       baseCurrency: AppState.baseCurrency,
-      items: AppState.items,
+      items: (AppState.items || []).map(it => sanitizeItemForPublicSync(it)).filter(Boolean),
       broadcasts: AppState.broadcasts,
       lastUpdated: getServerNow()
     };
 
     db.ref('auctions/' + UNIFIED_AUCTION_ID).update(payload).then(() => {
-      // 鏡像更新至 auction/items
-      (AppState.items || []).forEach(it => {
-        if (it && it.id) {
-          db.ref(`auction/items/${it.id}`).update(it).catch(() => {});
-        }
-      });
-      showToast('🚀 拍賣已全面正式發布並同步至統一雲端節點！');
+      syncToFirebase();
+      showToast('🚀 拍賣已全面正式發布並安全同步至統一雲端節點！');
       updateShareUrl();
       el('btn-switch-mode')?.click();
     }).catch(err => {
