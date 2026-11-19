@@ -35,7 +35,7 @@
   <meta http-equiv="Expires" content="0" />
 
   <!-- 主樣式表 (v8.2 全面程式碼體檢與高/中/體驗最佳化修復) -->
-  <link rel="stylesheet" href="style.css?v=8.2&t=20261119_audit_full_fix" />
+  <link rel="stylesheet" href="style.css?v=8.3&t=20261119_real_fb_config" />
 </head>
 
 <body>
@@ -1667,7 +1667,7 @@
       </p>
       <div class="form-group">
         <label class="form-label">API Key</label>
-        <input type="text" id="fb-api-key" class="form-input" value="AIzaSyDemoAuctionKeyFake1234567890" placeholder="AIzaSyDemoAuctionKeyFake1234567890" autocomplete="off" />
+        <input type="text" id="fb-api-key" class="form-input" value="AIzaSyBbO973mxIfyP3P2rWQVsI9KsgQHE6_amg" placeholder="AIzaSyBbO973mxIfyP3P2rWQVsI9KsgQHE6_amg" autocomplete="off" />
       </div>
       <div class="form-group">
         <label class="form-label">Database URL</label>
@@ -1936,12 +1936,12 @@
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
   <!-- 主程式腳本 (v8.2 全面程式碼體檢與高/中/體驗最佳化修復) -->
-  <script src="app.js?v=8.2&t=20261119_audit_full_fix"></script>
+  <script src="app.js?v=8.3&t=20261119_real_fb_config"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
     (function () {
-      const CURRENT_SW_VER = 'jiansheng-auction-v44';
+      const CURRENT_SW_VER = 'jiansheng-auction-v45';
       try {
         const lastVer = localStorage.getItem('agy_sw_cache_ver');
         if (lastVer !== CURRENT_SW_VER && 'caches' in window) {
@@ -1963,7 +1963,7 @@
         });
 
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=34').then(reg => {
+          navigator.serviceWorker.register('./sw.js?v=35').then(reg => {
             reg.update().catch(() => {});
             if (reg.waiting) {
               reg.waiting.postMessage({ action: 'skipWaiting' });

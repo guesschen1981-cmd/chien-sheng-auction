@@ -1401,9 +1401,14 @@ function setupLogoDragAndDrop() {
    ───────────────────────────────────────────────────────────── */
 // 系統內建預設 Firebase Realtime Database 雲端節點常數 (新加坡區域 chien-sheng-auction)
 const DEFAULT_FIREBASE_CONFIG = Object.freeze({
-  apiKey: "AIzaSyDemoAuctionKeyFake1234567890",
+  apiKey: "AIzaSyBbO973mxIfyP3P2rWQVsI9KsgQHE6_amg",
+  authDomain: "chien-sheng-auction.firebaseapp.com",
   databaseURL: "https://chien-sheng-auction-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "chien-sheng-auction"
+  projectId: "chien-sheng-auction",
+  storageBucket: "chien-sheng-auction.firebasestorage.app",
+  messagingSenderId: "296167438991",
+  appId: "1:296167438991:web:6e2b647b2f0a1eab438efa",
+  measurementId: "G-7LE352GQFZ"
 });
 
 const ADMIN_FIREBASE_EMAIL = 'guess_chen1981@jiansheng-auction.com';
@@ -1441,14 +1446,24 @@ const FirebaseManager = (function () {
       const stored = SafeStorage.get('agy_fb_config');
       if (stored) {
         const parsed = typeof stored === 'object' ? stored : JSON.parse(stored);
-        if (isValidFirebaseConfig(parsed)) {
-          return {
+        if (isValidFirebaseConfig(parsed) && !isPlaceholderApiKey(parsed.apiKey)) {
+          const customUrl = String(parsed.databaseURL).trim();
+          const customProj = String(parsed.projectId).trim();
+          const base = (customProj === DEFAULT_CONFIG.projectId && customUrl === DEFAULT_CONFIG.databaseURL)
+            ? Object.assign({}, DEFAULT_CONFIG)
+            : {};
+          return Object.assign(base, {
             apiKey: String(parsed.apiKey).trim(),
-            databaseURL: String(parsed.databaseURL).trim(),
-            projectId: String(parsed.projectId).trim()
-          };
+            authDomain: parsed.authDomain ? String(parsed.authDomain).trim() : (base.authDomain || `${customProj}.firebaseapp.com`),
+            databaseURL: customUrl,
+            projectId: customProj,
+            storageBucket: parsed.storageBucket ? String(parsed.storageBucket).trim() : (base.storageBucket || undefined),
+            messagingSenderId: parsed.messagingSenderId ? String(parsed.messagingSenderId).trim() : (base.messagingSenderId || undefined),
+            appId: parsed.appId ? String(parsed.appId).trim() : (base.appId || undefined),
+            measurementId: parsed.measurementId ? String(parsed.measurementId).trim() : (base.measurementId || undefined)
+          });
         } else {
-          // 自動清除無效或空白的覆蓋設定，確保絕不斷線
+          // 自動清除無效、空白或舊版範例假金鑰的覆蓋設定，確保升級後立即使用真實雲端節點連線
           SafeStorage.remove('agy_fb_config');
         }
       }
