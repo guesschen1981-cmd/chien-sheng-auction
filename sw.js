@@ -1,12 +1,12 @@
 /* ============================================================
    建生工坊拍賣系統  –  sw.js (Service Worker 腳本)
    ============================================================ */
-const CACHE_NAME = 'jiansheng-auction-v43';
+const CACHE_NAME = 'jiansheng-auction-v44';
 const ASSETS = [
   './',
   './index.html',
-  './style.css?v=8.1&t=20261119_firebase_rules_hardening',
-  './app.js?v=8.1&t=20261119_firebase_rules_hardening',
+  './style.css?v=8.2&t=20261119_audit_full_fix',
+  './app.js?v=8.2&t=20261119_audit_full_fix',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -34,11 +34,16 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // 僅快取同源 GET 靜態資源請求，略過 POST (如 /__save_my_data__) 與第三方 CDN / API
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
   if (
     event.request.url.includes('firebaseio.com') ||
     event.request.url.includes('firebasedatabase.app') ||
     event.request.url.includes('googleapis.com') ||
-    event.request.url.includes('my_auction_data.json')
+    event.request.url.includes('my_auction_data.json') ||
+    event.request.url.includes('__server_info__')
   ) {
     return;
   }
@@ -46,9 +51,9 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request, { cache: 'no-store' })
       .then(res => {
-        if (res && res.status === 200) {
+        if (res && res.status === 200 && res.type === 'basic') {
           const resClone = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone)).catch(() => {});
         }
         return res;
       })

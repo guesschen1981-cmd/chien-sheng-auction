@@ -1414,10 +1414,16 @@ const FirebaseManager = (function () {
   let _auth = null;
   let _activeCfg = Object.assign({}, DEFAULT_FIREBASE_CONFIG);
   let _adminListenersActive = false;
+  let _warnedInvalidKey = false;
   const _buyersMap = {};
 
   // 強制寫死綁定真實 Firebase Realtime Database 雲端節點 (新加坡區域)
   const DEFAULT_CONFIG = DEFAULT_FIREBASE_CONFIG;
+
+  function isPlaceholderApiKey(key) {
+    const k = String(key || '').trim();
+    return !k || k === 'AIzaSyDemoAuctionKeyFake1234567890' || k.includes('DemoAuctionKeyFake');
+  }
 
   function isValidFirebaseConfig(candidate) {
     if (!candidate || typeof candidate !== 'object') return false;
@@ -1493,6 +1499,14 @@ const FirebaseManager = (function () {
     } catch (err) {
       if (err && err.code) {
         console.warn('Firebase 匿名/身分登入提示:', err.code, err.message);
+        if ((err.code === 'auth/api-key-not-valid' || isPlaceholderApiKey(_activeCfg.apiKey)) && !_warnedInvalidKey) {
+          _warnedInvalidKey = true;
+          if (typeof AppState !== 'undefined' && AppState.isAdmin) {
+            setTimeout(() => {
+              showToast('⚠️ Firebase API Key 尚為範例金鑰，請開啟「☁️ Firebase 雲端資料庫設定」填入真實 Web API Key 以啟用安全驗證！', 5500);
+            }, 400);
+          }
+        }
       }
     }
     return getCurrentUid();
@@ -1674,6 +1688,7 @@ const FirebaseManager = (function () {
     getDefaultConfig: getDefaultConfig,
     getActiveConfig: getActiveConfig,
     isValidFirebaseConfig: isValidFirebaseConfig,
+    isPlaceholderApiKey: isPlaceholderApiKey,
     getCurrentUid: getCurrentUid,
     ensureAuthSession: ensureAuthSession,
     signInAdminFirebaseAuth: signInAdminFirebaseAuth,
@@ -1692,6 +1707,11 @@ function hydratePrivateContactsIntoItems(privMap) {
     if (!pNode || typeof pNode !== 'object') return;
     if (pNode.topBidder && it.topBidder) {
       it.topBidderContact = Object.assign({}, it.topBidderContact || {}, pNode.topBidder);
+      updated = true;
+    }
+    if (pNode.backupOffer && it.backupOffer && pNode.backupOffer.offerId === it.backupOffer.offerId) {
+      it.backupOffer.buyerPhone = pNode.backupOffer.buyerPhone || it.backupOffer.buyerPhone || '';
+      it.backupOffer.buyerLine = pNode.backupOffer.buyerLine || it.backupOffer.buyerLine || '';
       updated = true;
     }
     if (pNode.bids && it.bids) {
@@ -1819,12 +1839,23 @@ function sanitizeItemForPublicSync(it) {
       }))
     : [];
 
+  let cleanBackupOffer = null;
+  if (it.backupOffer && typeof it.backupOffer === 'object') {
+    cleanBackupOffer = Object.assign({}, it.backupOffer);
+    if (cleanBackupOffer.buyerPhone) {
+      cleanBackupOffer.buyerPhoneMasked = cleanBackupOffer.buyerPhoneMasked || maskPhone(cleanBackupOffer.buyerPhone);
+    }
+    delete cleanBackupOffer.buyerPhone;
+    delete cleanBackupOffer.buyerLine;
+  }
+
   const copy = Object.assign({}, it, {
     currentPrice: effCur,
     currentBid: effCur,
     highestBid: itHasBids ? effCur : Number(it.startPrice || 0),
     topBidder: itHasBids && topName ? { name: topName, phoneMasked: topMasked, ownerUid: it.topBidder?.ownerUid || uid } : '',
     topBidderContact: null,
+    backupOffer: cleanBackupOffer,
     bids: cleanBids,
     bidHistory: cleanHistory,
     qa: cleanQa
@@ -1836,21 +1867,26 @@ function sanitizeItemForPublicSync(it) {
  * 徹底統一 Firebase 拍賣商品與出價、問答同步模組 (雙向合流保護)
  * 同步監聽 auctions/item-local-recovered 與 auction/items 節點，合流最新數據
  */
-function listenAuctionSync() {
+let _auctionSyncInitialized = false;
+
+function listenAuctionSync(auctionId = UNIFIED_AUCTION_ID) {
   const db = FirebaseManager.getDb();
   if (!db) return;
+  const targetAuctionId = auctionId || UNIFIED_AUCTION_ID;
+  AppState.auctionId = targetAuctionId;
 
-  AppState.auctionId = UNIFIED_AUCTION_ID;
+  if (_auctionSyncInitialized) return;
+  _auctionSyncInitialized = true;
 
-  // 1. 監聽統一主拍賣節點 auctions/item-local-recovered
-  db.ref('auctions/' + UNIFIED_AUCTION_ID).on('value', snap => {
+  // 1. 統一主拍賣節點監聽（唯此單一通道，不重複掛載 listener）
+  db.ref('auctions/' + targetAuctionId).on('value', snap => {
     if (!snap.exists()) return;
     const data = snap.val();
     if (!data) return;
     handleIncomingAuctionData(data);
   });
 
-  // 2. 鏡像監聽單數節點 auction/items
+  // 2. 鏡像監聽單數節點 auction/items（含 liveBid / bids / qa）
   db.ref('auction/items').on('value', snap => {
     if (!snap.exists()) return;
     const remoteItems = snap.val();
@@ -2062,9 +2098,11 @@ function handleIncomingAuctionData(data) {
         const isRemoteFreshRelist = (remoteSeq > Number(local.relistSeq || 0)) || (remoteReopen > Number(local.reopenedAt || 0));
 
         const rHasBids = hasItemBids(rItem);
-        if (isRemoteFreshRelist || (!rHasBids && Number(rItem.currentBid || rItem.startPrice) <= Number(rItem.startPrice || local.startPrice || 10000))) {
+        const localHasBids = hasItemBids(local);
+        // 僅當遠端為新一輪重開 (isRemoteFreshRelist)，或本機與遠端皆尚無出價時才重置；絕不覆蓋由 liveBid 剛同步進來的有效出價！
+        if (isRemoteFreshRelist || (!rHasBids && !localHasBids && Number(rItem.currentBid || rItem.startPrice) <= Number(rItem.startPrice || local.startPrice || 10000))) {
           const resetP = Number(rItem.startPrice || local.startPrice || 10000);
-          if (isRemoteFreshRelist || local.currentPrice !== resetP || hasItemBids(local)) {
+          if (isRemoteFreshRelist || local.currentPrice !== resetP) {
             applyCleanResetFields(local, resetP, false);
             if (remoteSeq) local.relistSeq = remoteSeq;
             if (remoteReopen) local.reopenedAt = remoteReopen;
@@ -2105,8 +2143,15 @@ function handleIncomingAuctionData(data) {
           changed = true;
         }
         if (rItem.backupOffer !== undefined) {
-          if (JSON.stringify(local.backupOffer || null) !== JSON.stringify(rItem.backupOffer || null)) {
-            local.backupOffer = rItem.backupOffer;
+          const curLocalPhone = local.backupOffer?.buyerPhone || '';
+          const curLocalLine = local.backupOffer?.buyerLine || '';
+          const nextBo = rItem.backupOffer ? Object.assign({}, rItem.backupOffer) : null;
+          if (nextBo && AppState.isAdmin && AppState.isAdminAuthenticated) {
+            if (!nextBo.buyerPhone && curLocalPhone) nextBo.buyerPhone = curLocalPhone;
+            if (!nextBo.buyerLine && curLocalLine) nextBo.buyerLine = curLocalLine;
+          }
+          if (JSON.stringify(local.backupOffer || null) !== JSON.stringify(nextBo || null)) {
+            local.backupOffer = nextBo;
             changed = true;
           }
         }
@@ -2148,6 +2193,9 @@ function handleIncomingAuctionData(data) {
     });
 
     if (changed) {
+      if (AppState.isAdmin && AppState.isAdminAuthenticated && AppState.privateContactsCache) {
+        hydratePrivateContactsIntoItems(AppState.privateContactsCache);
+      }
       applySafeBackgroundRender();
     }
   }
@@ -3001,7 +3049,9 @@ function triggerLineContact(lineId) {
     try {
       window.location.href = `line://ti/p/${pathSeg}`;
       setTimeout(() => {
-        window.open(webUrl, '_blank', 'noopener');
+        if (document.visibilityState === 'visible') {
+          window.open(webUrl, '_blank', 'noopener');
+        }
       }, 700);
     } catch (e) {
       window.open(webUrl, '_blank', 'noopener');
@@ -3155,12 +3205,38 @@ function extractManualTextPreservingEdit(currentVal, prevComposed) {
   if (idx !== -1) {
     return (raw.slice(0, idx) + ' ' + raw.slice(idx + prev.length)).trim();
   }
-  // 容錯：若使用者小幅刪改了前段最後標點
+  // 容錯：若使用者小幅刪改或刪除結尾標點，依前次句數標點錨點截取後方補充字元，避免整段重複拼接
   const prevCore = prev.replace(/[。！!，,]+$/, '');
   if (prevCore && raw.includes(prevCore)) {
     return raw.replace(prevCore, '').replace(/^[。！!，,\s]+/, '').trim();
   }
+  if (prevCore.length >= 8 && raw.startsWith(prevCore.slice(0, 6))) {
+    const tailAnchor = prevCore.slice(-6);
+    const tailPos = raw.indexOf(tailAnchor);
+    if (tailPos !== -1) {
+      return raw.slice(tailPos + tailAnchor.length).replace(/^[。！!，,\s]+/, '').trim();
+    }
+    return '';
+  }
   return raw.trim();
+}
+
+/** 同步同一提問於主頁面 (#qa-list)、放大工作台 (#qa-workbench-list) 與後台總覽 (#admin-all-qa-list) 的草稿與標籤狀態 */
+function syncQADraftAcrossViews(qKey, draftText, selectedIds = null) {
+  ['inp-reply-', 'wb-inp-reply-', 'inp-admin-reply-'].forEach(pref => {
+    const targetInp = el(`${pref}${qKey}`);
+    if (targetInp && targetInp.value !== draftText) {
+      targetInp.value = draftText;
+      autoResizeQATextarea(targetInp);
+    }
+    const boxPref = pref === 'inp-admin-reply-' ? 'qa-admin-overview-box-' : pref.replace('inp-reply-', 'qa-admin-reply-box-');
+    const boxEl = el(`${boxPref}${qKey}`);
+    if (boxEl && Array.isArray(selectedIds)) {
+      boxEl.querySelectorAll('.btn-qa-canned').forEach(chipEl => {
+        chipEl.classList.toggle('is-selected', selectedIds.includes(chipEl.dataset.cannedId));
+      });
+    }
+  });
 }
 
 /** 自動依據內容高度撐開 Q&A 回覆輸入框，避免出現狹窄高度與白色捲軸 */
@@ -3174,8 +3250,7 @@ function autoResizeQATextarea(textarea) {
 
 /** 共用建立「12 組預設 ＋ 自訂快答 ＋ 管理鈕」標籤列 HTML */
 function buildCannedChipsHtml(itemId, qaKey, inputPrefix = 'inp-reply-') {
-  const boxKey = `${inputPrefix}${qaKey}`;
-  const selectedIds = Array.isArray(AppState.qaSelectedCannedMap?.[boxKey]) ? AppState.qaSelectedCannedMap[boxKey] : [];
+  const selectedIds = Array.isArray(AppState.qaSelectedCannedMap?.[qaKey]) ? AppState.qaSelectedCannedMap[qaKey] : [];
   const allCanned = getAllCannedReplies();
   const chips = allCanned.map(c => {
     const isSelected = selectedIds.includes(c.id);
@@ -3610,8 +3685,7 @@ function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, 
   // 8. 管理者專屬：收合式「12 組一鍵罐頭快答 ＋ 智慧多選組合 ＋ 自訂詞庫」（最高管理者待回覆自動展開，其餘點擊展開）
   let adminReplyBoxHtml = '';
   if (AppState.isAdmin) {
-    const draftKey = `${inputPrefix}${k}`;
-    const savedDraft = (AppState.qaDraftTextMap && AppState.qaDraftTextMap[draftKey]) ? AppState.qaDraftTextMap[draftKey] : '';
+    const savedDraft = (AppState.qaDraftTextMap && (AppState.qaDraftTextMap[k] ?? AppState.qaDraftTextMap[`${inputPrefix}${k}`])) || '';
     const cannedBtns = buildCannedChipsHtml('', k, inputPrefix);
 
     adminReplyBoxHtml = `
@@ -3636,6 +3710,7 @@ function buildSingleQAStreamNode(item, k, q, floorNum, likedMap, topBidderName, 
             ${q.reply ? `<button type="button" class="tbtn tbtn-gold tbtn-xs btn-append-qa-floor" data-qa-key="${k}" data-input-prefix="${inputPrefix}" title="保留現有回覆並新增一樓官方補充回覆" style="height:34px;padding:0 9px;font-weight:800;">➕ 加蓋樓層</button>` : ''}
           </div>
         </div>
+        <div class="qa-canned-compose-hint">💡 小提示：可先複選上方多組罐頭標籤自動串接成句，再於句尾補充說明（勿中途改寫前半自動句字詞）；草稿於主頁面與放大工作台即時互通。</div>
       </div>
     `;
   }
@@ -4309,10 +4384,10 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
       if (!AppState.qaLastComposedMap) AppState.qaLastComposedMap = {};
       if (!AppState.qaDraftTextMap) AppState.qaDraftTextMap = {};
 
-      const selectedIds = Array.isArray(AppState.qaSelectedCannedMap[boxKey])
-        ? AppState.qaSelectedCannedMap[boxKey].slice()
+      const selectedIds = Array.isArray(AppState.qaSelectedCannedMap[qKey])
+        ? AppState.qaSelectedCannedMap[qKey].slice()
         : [];
-      const prevComposed = AppState.qaLastComposedMap[boxKey] || '';
+      const prevComposed = AppState.qaLastComposedMap[qKey] || '';
       const manualText = inp ? extractManualTextPreservingEdit(inp.value, prevComposed) : '';
 
       const existingIdx = selectedIds.indexOf(cannedId);
@@ -4324,7 +4399,7 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
         selectedIds.push(cannedId);
       }
 
-      AppState.qaSelectedCannedMap[boxKey] = selectedIds;
+      AppState.qaSelectedCannedMap[qKey] = selectedIds;
 
       const allCanned = getAllCannedReplies();
       const selectedClauses = selectedIds
@@ -4336,20 +4411,12 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
 
       const onlyCannedComposed = composeSmartCannedReply(selectedClauses, '');
       const finalText = composeSmartCannedReply(selectedClauses, manualText);
-      AppState.qaLastComposedMap[boxKey] = onlyCannedComposed;
-      AppState.qaDraftTextMap[boxKey] = finalText;
+      AppState.qaLastComposedMap[qKey] = onlyCannedComposed;
+      AppState.qaDraftTextMap[qKey] = finalText;
 
-      // 同步更新該回覆盒所有標籤的選中樣式
-      const boxEl = btn.closest('.qa-admin-reply-box');
-      if (boxEl) {
-        boxEl.querySelectorAll('.btn-qa-canned').forEach(chipEl => {
-          chipEl.classList.toggle('is-selected', selectedIds.includes(chipEl.dataset.cannedId));
-        });
-      }
+      syncQADraftAcrossViews(qKey, finalText, selectedIds);
 
       if (inp) {
-        inp.value = finalText;
-        autoResizeQATextarea(inp);
         inp.focus();
       }
       showToast(isAdding
@@ -4366,27 +4433,20 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
     });
   });
 
-  // 8-2. 🧹 清空重選（一鍵取消所有選中標籤並清空輸入框文字）
+  // 8-2. 🧹 清空重選（一鍵取消所有選中標籤並清空輸入框文字，同步跨工作台狀態）
   containerEl.querySelectorAll('.btn-clear-qa-draft').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const qKey = btn.dataset.qaKey;
       const prefix = btn.dataset.inputPrefix || 'inp-reply-';
       const boxKey = `${prefix}${qKey}`;
-      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
-      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
-      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[qKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[qKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[qKey];
 
-      const boxEl = btn.closest('.qa-admin-reply-box');
-      if (boxEl) {
-        boxEl.querySelectorAll('.btn-qa-canned').forEach(c => c.classList.remove('is-selected'));
-      }
+      syncQADraftAcrossViews(qKey, '', []);
       const inp = el(boxKey);
-      if (inp) {
-        inp.value = '';
-        autoResizeQATextarea(inp);
-        inp.focus();
-      }
+      if (inp) inp.focus();
       showToast('🧹 已清空所有已選標籤與回覆草稿！');
     });
   });
@@ -4403,20 +4463,23 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
         showToast('請輸入回覆內容或點選上方罐頭快答！');
         return;
       }
-      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
-      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
-      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[qKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[qKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[qKey];
+      syncQADraftAcrossViews(qKey, '', []);
       submitQAReply(itId, qKey, inp.value.trim());
     });
   });
 
-  // 支援輸入時自動增高 (.qa-admin-textarea) 與 Ctrl+Enter / Cmd+Enter 快速送出
+  // 支援輸入時自動增高 (.qa-admin-textarea)、雙向草稿同步與 Ctrl+Enter / Cmd+Enter 快速送出
   containerEl.querySelectorAll('.qa-admin-textarea').forEach(area => {
     autoResizeQATextarea(area);
     area.addEventListener('input', () => {
       autoResizeQATextarea(area);
+      const qKey = area.id.replace('inp-admin-reply-', '').replace('wb-inp-reply-', '').replace('inp-reply-', '');
       if (!AppState.qaDraftTextMap) AppState.qaDraftTextMap = {};
-      AppState.qaDraftTextMap[area.id] = area.value;
+      AppState.qaDraftTextMap[qKey] = area.value;
+      syncQADraftAcrossViews(qKey, area.value, null);
     });
     area.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -4426,9 +4489,10 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
         const btn = containerEl.querySelector(`${isBackend ? '.btn-admin-submit-reply' : '.btn-submit-qa-reply'}[data-qa-key="${qKey}"]`);
         const itId = btn?.dataset.itemId || defaultItemId;
         if (area.value.trim()) {
-          if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[area.id];
-          if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[area.id];
-          if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[area.id];
+          if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[qKey];
+          if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[qKey];
+          if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[qKey];
+          syncQADraftAcrossViews(qKey, '', []);
           submitQAReply(itId, qKey, area.value.trim());
         }
       }
@@ -4447,9 +4511,10 @@ function bindQAStreamItemEvents(containerEl, defaultItemId) {
         showToast('請在輸入框填寫要加蓋樓層的補充回覆內容！');
         return;
       }
-      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[boxKey];
-      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[boxKey];
-      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[boxKey];
+      if (AppState.qaSelectedCannedMap) delete AppState.qaSelectedCannedMap[qKey];
+      if (AppState.qaLastComposedMap) delete AppState.qaLastComposedMap[qKey];
+      if (AppState.qaDraftTextMap) delete AppState.qaDraftTextMap[qKey];
+      syncQADraftAcrossViews(qKey, '', []);
       submitQAFollowup(itId, qKey, inp.value.trim(), true);
     });
   });
@@ -4887,11 +4952,14 @@ function renderAdminAllQA() {
     if (q.reply && String(q.reply).trim()) {
       floors.push({ floorType: 'main', replyIdx: -1, isSeller: true, author: AppState.studioName || '賣家官方回覆', text: q.reply, time: q.replyTime || q.time });
     }
-    if (Array.isArray(q.replies)) {
-      q.replies.forEach((r, rIdx) => {
-        if (r && r.text) floors.push({ floorType: 'sub', replyIdx: rIdx, isSeller: Boolean(r.isSeller), author: r.author || authorRaw, text: r.text, time: r.time });
-      });
-    }
+    const rawAdminReplies = Array.isArray(q.replies)
+      ? q.replies.map((r, rIdx) => ({ rIdx, r }))
+      : (q.replies && typeof q.replies === 'object'
+          ? Object.values(q.replies).map((r, rIdx) => ({ rIdx, r }))
+          : []);
+    rawAdminReplies.forEach(({ rIdx, r }) => {
+      if (r && r.text) floors.push({ floorType: 'sub', replyIdx: rIdx, isSeller: Boolean(r.isSeller), author: r.author || authorRaw, text: r.text, time: r.time });
+    });
     const repliesHtml = floors.length
       ? `<div class="qa-thread-replies">${floors.map((fl, fIdx) => `
           <div class="qa-reply-floor ${fl.isSeller ? 'is-seller' : 'is-buyer'}">
@@ -4914,8 +4982,7 @@ function renderAdminAllQA() {
         `).join('')}</div>`
       : '';
 
-    const draftAdminKey = `inp-admin-reply-${entry.qaKey}`;
-    const savedAdminDraft = (AppState.qaDraftTextMap && AppState.qaDraftTextMap[draftAdminKey]) ? AppState.qaDraftTextMap[draftAdminKey] : '';
+    const savedAdminDraft = (AppState.qaDraftTextMap && (AppState.qaDraftTextMap[entry.qaKey] ?? AppState.qaDraftTextMap[`inp-admin-reply-${entry.qaKey}`])) || '';
     const cannedBtns = buildCannedChipsHtml(entry.itemId, entry.qaKey, 'inp-admin-reply-');
 
     card.innerHTML = `
@@ -5462,6 +5529,26 @@ async function handleBidSubmit() {
     return;
   }
 
+  // 🚫 出價前雙重黑名單檢查（本機名單 ＋ 雲端 settings/blacklist/{cleanPhone}）
+  const cleanPhone = String(phoneCheck.phone || AppState.userProfile.phone || '').replace(/[^0-9]/g, '');
+  if (isBuyerBlacklisted(cleanPhone)) {
+    showToast('🚫 很抱歉，您的聯絡電話已被列入棄標黑名單，無法參與競標！', 4800);
+    return;
+  }
+  const db = FirebaseManager.getDb();
+  if (db && cleanPhone && (!AppState.isAdmin || !AppState.isAdminAuthenticated)) {
+    try {
+      await FirebaseManager.ensureAuthSession();
+      const blkSnap = await db.ref(`settings/blacklist/${cleanPhone}`).once('value');
+      if (blkSnap && blkSnap.exists()) {
+        if (!AppState.blacklist) AppState.blacklist = {};
+        AppState.blacklist[cleanPhone] = blkSnap.val() || { phone: cleanPhone };
+        showToast('🚫 系統查核您的帳號位於棄標黑名單中，已阻擋此次出價！', 4800);
+        return;
+      }
+    } catch (e) {}
+  }
+
   await submitBidTransaction(item.id, bidAmt, AppState.userProfile);
 }
 
@@ -5867,7 +5954,13 @@ function handleAdminDeleteItem(targetItemId) {
   }
 
   showToast(`🗑️ 已成功刪除品項【${item.name}】！`);
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`auction/items/${item.id}`).remove().catch(() => {});
+    db.ref(`privateContacts/${item.id}`).remove().catch(() => {});
+  }
   syncToFirebase();
+  syncToLocalServer();
 }
 
 /** 手動輸入公告並廣播給所有買家 */
@@ -6508,18 +6601,30 @@ function handleAuctionEndedState(currentItem, forceEnd = false) {
     } else {
       showToast(`⏳ 商品【${currentItem.name}】本檔期競標結束（尚無人出標）`);
     }
-    syncToFirebase();
-    syncToLocalServer();
+    if (AppState.isAdmin && AppState.isAdminAuthenticated) {
+      syncToFirebase();
+      syncToLocalServer();
+    }
   } else {
     renderWinnerStatus();
   }
 }
 
-// === 2. 精準倒數計時器渲染邏輯（每 250ms 校正刷新，防止掉幀與時間漂移） ===
+let _visibilityTimerBound = false;
+
+// === 2. 精準倒數計時器渲染邏輯（每 250ms 校正刷新，並在頁面從背景喚醒時立即校時） ===
 function startAuctionTimer() {
   if (timerIntervalId) clearInterval(timerIntervalId);
   updateAuctionTimerUI();
   timerIntervalId = setInterval(updateAuctionTimerUI, 250);
+  if (!_visibilityTimerBound) {
+    _visibilityTimerBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        updateAuctionTimerUI();
+      }
+    });
+  }
 }
 
 const _autoRelistCooldownUntil = {};
@@ -6559,14 +6664,14 @@ function updateAuctionTimerUI() {
   if ((isExplicitlyEnded || (hasValidEndTime && diff <= 0)) && !(isRelistProtected && hasValidEndTime && diff > 0)) {
     const hasBids = hasItemBids(currentItem);
 
-    // 檢查是否符合「無人出標自動續拍 24H」（加入冷卻保護，防止雲端權限不足或回彈造成無窮迴圈）
-    if (hasValidEndTime && diff <= 0 && !isExplicitlyEnded) {
+    // 檢查是否符合「無人出標自動續拍 24H」（★ 嚴格限定僅最高管理者端可執行續拍寫入與遞增 relistSeq，防止買家擅自更改本機序號鎖死同步）
+    if (hasValidEndTime && diff <= 0 && !isExplicitlyEnded && AppState.isAdmin && AppState.isAdminAuthenticated) {
       const nowMs = Date.now();
       const cooldownUntil = _autoRelistCooldownUntil[currentItem.id] || 0;
       if (!hasBids && currentItem.autoRelistIfNoBids !== false && nowMs >= cooldownUntil) {
         _autoRelistCooldownUntil[currentItem.id] = nowMs + 60000;
         setItemRelistLock(currentItem.id, 8000);
-        console.log('🔄 商品【' + currentItem.name + '】競標時間到且無人出價，自動延長 24 小時續拍！');
+        console.log('🔄 商品【' + currentItem.name + '】競標時間到且無人出價，由管理者端自動延長 24 小時續拍！');
         currentItem.relistSeq = Number(currentItem.relistSeq || 0) + 1;
         currentItem.reopenedAt = getServerNow();
         currentItem.endTime = getServerNow() + 24 * 3600 * 1000;
@@ -6660,10 +6765,16 @@ function toggleBuyerBlacklist(rawPhone, buyerName = '買家') {
   SafeStorage.set('agy_blacklist', AppState.blacklist);
   const db = FirebaseManager.getDb();
   if (db) {
+    const matchedBuyer = (AppState.registeredBuyers || []).find(
+      rb => String(rb.phone || '').replace(/[^0-9]/g, '') === key
+    );
+    const targetUid = matchedBuyer?.ownerUid ? String(matchedBuyer.ownerUid) : '';
     if (currentlyBlocked) {
       db.ref('settings/blacklist/' + key).remove().catch(() => {});
+      if (targetUid) db.ref('settings/blockedUids/' + targetUid).remove().catch(() => {});
     } else {
       db.ref('settings/blacklist/' + key).set(AppState.blacklist[key]).catch(() => {});
+      if (targetUid) db.ref('settings/blockedUids/' + targetUid).set(true).catch(() => {});
     }
   }
   renderAdminBuyersRoster();
@@ -6679,7 +6790,9 @@ function toggleBuyerBlacklist(rawPhone, buyerName = '買家') {
 function checkBuyerHighBidderLock(phone, name) {
   const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
   const cleanName = String(name || '').trim();
-  if (!cleanPhone && !cleanName) return { locked: false };
+  const myMasked = cleanPhone ? maskPhone(cleanPhone) : '';
+  const myUid = (typeof FirebaseManager !== 'undefined' && FirebaseManager.getCurrentUid) ? FirebaseManager.getCurrentUid() : '';
+  if (!cleanPhone && !cleanName && !myUid) return { locked: false };
 
   const items = AppState.items || [];
   for (let i = 0; i < items.length; i++) {
@@ -6688,6 +6801,8 @@ function checkBuyerHighBidderLock(phone, name) {
     if (!hasItemBids(it)) continue;
 
     const topName = getBidderName(it.topBidder).trim();
+    const topUid = (typeof it.topBidder === 'object' && it.topBidder && it.topBidder.ownerUid) ? String(it.topBidder.ownerUid) : '';
+    const topMasked = (typeof it.topBidder === 'object' && it.topBidder && it.topBidder.phoneMasked) ? String(it.topBidder.phoneMasked) : '';
     const topPhone = String(
       (it.topBidderContact && it.topBidderContact.phone) ||
       (typeof it.topBidder === 'object' && it.topBidder ? it.topBidder.phone : '') ||
@@ -6695,9 +6810,11 @@ function checkBuyerHighBidderLock(phone, name) {
     ).replace(/[^0-9]/g, '');
 
     const matchByPhone = cleanPhone && topPhone && cleanPhone === topPhone;
-    const matchByName = cleanName && topName && cleanName === topName;
+    const matchByUid = Boolean(myUid && topUid && myUid === topUid && (!cleanName || !topName || cleanName === topName));
+    const matchByMasked = Boolean(myMasked && topMasked && myMasked === topMasked && (!cleanName || !topName || cleanName === topName));
+    const matchByLegacyName = Boolean(!topUid && !topPhone && !topMasked && cleanName && topName && cleanName === topName);
 
-    if (matchByPhone || matchByName) {
+    if (matchByPhone || matchByUid || matchByMasked || matchByLegacyName) {
       return {
         locked: true,
         itemName: it.name,
@@ -7851,7 +7968,20 @@ function getSortedUniqueBidders(item) {
     });
   }
 
-  const list = Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  const list = Array.from(map.values())
+    .filter(entry => {
+      const ePhone = String(entry.phone || '').replace(/[^0-9]/g, '');
+      const eName = String(entry.name || '').trim();
+      const isDefaulted = Array.isArray(item.defaultedBidders) && item.defaultedBidders.some(dbid => {
+        const dPhone = String(dbid.phone || '').replace(/[^0-9]/g, '');
+        const dName = String(dbid.name || '').trim();
+        return (ePhone && dPhone && ePhone === dPhone) || (eName && dName && eName === dName);
+      });
+      if (isDefaulted) return false;
+      if (ePhone && isBuyerBlacklisted(ePhone)) return false;
+      return true;
+    })
+    .sort((a, b) => b.amount - a.amount);
   return list.map((entry, idx) => Object.assign({}, entry, { rank: idx + 1 }));
 }
 
@@ -7934,17 +8064,26 @@ function renderAdminBackupPanel(item) {
   const listBox = el('backup-candidates-list');
   const candidates = getSortedUniqueBidders(item);
 
-  // 若出價紀錄中僅有 1 位或尚無次高價買家，亦將已註冊買家名冊列入候選參考，方便管理員隨時點選測試或發送遞補邀請
-  const backupCandidates = candidates.filter(c => c.rank >= 2);
+  // 因前一位得標者已被棄標過濾，getSortedUniqueBidders 直接排出目前所有尚未棄標/未封鎖的順位候選人
+  const backupCandidates = candidates.filter(c => {
+    const cName = String(c.name || '').trim();
+    const topName = getBidderName(item.topBidder).trim();
+    return !(topName && cName && cName === topName && candidates[0] && candidates[0].name === cName);
+  });
   if (backupCandidates.length === 0 && AppState.registeredBuyers && AppState.registeredBuyers.length > 0) {
     AppState.registeredBuyers.forEach((rb, idx) => {
-      if (rb && rb.name && rb.name !== getBidderName(item.topBidder)) {
+      const rbPhone = String(rb.phone || '').replace(/[^0-9]/g, '');
+      const isDefaulted = Array.isArray(item.defaultedBidders) && item.defaultedBidders.some(dbid => {
+        const dPhone = String(dbid.phone || '').replace(/[^0-9]/g, '');
+        return (rbPhone && dPhone && rbPhone === dPhone) || (rb.name === dbid.name);
+      });
+      if (rb && rb.name && rb.name !== getBidderName(item.topBidder) && !isDefaulted && !isBuyerBlacklisted(rbPhone)) {
         backupCandidates.push({
           rank: idx + 2,
           name: rb.name,
           phone: rb.phone || '',
           line: rb.line || '',
-          amount: Number(item.currentPrice || item.currentBid || item.startPrice || 10000)
+          amount: Number(item.startPrice || 10000)
         });
       }
     });
@@ -8193,11 +8332,20 @@ function handleMarkWinnerDefaultAndBlacklist() {
     time: getServerNow()
   });
 
+  // 解除原第 1 順位得標佔位，讓系統能立即銜接第 2／第 3 順位遞補或全數放棄流標
+  item.topBidder = '';
+  item.lastBidder = '';
+  item.highestBidder = '';
+  item.topBidderContact = null;
+  item.winner = null;
+  const nameInp = el('inp-backup-target-name');
+  if (nameInp && nameInp.dataset) delete nameInp.dataset.initializedForItem;
+
   renderAdminBuyersRoster();
-  renderAdminBackupPanel(item);
+  renderWinnerStatus();
   syncToFirebase();
   syncToLocalServer();
-  showToast(`🚫 已將棄標買家【${winnerName}】列入黑名單！請於下方確認「遞補優惠調整價」並複製遞補邀請連結。`, 4200);
+  showToast(`🚫 已將棄標買家【${winnerName}】列入黑名單並解除得標資格！請確認次順位買家與「遞補優惠調整價」。`, 4400);
 }
 
 /**
@@ -8216,7 +8364,7 @@ function handleCopyAndSendBackupInvite() {
   const offerPrice = Number(el('inp-backup-offer-price')?.value || origBid);
 
   if (offerPrice <= 0) {
-    alert('請輸入有效的「遞補優惠調整價」金額！');
+    showToast('⚠️ 請輸入有效的「遞補優惠調整價」金額！');
     return;
   }
 
@@ -8226,11 +8374,13 @@ function handleCopyAndSendBackupInvite() {
     generateBackupInviteMessage(AppState.activeBackupTemplate || 'discount', item.name, buyerName, rankLabel, origBid, offerPrice);
 
   const offerId = 'offer_' + Date.now();
+  const cleanPhone = String(buyerPhone || '').replace(/[^0-9]/g, '');
   item.backupOffer = {
     offerId: offerId,
     rankLabel: rankLabel,
     buyerName: buyerName,
     buyerPhone: buyerPhone,
+    buyerPhoneMasked: buyerPhone ? maskPhone(buyerPhone) : '',
     buyerLine: buyerLine,
     originalBid: origBid,
     offerPrice: offerPrice, // ★ 後續買家同意後的正式成交價以此「遞補優惠價」為準
@@ -8240,6 +8390,17 @@ function handleCopyAndSendBackupInvite() {
     createdAt: getServerNow(),
     respondedAt: null
   };
+
+  // 將遞補受邀者完整電話與 Line 獨立寫入私密節點 privateContacts/{itemId}/backupOffer
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`privateContacts/${item.id}/backupOffer`).set({
+      offerId: offerId,
+      buyerName: buyerName,
+      buyerPhone: cleanPhone || buyerPhone,
+      buyerLine: buyerLine || ''
+    }).catch(() => {});
+  }
 
   SafeStorage.set('agy_items', AppState.items);
   syncToFirebase();
@@ -8265,19 +8426,86 @@ function handleCopyAndSendBackupInvite() {
     confirmUrl
   ].join('\n');
 
-  navigator.clipboard.writeText(fullInviteText).then(() => {
-    showToast(`📋 已成功複製【${buyerName}】專屬遞補邀請文案（遞補優惠價 NT$ ${offerPrice.toLocaleString()}）與連結！`, 4200);
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = fullInviteText;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast(`📋 已成功複製遞補邀請文案（遞補優惠價 NT$ ${offerPrice.toLocaleString()}）！`, 4200);
-  });
+  copyTextToClipboard(fullInviteText);
+  showToast(`📋 已成功複製【${buyerName}】專屬遞補邀請文案（遞補優惠價 NT$ ${offerPrice.toLocaleString()}）與連結！`, 4200);
 
   renderWinnerStatus();
+}
+
+/**
+ * ⏭️ 管理員點擊「改邀下一順位買家」：跳過目前婉拒／未成交的候選人，帶入下一順位候補
+ */
+function handleAdvanceToNextBackupRank() {
+  if (!requireAdminAuth()) return;
+  const item = getActiveItem();
+  if (!item) return;
+
+  if (item.backupOffer && item.backupOffer.buyerName) {
+    if (!Array.isArray(item.defaultedBidders)) item.defaultedBidders = [];
+    const curName = String(item.backupOffer.buyerName || '').trim();
+    const curPhone = String(item.backupOffer.buyerPhone || '').replace(/[^0-9]/g, '');
+    const exists = item.defaultedBidders.some(d => (curPhone && d.phone === curPhone) || d.name === curName);
+    if (!exists) {
+      item.defaultedBidders.push({
+        name: curName,
+        phone: curPhone || item.backupOffer.buyerPhone || '',
+        amount: item.backupOffer.originalBid || item.currentBid,
+        reason: '未接受遞補邀請',
+        time: getServerNow()
+      });
+    }
+  }
+  item.backupOffer = null;
+  item.backupResponse = null;
+  const nameInp = el('inp-backup-target-name');
+  if (nameInp && nameInp.dataset) delete nameInp.dataset.initializedForItem;
+
+  renderAdminBackupPanel(item);
+  const eligible = getSortedUniqueBidders(item);
+  if (eligible.length === 0) {
+    showToast('⚠️ 目前已無其他可遞補買家，建議點擊「📉 全數放棄➔標記流標」或直接重新開啟競標！', 4800);
+  } else {
+    showToast(`⏭️ 已切換準備邀請下一順位買家【${eligible[0].name}】（請確認優惠價後點擊複製邀請連結）！`, 4200);
+  }
+  syncToFirebase();
+}
+
+/**
+ * 📉 管理員點擊「全數放棄➔標記流標」：清空得標者與遞補狀態，還原為無人得標流標狀態以便重開競標
+ */
+function handleMarkBackupUnsold() {
+  if (!requireAdminAuth()) return;
+  const item = getActiveItem();
+  if (!item) return;
+  if (!confirm('📉 確定要將所有遞補買家標記為放棄／流標並清空得標人嗎？\n完成後可直接在下方重新設定起標價並重開競標。')) return;
+
+  const initPrice = Number(item.startPrice || 10000);
+  item.currentPrice = initPrice;
+  item.currentBid = initPrice;
+  item.highestBid = initPrice;
+  item.topBidder = '';
+  item.lastBidder = '';
+  item.highestBidder = '';
+  item.topBidderContact = null;
+  item.winner = null;
+  item.bids = {};
+  item.bidHistory = [];
+  item.backupOffer = null;
+  item.backupResponse = null;
+  item.finalDealPrice = null;
+  item.status = 'ended';
+
+  SafeStorage.set('agy_items', AppState.items);
+  const db = FirebaseManager.getDb();
+  if (db && item.id) {
+    db.ref(`privateContacts/${item.id}`).set(null).catch(() => {});
+  }
+  syncToFirebase();
+  syncToLocalServer();
+  renderWinnerStatus();
+  renderBidHistory();
+  renderActiveItemDisplay();
+  showToast('📉 已正式標記為本檔流標！您可於下方「🔄 重新開啟競標控制台」重新開標。', 4400);
 }
 
 /**
@@ -8291,6 +8519,8 @@ function handleBuyerRespondBackupOffer(isAccept) {
   const replyNote = el('inp-backup-buyer-note')?.value.trim() || '';
   const offerPrice = Number(bo.offerPrice || bo.originalBid || item.currentBid || item.startPrice);
   const now = getServerNow();
+  const uid = (typeof FirebaseManager !== 'undefined' && FirebaseManager.getCurrentUid) ? FirebaseManager.getCurrentUid() : 'anon';
+  let newMsgObj = null;
 
   if (isAccept) {
     bo.status = 'accepted';
@@ -8301,6 +8531,7 @@ function handleBuyerRespondBackupOffer(isAccept) {
     item.finalDealPrice = offerPrice;
     item.currentPrice = offerPrice;
     item.currentBid = offerPrice;
+    item.highestBid = offerPrice;
     item.topBidder = bo.buyerName || AppState.userProfile.name || '遞補得標買家';
     item.topBidderContact = {
       name: bo.buyerName || AppState.userProfile.name || '遞補得標買家',
@@ -8312,12 +8543,14 @@ function handleBuyerRespondBackupOffer(isAccept) {
     item.endTime = now; // 重新起算得標取貨期限
 
     if (!Array.isArray(item.winnerMsgs)) item.winnerMsgs = [];
-    item.winnerMsgs.push({
-      sender: item.topBidder,
+    newMsgObj = {
+      sender: String(item.topBidder),
       isSeller: false,
+      ownerUid: uid,
       text: `🎉 【已確認同意遞補購買】我願意依賣家提供的遞補優惠價 NT$ ${offerPrice.toLocaleString()} 購買！${replyNote ? '（備註：' + replyNote + '）' : ''}`,
       time: now
-    });
+    };
+    item.winnerMsgs.push(newMsgObj);
 
     triggerConfetti();
     showToast(`🎉 恭喜您已確認依遞補優惠價 NT$ ${offerPrice.toLocaleString()} 正式得標！`, 4500);
@@ -8328,6 +8561,15 @@ function handleBuyerRespondBackupOffer(isAccept) {
     bo.status = 'declined';
     bo.buyerReplyNote = replyNote;
     bo.respondedAt = now;
+    if (!Array.isArray(item.winnerMsgs)) item.winnerMsgs = [];
+    newMsgObj = {
+      sender: String(bo.buyerName || AppState.userProfile.name || '受邀買家'),
+      isSeller: false,
+      ownerUid: uid,
+      text: `ℹ️ 【已婉拒本次遞補邀請】${replyNote ? '（買家備註：' + replyNote + '）' : '已通知賣家順延詢問下一順位買家。'}`,
+      time: now
+    };
+    item.winnerMsgs.push(newMsgObj);
     showToast('已送出婉拒回覆，感謝您的參與！');
   }
 
@@ -8339,8 +8581,12 @@ function handleBuyerRespondBackupOffer(isAccept) {
         status: bo.status,
         buyerReplyNote: replyNote || '',
         respondedAt: now,
-        ownerUid: authUid
+        ownerUid: authUid || uid
       }).catch(() => {});
+      if (newMsgObj) {
+        const msgKey = `wmsg_${now}_${Math.random().toString(36).slice(2, 6)}`;
+        db.ref(`auction/items/${item.id}/winnerMsgs/${msgKey}`).set(Object.assign({}, newMsgObj, { ownerUid: authUid || uid })).catch(() => {});
+      }
       if (AppState.isAdmin && AppState.isAdminAuthenticated) {
         syncToFirebase();
       }
@@ -8480,97 +8726,8 @@ function listenFirebase(auctionId) {
   AppState.auctionId = auctionId;
   SafeStorage.set('agy_last_auction_id', auctionId);
   initServerTimeSync(db);
-
-  db.ref('auctions/' + auctionId).on('value', snap => {
-    if (!snap.exists()) {
-      console.log('Firebase 雲端拍賣節點不存在：', auctionId);
-      return;
-    }
-    const data = snap.val();
-    if (!data) return;
-
-    if (data.studioName) {
-      if (data.studioName === 'JianSheng Boutique') {
-        updateStudioName('建生工坊', true);
-      } else {
-        updateStudioName(data.studioName, false);
-      }
-    }
-    if (data.studioLogo) {
-      updateStudioLogo(data.studioLogo, false);
-    }
-    if (data.logoConfig) {
-      applyLogoConfig(data.logoConfig, false);
-    }
-    if (data.baseCurrency) AppState.baseCurrency = data.baseCurrency;
-
-    let incomingItems = [];
-
-    // 1. 判斷多商品結構 (items 陣列或物件)
-    if (data.items) {
-      const rawList = (Array.isArray(data.items) ? data.items : Object.values(data.items)).filter(it => {
-        if (!it || typeof it !== 'object') return false;
-        const nm = String(it.name || it.itemName || it.title || '').trim();
-        if (!nm || (nm === '拍賣商品' && Number(it.startPrice) === 100 && (!it.images || it.images[0] === 'icon-512.png'))) return false;
-        return true;
-      });
-      incomingItems = rawList.map((it, idx) => normalizeItem(it, it.id || `item-${idx + 1}`));
-    }
-    // 2. 舊版單一商品頂層結構自動相容遷移 (itemName / startPrice / imageList 等舊格式)
-    else if (data.itemName || data.name || data.startPrice !== undefined || data.imageList || data.imgUrl || data.imageUrls || data.currentBid !== undefined) {
-      console.log('🔄 偵測到舊版 Firebase 拍賣資料結構，執行自動相容遷移…');
-      const legacyItem = normalizeItem(data, data.auctionId || 'item-legacy-1');
-      incomingItems = [legacyItem];
-    }
-
-    if (incomingItems.length > 0) {
-      // 比對即時出價超越警示與重開競態防護 (防止剛重開的商品被延遲快照覆蓋回已結標)
-      const mergedItems = incomingItems.map(remoteItem => {
-        const localItem = AppState.items.find(i => i.id === remoteItem.id);
-        if (localItem && shouldIgnoreStaleRemoteUpdate(localItem, remoteItem)) {
-          return localItem;
-        }
-        if (localItem && remoteItem.currentBid > localItem.currentBid) {
-          checkOutbidNotice(remoteItem.id, remoteItem.topBidder, remoteItem.currentBid);
-        }
-        return remoteItem;
-      });
-
-      // 保留僅存於本機重開鎖定中的項目
-      AppState.items = mergedItems;
-
-      // 依據網址 ?id= 參數鎖定商品
-      applyUrlRouteParams();
-
-      // 保持 activeItemId 與 editingItemId 有效指向
-      if (!AppState.items.some(i => i.id === AppState.activeItemId)) {
-        AppState.activeItemId = AppState.items[0].id;
-      }
-      if (!AppState.editingItemId || !AppState.items.some(i => i.id === AppState.editingItemId)) {
-        AppState.editingItemId = AppState.activeItemId;
-      }
-
-      // 同步更新編輯面板各項資料
-      loadItemIntoEditForm(AppState.editingItemId);
-
-      renderItemTabs();
-      renderActiveItemDisplay();
-      renderBidHistory();
-      renderQA();
-      renderWinnerStatus();
-      renderAdminItemsList();
-      updateShareUrl();
-    }
-
-    if (data.broadcasts && Array.isArray(data.broadcasts)) {
-      if (data.broadcasts.length > AppState.broadcasts.length) {
-        const latest = data.broadcasts[data.broadcasts.length - 1];
-        showTopBroadcastBanner(latest.msg);
-      }
-      AppState.broadcasts = data.broadcasts;
-      renderBroadcastHistory();
-    }
-  });
+  // 統一委派至單一主監聽通道，避免重複監聽並保留 liveBid/bids 與私密個資合流
+  listenAuctionSync(auctionId);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -8678,25 +8835,30 @@ function populateFbSetupModal() {
 
   const isReady = FirebaseManager.isReady();
   const isDefaultNode = (projId === defCfg.projectId && dbUrl === defCfg.databaseURL);
+  const isDemoKey = FirebaseManager.isPlaceholderApiKey ? FirebaseManager.isPlaceholderApiKey(apiKey) : false;
 
   if (banner) {
-    banner.classList.toggle('connected', isReady);
-    banner.classList.toggle('fallback', !isReady);
+    banner.classList.toggle('connected', isReady && !isDemoKey);
+    banner.classList.toggle('fallback', !isReady || isDemoKey);
   }
   if (dot) {
-    dot.textContent = isReady ? '🟢' : '🟡';
+    dot.textContent = (isReady && !isDemoKey) ? '🟢' : '🟡';
   }
   if (title) {
-    if (isReady) {
+    if (isDemoKey) {
+      title.textContent = `⚠️ 注意：API Key 尚為範例值，匿名/安全認證無法啟用！`;
+    } else if (isReady) {
       title.textContent = `🟢 目前已正常連線至雲端資料庫（${projId}）`;
     } else {
       title.textContent = `預設綁定 ${projId} 雲端資料庫（本機安全同步模式就緒）`;
     }
   }
   if (sub) {
-    sub.textContent = isDefaultNode
-      ? '系統內建預設連線生效中・全球買家開啟網頁皆自動連線同步，無須手動設定'
-      : `目前使用自訂節點（${dbUrl}）・可隨時點擊下方按鈕恢復系統內建預設連線`;
+    sub.textContent = isDemoKey
+      ? '請從 Firebase Console ➔ 專案設定 複製真實 Web API Key 貼入下方欄位並按「儲存並連線」，否則新版嚴格規則將阻擋寫入'
+      : (isDefaultNode
+          ? '系統內建預設連線生效中・全球買家開啟網頁皆自動連線同步，無須手動設定'
+          : `目前使用自訂節點（${dbUrl}）・可隨時點擊下方按鈕恢復系統內建預設連線`);
   }
 }
 
@@ -9224,8 +9386,10 @@ function bindEvents() {
     });
   });
 
-  // 複製邀請文案與專屬連結
+  // 複製邀請文案與專屬連結 + 順延下一順位 / 全數放棄流標
   el('btn-copy-backup-invite')?.addEventListener('click', handleCopyAndSendBackupInvite);
+  el('btn-backup-next-rank')?.addEventListener('click', handleAdvanceToNextBackupRank);
+  el('btn-backup-mark-unsold')?.addEventListener('click', handleMarkBackupUnsold);
 
   // 買家端確認同意或婉拒遞補優惠價購買
   el('btn-accept-backup-offer')?.addEventListener('click', () => handleBuyerRespondBackupOffer(true));

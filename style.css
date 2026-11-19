@@ -3657,9 +3657,29 @@ body.view-mode-desktop .btn-submit-bid {
 /* 當螢幕寬度介於 600px ~ 920px 且處於電腦模式時，自動調整欄位最小寬度防擠壓 */
 @media (max-width: 920px) {
   body.view-mode-desktop #auction-container {
-    grid-template-columns: minmax(0, 52fr) minmax(320px, 48fr) !important;
+    grid-template-columns: minmax(0, 52fr) minmax(260px, 48fr) !important;
     gap: 16px !important;
     padding: 14px 14px 48px 14px !important;
+  }
+}
+
+/* 極窄手機螢幕 (< 600px) 若手動強制切換為電腦雙欄模式，動態縮放雙欄最小寬度與計時字級以防左欄照片被擠壓 */
+@media (max-width: 600px) {
+  body.view-mode-desktop #auction-container {
+    grid-template-columns: minmax(0, 1.08fr) minmax(175px, 0.92fr) !important;
+    gap: 10px !important;
+    padding: 10px 10px 44px 10px !important;
+  }
+  body.view-mode-desktop #gallery-wrap {
+    height: 220px !important;
+  }
+  body.view-mode-desktop #timer-card .time-unit-val {
+    font-size: 1.15rem !important;
+    min-width: 34px !important;
+    padding: 4px 4px !important;
+  }
+  body.view-mode-desktop #bid-current-card .bid-price-huge {
+    font-size: 1.45rem !important;
   }
 }
 
@@ -4614,6 +4634,12 @@ body.is-qa-resizing {
   color: #c4b5fd;
   cursor: pointer;
   user-select: none;
+}
+.qa-canned-compose-hint {
+  font-size: .68rem;
+  color: var(--c-text-3);
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .qa-canned-chips-row {

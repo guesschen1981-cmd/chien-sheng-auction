@@ -12,7 +12,7 @@ import os
 import sys
 import json
 import socket
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 PORT = 8080
 if len(sys.argv) > 1:
@@ -192,8 +192,8 @@ class AuctionServerHandler(SimpleHTTPRequestHandler):
 
 def run_server():
     server_address = ('', PORT)
-    HTTPServer.allow_reuse_address = True
-    httpd = HTTPServer(server_address, AuctionServerHandler)
+    ThreadingHTTPServer.allow_reuse_address = True
+    httpd = ThreadingHTTPServer(server_address, AuctionServerHandler)
     lan_ip = get_lan_ip()
     print("=" * 60)
     print(f"建生工坊拍賣系統本機伺服器已啟動:")
