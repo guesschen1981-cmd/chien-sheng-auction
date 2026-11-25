@@ -30,7 +30,7 @@
       "buyers": {
         ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
         "$phone": {
-          ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid) && newData.child('ownerUid').val() == auth.uid))",
+          ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid || data.child('name').val() == newData.child('name').val()) && newData.child('ownerUid').val() == auth.uid))",
           ".validate": "newData.hasChildren(['name', 'phone']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 40 && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
         }
       }
@@ -39,7 +39,7 @@
       ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true)",
       "$phone": {
         ".read": "auth != null && ((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true || data.child('ownerUid').val() == auth.uid)",
-        ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid) && newData.child('ownerUid').val() == auth.uid))",
+        ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (newData.exists() && (!data.exists() || !data.child('ownerUid').exists() || data.child('ownerUid').val() == auth.uid || data.child('name').val() == newData.child('name').val()) && newData.child('ownerUid').val() == auth.uid))",
         ".validate": "newData.hasChildren(['name', 'phone']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 40 && newData.child('phone').isString() && newData.child('phone').val().matches(/^[0-9]{8,15}$/)"
       }
     },
@@ -108,7 +108,7 @@
           },
           "winnerMsgs": {
             "$msgKey": {
-              ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (!data.exists() && newData.exists() && data.parent().parent().child('backupOffer').exists() && newData.child('isSeller').val() == false && newData.child('ownerUid').val() == auth.uid))",
+              ".write": "auth != null && (((auth.token.firebase.sign_in_provider == 'password' && auth.token.email == 'guess_chen1981@jiansheng-auction.com') || root.child('settings/admins/' + auth.uid).val() == true) || (!data.exists() && newData.exists() && (data.parent().parent().child('liveBid/topBidder/ownerUid').val() == auth.uid || data.parent().parent().child('backupOffer').exists()) && newData.child('isSeller').val() == false && newData.child('ownerUid').val() == auth.uid))",
               ".validate": "newData.hasChildren(['sender', 'text', 'time', 'isSeller']) && newData.child('sender').isString() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 500 && newData.child('time').isNumber() && newData.child('isSeller').isBoolean()"
             }
           }

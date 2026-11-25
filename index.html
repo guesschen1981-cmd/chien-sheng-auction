@@ -34,8 +34,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 
-  <!-- 主樣式表 (v8.2 全面程式碼體檢與高/中/體驗最佳化修復) -->
-  <link rel="stylesheet" href="style.css?v=8.3&t=20261119_real_fb_config" />
+  <!-- 主樣式表 (v8.4 全流程深度體檢修復與輕量化同步最佳化) -->
+  <link rel="stylesheet" href="style.css?v=8.4&t=20261125_audit_deep_fix" />
 </head>
 
 <body>
@@ -1388,7 +1388,8 @@
     aria-labelledby="modal-admin-login-title">
     <div class="modal-sheet admin-login-sheet">
       <div class="modal-title" id="modal-admin-login-title">
-        <span>🛡️</span> 最高權限管理者驗證
+        <span>🛡️ 最高權限管理者驗證</span>
+        <button type="button" class="modal-close-x" id="btn-close-admin-login-x" aria-label="關閉視窗">✕</button>
       </div>
       <p style="font-size:.82rem;color:var(--c-text-2);margin-bottom:14px;line-height:1.5;">
         請輸入最高權限管理者帳號與密碼。通過驗證後即可跨裝置掌控全站後台設定、解碼買家完整聯絡資料與回覆問答：
@@ -1439,6 +1440,7 @@
       <div class="modal-title">
         <span id="modal-profile-title-icon">👤</span>
         <span id="modal-profile-title-text">買家身分與資料保留設定</span>
+        <button type="button" class="modal-close-x" id="btn-close-buyer-profile-x" aria-label="關閉視窗">✕</button>
       </div>
 
       <!-- 🔑 尚未驗證管理員時之快捷解鎖列（讓管理員在買家視窗也能一鍵驗證解鎖身分與測試分身切換器） -->
@@ -1651,7 +1653,10 @@
 ════════════════════════════════════════════════════════ -->
   <div class="modal-backdrop" id="modal-fb-setup" role="dialog" aria-modal="true">
     <div class="modal-sheet" style="max-width:480px;">
-      <div class="modal-title">☁️ Firebase 雲端資料庫設定</div>
+      <div class="modal-title">
+        <span>☁️ Firebase 雲端資料庫設定</span>
+        <button type="button" class="modal-close-x" id="btn-close-fb-setup-x" aria-label="關閉視窗">✕</button>
+      </div>
 
       <!-- 即時雲端連線狀態標籤 -->
       <div class="fb-connection-status-banner connected" id="fb-connection-status-banner">
@@ -1869,7 +1874,10 @@
   <div class="modal-backdrop" id="modal-canned-replies" role="dialog" aria-modal="true"
     aria-labelledby="canned-modal-title">
     <div class="modal-sheet" style="max-width:520px;">
-      <div class="modal-title" id="canned-modal-title">⚡ 管理賣家自訂快答詞庫（雲端同步）</div>
+      <div class="modal-title" id="canned-modal-title">
+        <span>⚡ 管理賣家自訂快答詞庫（雲端同步）</span>
+        <button type="button" class="modal-close-x" id="btn-close-canned-modal-x" aria-label="關閉視窗">✕</button>
+      </div>
       <p style="font-size:.8rem;color:var(--c-text-2);margin-bottom:12px;line-height:1.55;">
         系統已內建 <strong>12 組預設快答</strong>；您可在此自由新增、編輯或刪除專屬自訂快答標籤，儲存後將同步至雲端資料庫。點擊多組快答時會自動組合成「您好！……。」完整官方回覆。
       </p>
@@ -1935,13 +1943,13 @@
   <canvas id="fx-canvas"
     style="pointer-events:none;position:fixed;inset:0;z-index:999999;width:100%;height:100%;"></canvas>
 
-  <!-- 主程式腳本 (v8.2 全面程式碼體檢與高/中/體驗最佳化修復) -->
-  <script src="app.js?v=8.3&t=20261119_real_fb_config"></script>
+  <!-- 主程式腳本 (v8.4 全流程深度體檢修復與輕量化同步最佳化) -->
+  <script src="app.js?v=8.4&t=20261125_audit_deep_fix"></script>
 
   <!-- PWA Service Worker 註冊與快取自動更新防卡死腳本 -->
   <script>
     (function () {
-      const CURRENT_SW_VER = 'jiansheng-auction-v45';
+      const CURRENT_SW_VER = 'jiansheng-auction-v46';
       try {
         const lastVer = localStorage.getItem('agy_sw_cache_ver');
         if (lastVer !== CURRENT_SW_VER && 'caches' in window) {
@@ -1963,7 +1971,7 @@
         });
 
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=35').then(reg => {
+          navigator.serviceWorker.register('./sw.js?v=36').then(reg => {
             reg.update().catch(() => {});
             if (reg.waiting) {
               reg.waiting.postMessage({ action: 'skipWaiting' });
